@@ -33,6 +33,8 @@ HF.CFG = {
   COLD_DAMAGE: 1,
   REGEN: 1,
 
+  GRIEF_CAP: 12,           // ceiling on the village-wide mourning thought
+
   RAID_START_TURN: 42,
   RAID_MIN_GAP: 24,
   RAID_MAX_GAP: 38,
@@ -168,6 +170,88 @@ HF.YIELDS = {
   mine:    { stone: 10 },
   forage:  { food: 8 },
   harvest: { food: HF.FARM.YIELD },
+};
+
+/* ---------- character ----------
+   None of this is simulated. An origin does not change how fast anyone works;
+   a scar does nothing at all. They are here because a villager the player can
+   picture is a villager the player will tell stories about, and detail that
+   never feeds back into the systems costs nothing to balance and nothing to
+   understand. Only TRAITS have a hook, and each has exactly one. */
+
+/* Stock figures of the period. The player already knows what a burned village
+   or a deserted levy means, so one clause does the work of a paragraph. */
+HF.ORIGINS = [
+  'came down from a village the Oda burned',
+  'was a temple servant until the monks were driven out',
+  'is a third child, and will inherit nothing',
+  'carried baggage behind an army and thought better of it',
+  'was sold to a silk house as a child and walked home',
+  'lost a husband to a lord’s quarrel and never learned which one',
+  'has worked this valley since before the wars',
+  'deserted an ashigaru levy and does not speak of it',
+  'held a spear for a house that no longer exists',
+  'burned charcoal in the hills above the valley',
+  'arrived with a hoe, a pot, and nothing else',
+  'buried two children in a famine year',
+  'was a boatman until the ford was taken',
+  'ran from a castle town the winter it changed hands',
+];
+
+/* Appearance. Pure flavour - it exists so the player has something to picture. */
+HF.MARKS = [
+  'a burn scar up one forearm',
+  'grey coming in early at the temples',
+  'a nose broken and set badly',
+  'hands stained dark from indigo',
+  'a missing fingertip',
+  'shoulders like someone twice the size',
+  'a limp from a childhood fall',
+  'one tooth blacked out at the front',
+  'eyes kept narrowed even indoors',
+  'a voice worn down to almost nothing',
+];
+
+/* One mechanical hook each, and every hook shows up by name in the villager's
+   thoughts - a trait the player cannot see the effect of is not a trait. */
+HF.TRAITS = {
+  steady:     { label: 'Steady',    note: 'Hardship lands lighter than it does on others.' },
+  sullen:     { label: 'Sullen',    note: 'Takes everything harder than it is.' },
+  devout:     { label: 'Devout',    note: 'Finds meaning where others find only work.' },
+  homesick:   { label: 'Homesick',  note: 'This is not home yet. A village of five buildings might be.' },
+  tough:      { label: 'Tough',     note: 'Harder to kill than they look.' },
+  diligent:   { label: 'Diligent',  note: 'Works faster at everything, and always has.' },
+};
+
+HF.TRAIT_TUNING = {
+  steadyScale: 0.6,       // multiplies every negative thought
+  sullenScale: 1.4,
+  devoutMood: 6,
+  homesickMood: -7,
+  homesickCured: 5,       // buildings standing before this valley feels like home
+  toughHp: 14,
+  diligentRate: 1.15,
+};
+
+/* A tie to one other villager. It does nothing whatsoever while both are alive.
+   That is the whole design: it is the minimum representation that supports the
+   story it exists for, which is the one where somebody does not come back.
+
+   All four have to read correctly in both "X is ___ Y" and "X was ___ Y", so
+   they are noun phrases throughout - a verb phrase here produces "X is was
+   raised alongside Y". */
+HF.BONDS = ['kin to', 'the oldest friend of', 'a childhood companion of', 'in the debt of'];
+
+/* Thoughts that fade. Events leave a mark for a while and then stop mattering,
+   which is what lets a paid levy feel like relief and a missed one like a
+   shadow over the next few seasons. */
+HF.MEMORIES = {
+  levyPaid:    { label: 'The levy was paid',            delta: 8,   turns: 12 },
+  levyShort:   { label: 'The collectors took everything', delta: -10, turns: 15 },
+  levyStripped:{ label: 'The collectors stripped us bare', delta: -16, turns: 20 },
+  bondLost:    { label: 'Lost ',                        delta: -18, turns: 30 },
+  raidBroken:  { label: 'The raid was broken',          delta: 6,   turns: 8 },
+  buriedSomeone:{ label: 'A death in the village',      delta: -6,  turns: 12 },
 };
 
 /* ---------- names ----------

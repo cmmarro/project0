@@ -34,6 +34,7 @@ HF.Game = function (seed) {
   this.banditsKilled = 0;
   this.dirtyTerrain = true;
   this.spoiledThisTurn = false;
+  this.spoilLogged = {};
 
   const site = HF.Map.findStartSite(this, this.rng);
   this.startSite = site;
@@ -45,8 +46,13 @@ HF.Game = function (seed) {
     this.colonists.push(HF.Colonists.create(this, s.x, s.y));
   }
 
+  for (const c of this.colonists) HF.Colonists.bind(this, c);
+
   this.log('Four peasants settle this valley. Three harvests, three levies - hold the village together.',
            'season');
+  for (const c of this.colonists) {
+    this.log(c.name + ' ' + c.origin + '.', 'info');
+  }
   this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
   HF.Events.announceSeason(this);
 };
@@ -105,7 +111,7 @@ HF.Game.prototype = {
       this.levyHistory.push({ year: this.year(), demand: demand, paid: true });
       this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle.', 'levy');
       this.grief = Math.max(0, this.grief - 4);
-      for (const c of this.aliveColonists()) c.mood = HF.U.clamp(c.mood + 7, 0, 100);
+      HF.Colonists.rememberAll(this, 'levyPaid');
     } else {
       const short = demand - have;
       this.res.food = 0;
@@ -127,18 +133,17 @@ HF.Game.prototype = {
         this.grief += 5;
         this.log('The levy falls ' + short + ' koku short. The collectors take everything and ' +
                  'note the shortfall against the village.', 'bad');
+        HF.Colonists.rememberAll(this, 'levyShort');
       } else {
         this.levyStrikes += L.strikeBad;
         this.grief += 10;
         this.log('The levy falls ' + short + ' koku short - far short. The collectors strip the ' +
                  'granary bare.', 'bad');
+        HF.Colonists.rememberAll(this, 'levyStripped');
         const alive = this.aliveColonists();
         if (alive.length > 1 && this.levyStrikes <= L.strikesAllowed) {
           const gone = this.rng.pick(alive);
-          gone.dead = true;
-          gone.departed = true;
-          this.releaseClaims(gone.id);
-          this.log(gone.name + ' has walked out rather than starve for the castle.', 'bad');
+          HF.Colonists.die(this, gone, ' has walked out rather than starve for the castle.', true);
         }
       }
       if (this.levyStrikes <= L.strikesAllowed && left > 0) {
@@ -203,9 +208,17 @@ HF.Game.prototype = {
     const before = this.res[r];
     this.res[r] = HF.U.clamp(before + n, 0, cap);
     const lost = before + n - this.res[r];
-    if (lost > 0.5 && !this.spoiledThisTurn) {
+    // Overflowing stores is worth saying, but it stays true for as long as the
+    // player ignores it, and repeating the identical line every few turns
+    // buries the levy warnings and the deaths. Say it, then hold off.
+    this.spoilLogged = this.spoilLogged || {};
+    if (lost > 0.5 && !this.spoiledThisTurn && this.turn - (this.spoilLogged[r] || -99) >= 12) {
       this.spoiledThisTurn = true;
-      this.log('Storage is full - ' + Math.round(lost) + ' ' + r + ' went to waste.', 'bad');
+      this.spoilLogged[r] = this.turn;
+      const res = HF.RESOURCES[r] || { label: r, unit: '' };
+      this.log('Nowhere to put it - ' + Math.round(lost) + ' ' +
+               (res.unit ? res.unit + ' of ' : '') + res.label.toLowerCase() +
+               ' spoiled for want of a kura.', 'bad');
     }
   },
 
@@ -291,7 +304,10 @@ HF.Game.prototype = {
       this.log(withdrew + ' raider' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.', 'info');
     }
     this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
-    if (before > 0 && this.raiders.length === 0 && killed > 0) this.log('The raid is broken.', 'good');
+    if (before > 0 && this.raiders.length === 0 && killed > 0) {
+      this.log('The raid is broken.', 'good');
+      HF.Colonists.rememberAll(this, 'raidBroken');
+    }
 
     HF.Events.tick(this);
 
@@ -367,6 +383,7 @@ HF.Game.prototype = {
       levyFailures: this.levyFailures, levyStrikes: this.levyStrikes,
       levyHistory: this.levyHistory,
       banditsKilled: this.banditsKilled, startSite: this.startSite,
+      spoilLogged: this.spoilLogged,
     });
   },
 };
@@ -379,5 +396,6 @@ HF.Game.load = function (json) {
   g.rng.s = d.rngState >>> 0;
   g.dirtyTerrain = true;
   g.spoiledThisTurn = false;
+  g.spoilLogged = d.spoilLogged || {};
   return g;
 };

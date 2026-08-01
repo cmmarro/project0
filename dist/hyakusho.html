@@ -405,7 +405,21 @@ kbd {
 .colonist.selected { border-color: var(--gold); }
 
 .row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.row-head .name { font: 600 14px/1.3 var(--display); }
+
+/* The name is a button because the player can put their own in. Styled to look
+   like the heading it replaced, with the affordance held back until hover. */
+.row-head .name {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  background: none;
+  color: var(--ink);
+  font: 600 14px/1.3 var(--display);
+  text-align: left;
+  cursor: text;
+}
+.row-head .name:hover { border-bottom-color: var(--line); }
+.row-head .name:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .row-head .activity {
   font-size: 11px;
   color: var(--ink-dim);
@@ -432,6 +446,56 @@ kbd {
 .bar.rest .fill { background: #3a5a72; }
 .bar.mood .fill { background: #7a5c2c; }
 .bar.hp   .fill { background: #7a3a2f; }
+
+/* ---------- who a villager is, and what is on their mind ---------- */
+
+.trait-line {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.trait-line .trait { color: var(--gold); font-weight: 600; }
+
+.detail {
+  margin: 8px 0;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: #12171e;
+}
+
+.detail .who {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+.detail .who b { color: var(--ink); }
+
+.detail h3 {
+  margin: 10px 0 5px;
+  font: 600 10px/1 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.thoughts { list-style: none; margin: 0; padding: 0; }
+.thoughts li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid #1b212a;
+  font-size: 12px;
+}
+.thoughts li:last-child { border-bottom: 0; }
+.thoughts li b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.thoughts li em { font-style: normal; color: #5f6875; font-size: 11px; }
+.thoughts li.up { color: #b9cdae; }
+.thoughts li.up b { color: var(--good); }
+.thoughts li.down { color: #cfb3ad; }
+.thoughts li.down b { color: var(--bad); }
 
 .works { display: flex; gap: 3px; }
 .works .work {
@@ -631,8 +695,12 @@ kbd {
 
 @media (max-width: 900px) {
   #app {
+    /* Named so the villager sheet can park itself exactly on top of the
+       toolbar instead of hard-coding the same number twice. */
+    --tools-h: 100px;
+    --top-h: 68px;
     grid-template-columns: 1fr;
-    grid-template-rows: 68px 1fr 100px;
+    grid-template-rows: var(--top-h) 1fr var(--tools-h);
     grid-template-areas: "top" "stage" "tools";
   }
 
@@ -659,20 +727,23 @@ kbd {
   #calendar .season { font-size: 11px; }
 
   /* The sidebar becomes a sheet over the map. */
+  /* The sheet stops above the toolbar rather than covering it. Selecting a
+     villager is what reveals their thoughts, so the sheet has to be able to
+     stay open - which means End Turn has to stay reachable underneath it. */
   #sidebar {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: var(--tools-h);
     z-index: 30;
     display: block;
-    max-height: 66%;
+    max-height: calc(100% - var(--tools-h) - var(--top-h));
     overflow-y: auto;
     border-top: 1px solid var(--line);
     border-radius: 14px 14px 0 0;
     background: var(--panel);
     box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55);
-    transform: translateY(101%);
+    transform: translateY(calc(100% + var(--tools-h) + 2px));
     transition: transform 0.22s ease;
   }
   #sidebar.open { transform: none; }
@@ -734,7 +805,7 @@ kbd {
 }
 
 @media (max-width: 900px) and (max-height: 560px) {
-  #sidebar { max-height: 84%; }
+  #sidebar { max-height: calc(100% - var(--tools-h) - 8px); }
   .picker-sheet { max-height: 90vh; }
 }
 
@@ -788,6 +859,10 @@ kbd {
             <li><b>Bandits come from year two.</b> Villagers fight automatically when one gets
                 close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
                 waste turns breaking through.</li>
+            <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is not a mood
+                dial &mdash; it is a list of reasons, each one named and counted. Sleeping on bare
+                earth, no hearth in the cold, the collectors came. Fix the reasons and the number
+                follows. Tap their name to call them something of your own.</li>
           </ol>
           <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
              to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
@@ -896,6 +971,8 @@ HF.CFG = {
   STARVE_DAMAGE: 3,
   COLD_DAMAGE: 1,
   REGEN: 1,
+
+  GRIEF_CAP: 12,           // ceiling on the village-wide mourning thought
 
   RAID_START_TURN: 42,
   RAID_MIN_GAP: 24,
@@ -1032,6 +1109,88 @@ HF.YIELDS = {
   mine:    { stone: 10 },
   forage:  { food: 8 },
   harvest: { food: HF.FARM.YIELD },
+};
+
+/* ---------- character ----------
+   None of this is simulated. An origin does not change how fast anyone works;
+   a scar does nothing at all. They are here because a villager the player can
+   picture is a villager the player will tell stories about, and detail that
+   never feeds back into the systems costs nothing to balance and nothing to
+   understand. Only TRAITS have a hook, and each has exactly one. */
+
+/* Stock figures of the period. The player already knows what a burned village
+   or a deserted levy means, so one clause does the work of a paragraph. */
+HF.ORIGINS = [
+  'came down from a village the Oda burned',
+  'was a temple servant until the monks were driven out',
+  'is a third child, and will inherit nothing',
+  'carried baggage behind an army and thought better of it',
+  'was sold to a silk house as a child and walked home',
+  'lost a husband to a lord’s quarrel and never learned which one',
+  'has worked this valley since before the wars',
+  'deserted an ashigaru levy and does not speak of it',
+  'held a spear for a house that no longer exists',
+  'burned charcoal in the hills above the valley',
+  'arrived with a hoe, a pot, and nothing else',
+  'buried two children in a famine year',
+  'was a boatman until the ford was taken',
+  'ran from a castle town the winter it changed hands',
+];
+
+/* Appearance. Pure flavour - it exists so the player has something to picture. */
+HF.MARKS = [
+  'a burn scar up one forearm',
+  'grey coming in early at the temples',
+  'a nose broken and set badly',
+  'hands stained dark from indigo',
+  'a missing fingertip',
+  'shoulders like someone twice the size',
+  'a limp from a childhood fall',
+  'one tooth blacked out at the front',
+  'eyes kept narrowed even indoors',
+  'a voice worn down to almost nothing',
+];
+
+/* One mechanical hook each, and every hook shows up by name in the villager's
+   thoughts - a trait the player cannot see the effect of is not a trait. */
+HF.TRAITS = {
+  steady:     { label: 'Steady',    note: 'Hardship lands lighter than it does on others.' },
+  sullen:     { label: 'Sullen',    note: 'Takes everything harder than it is.' },
+  devout:     { label: 'Devout',    note: 'Finds meaning where others find only work.' },
+  homesick:   { label: 'Homesick',  note: 'This is not home yet. A village of five buildings might be.' },
+  tough:      { label: 'Tough',     note: 'Harder to kill than they look.' },
+  diligent:   { label: 'Diligent',  note: 'Works faster at everything, and always has.' },
+};
+
+HF.TRAIT_TUNING = {
+  steadyScale: 0.6,       // multiplies every negative thought
+  sullenScale: 1.4,
+  devoutMood: 6,
+  homesickMood: -7,
+  homesickCured: 5,       // buildings standing before this valley feels like home
+  toughHp: 14,
+  diligentRate: 1.15,
+};
+
+/* A tie to one other villager. It does nothing whatsoever while both are alive.
+   That is the whole design: it is the minimum representation that supports the
+   story it exists for, which is the one where somebody does not come back.
+
+   All four have to read correctly in both "X is ___ Y" and "X was ___ Y", so
+   they are noun phrases throughout - a verb phrase here produces "X is was
+   raised alongside Y". */
+HF.BONDS = ['kin to', 'the oldest friend of', 'a childhood companion of', 'in the debt of'];
+
+/* Thoughts that fade. Events leave a mark for a while and then stop mattering,
+   which is what lets a paid levy feel like relief and a missed one like a
+   shadow over the next few seasons. */
+HF.MEMORIES = {
+  levyPaid:    { label: 'The levy was paid',            delta: 8,   turns: 12 },
+  levyShort:   { label: 'The collectors took everything', delta: -10, turns: 15 },
+  levyStripped:{ label: 'The collectors stripped us bare', delta: -16, turns: 20 },
+  bondLost:    { label: 'Lost ',                        delta: -18, turns: 30 },
+  raidBroken:  { label: 'The raid was broken',          delta: 6,   turns: 8 },
+  buriedSomeone:{ label: 'A death in the village',      delta: -6,  turns: 12 },
 };
 
 /* ---------- names ----------
@@ -1530,17 +1689,27 @@ HF.Colonists = {
     const work = {};
     for (const wt of HF.WORK_TYPES) work[wt.id] = true;
 
+    const trait = rng.pick(Object.keys(HF.TRAITS));
+    const maxHp = HF.CFG.COLONIST_HP + (trait === 'tough' ? HF.TRAIT_TUNING.toughHp : 0);
+
     const c = {
       id: game.nextId++,
       // Peasants of the period rarely had surnames; they were known by name
       // and by where they came from.
       name: rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place),
+      renamed: false,
+      origin: rng.pick(HF.ORIGINS),
+      mark: rng.pick(HF.MARKS),
+      trait: trait,
+      bondTo: null,           // id of one other villager
+      bondKind: null,
       specialty: specialty,
       x: x, y: y,
-      hp: HF.CFG.COLONIST_HP,
-      maxHp: HF.CFG.COLONIST_HP,
+      hp: maxHp,
+      maxHp: maxHp,
       needs: { food: rng.int(70, 95), rest: rng.int(70, 95) },
       mood: 62,
+      memories: [],          // { label, delta, left }
       lowMoodTurns: 0,
       breakdown: 0,          // turns left refusing to work
       asleep: false,
@@ -1554,6 +1723,39 @@ HF.Colonists = {
     return c;
   },
 
+  /* Ties one villager to another. Called once when the village is founded and
+     again whenever somebody arrives, so nobody stays a stranger for long. */
+  bind: function (game, c) {
+    if (c.bondTo != null) return;
+    const others = game.colonists.filter(function (o) {
+      return !o.dead && o.id !== c.id && o.bondTo == null;
+    });
+    const pool = others.length ? others : game.aliveColonists().filter(function (o) {
+      return o.id !== c.id;
+    });
+    if (!pool.length) return;
+    const other = game.rng.pick(pool);
+    const kind = game.rng.pick(HF.BONDS);
+    c.bondTo = other.id;
+    c.bondKind = kind;
+    if (other.bondTo == null) { other.bondTo = c.id; other.bondKind = kind; }
+  },
+
+  /* Adds a thought that fades. Re-applying one refreshes it rather than
+     stacking, so a run of bad years does not drive spirits to zero forever. */
+  remember: function (c, key, suffix) {
+    const m = HF.MEMORIES[key];
+    if (!m) return;
+    const label = m.label + (suffix || '');
+    const existing = c.memories.find(function (o) { return o.label === label; });
+    if (existing) { existing.left = m.turns; return; }
+    c.memories.push({ label: label, delta: m.delta, left: m.turns });
+  },
+
+  rememberAll: function (game, key, suffix) {
+    for (const c of game.aliveColonists()) HF.Colonists.remember(c, key, suffix);
+  },
+
   skillLevel: function (c, skill) {
     return c.skills[skill] ? c.skills[skill].level : 0;
   },
@@ -1561,6 +1763,7 @@ HF.Colonists = {
   /* Work done per turn. Skill dominates; misery and exhaustion drag it down. */
   workRate: function (c, skill) {
     let rate = 1 + HF.Colonists.skillLevel(c, skill) * 0.3;
+    if (c.trait === 'diligent') rate *= HF.TRAIT_TUNING.diligentRate;
     if (c.mood < 30) rate *= 0.65;
     if (c.needs.rest < 20) rate *= 0.7;
     return rate;
@@ -1574,7 +1777,9 @@ HF.Colonists = {
     if (s.xp >= need) {
       s.xp -= need;
       s.level++;
-      game.log(c.name + ' is now ' + (HF.SKILL_LABELS[skill] || skill) + ' ' + s.level + '.', 'good');
+      // Deliberately not logged. The number is already on the villager's card,
+      // and a chronicle full of bookkeeping buries the lines that are actually
+      // about something.
     }
   },
 
@@ -1604,30 +1809,75 @@ HF.Colonists = {
     return best;
   },
 
-  /* Mood is recomputed from scratch each turn from living conditions, then
-     eased towards the target so it does not whipsaw. */
-  updateMood: function (game, c) {
-    let target = 55;
+  /* Every reason a villager feels the way they do, as a list of named,
+     signed lines.
+
+     This is the same arithmetic the mood calculation always did. What changed
+     is that it comes back with its reasons attached instead of collapsing into
+     one opaque number, because a simulation the player cannot see the workings
+     of may as well not be running. "Spirit 41" tells you nothing; "Sleeping on
+     bare earth -8, Warm by the hearth +4, The collectors took everything -10"
+     is a village you can make decisions about, and a story you can retell. */
+  thoughts: function (game, c) {
+    const out = [];
+    const scale = c.trait === 'steady' ? HF.TRAIT_TUNING.steadyScale
+                : c.trait === 'sullen' ? HF.TRAIT_TUNING.sullenScale : 1;
+
+    // Bad news is what the trait bends, so the numbers shown are already the
+    // real ones and the list still sums to the target.
+    function add(label, delta) {
+      if (!delta) return;
+      out.push({ label: label, delta: delta < 0 ? delta * scale : delta });
+    }
+
     const n = c.needs;
+    if (n.food > 70) add('Well fed', 8);
+    else if (n.food < 25) add('Starving', -22);
+    else if (n.food < 45) add('Going hungry', -9);
 
-    if (n.food > 70) target += 8;
-    else if (n.food < 25) target -= 22;
-    else if (n.food < 45) target -= 9;
+    if (n.rest > 70) add('Well rested', 6);
+    else if (n.rest < 20) add('Dead on their feet', -16);
+    else if (n.rest < 40) add('Short of sleep', -7);
 
-    if (n.rest > 70) target += 6;
-    else if (n.rest < 20) target -= 16;
-    else if (n.rest < 40) target -= 7;
-
-    if (HF.Colonists.freeBed(game, c) || c.asleep) target += 8;
-    else target -= 8;
+    if (HF.Colonists.freeBed(game, c) || c.asleep) add('A bed to sleep in', 8);
+    else add('Sleeping on bare earth', -8);
 
     if (game.season() === 'Winter') {
-      target += HF.Colonists.isWarm(game, c) ? 4 : -14;
+      if (HF.Colonists.isWarm(game, c)) add('Warm by the hearth', 4);
+      else add('No hearth in this cold', -14);
     }
-    if (game.res.food > 90) target += 5;
-    if (game.res.food <= 0) target -= 10;
-    target += Math.min(8, game.builtCount('house') * 3);
-    target -= game.grief;
+
+    if (game.res.food > 90) add('The kura is full', 5);
+    if (game.res.food <= 0) add('Nothing left in the kura', -10);
+
+    const houses = Math.min(8, game.builtCount('house') * 3);
+    if (houses) add('A village taking shape', houses);
+
+    // Capped, because whoever was tied to the dead already carries a named
+    // thought for them. This is the rest of the village being subdued, and it
+    // must not be the thing that finishes them off.
+    if (game.grief > 0.5) add('Mourning', -Math.min(game.grief, HF.CFG.GRIEF_CAP));
+
+    if (c.trait === 'devout') add('Devout', HF.TRAIT_TUNING.devoutMood);
+    if (c.trait === 'homesick') {
+      const standing = game.buildings.filter(function (b) { return b && b.built; }).length;
+      if (standing < HF.TRAIT_TUNING.homesickCured) add('Homesick', HF.TRAIT_TUNING.homesickMood);
+    }
+
+    for (const m of c.memories) out.push({ label: m.label, delta: m.delta < 0 ? m.delta * scale : m.delta, fades: m.left });
+
+    return out;
+  },
+
+  /* Mood eases towards the sum of those thoughts rather than jumping to it, so
+     a single hard turn does not whipsaw the whole village. */
+  updateMood: function (game, c) {
+    let target = 55;
+    for (const t of HF.Colonists.thoughts(game, c)) target += t.delta;
+
+    for (let i = c.memories.length - 1; i >= 0; i--) {
+      if (--c.memories[i].left <= 0) c.memories.splice(i, 1);
+    }
 
     c.mood = HF.U.clamp(c.mood + (target - c.mood) * 0.4, 0, 100);
 
@@ -1638,7 +1888,13 @@ HF.Colonists = {
       c.breakdown = 3;
       c.lowMoodTurns = 0;
       c.task = null;
-      game.log(c.name + ' has broken down and stopped working.', 'bad');
+      // A village in a bad way breaks down again the moment it recovers, and
+      // logging every relapse buries everything else under the same three
+      // lines. Say it once, then let the spirit bar carry it.
+      if (game.turn - (c.lastBreakdownLog || -99) >= 15) {
+        c.lastBreakdownLog = game.turn;
+        game.log(c.name + ' has sat down in the dirt and will not be moved.', 'bad');
+      }
     }
   },
 
@@ -1665,11 +1921,30 @@ HF.Colonists = {
     }
 
     if (c.hp <= 0 && !c.dead) {
-      c.dead = true;
-      c.hp = 0;
-      game.releaseClaims(c.id);
-      game.grief += 6;
-      game.log(c.name + ' has died.', 'bad');
+      HF.Colonists.die(game, c, c.needs.food <= 0 ? ' has starved.' : ' died of the cold.');
+    }
+  },
+
+  /* One place for every way a villager can be lost, because every one of them
+     has to land on the people left behind. The village mourns a little; whoever
+     was tied to them mourns by name, and goes on mourning for a season. */
+  die: function (game, c, how, departed) {
+    if (c.dead) return;
+    c.dead = true;
+    c.departed = !!departed;
+    c.hp = 0;
+    c.task = null;
+    game.releaseClaims(c.id);
+    game.grief += departed ? 4 : 6;
+    game.log(c.name + how, 'bad');
+
+    for (const o of game.aliveColonists()) {
+      if (o.bondTo === c.id) {
+        HF.Colonists.remember(o, 'bondLost', c.name);
+        game.log(o.name + ' was ' + (o.bondKind || 'close to') + ' ' + c.name + '.', 'bad');
+      } else {
+        HF.Colonists.remember(o, 'buriedSomeone');
+      }
     }
   },
 
@@ -2236,11 +2511,7 @@ HF.Events = {
       const dmg = game.rng.int(4, 7);
       target.hp -= dmg;
       if (target.hp <= 0 && !target.dead) {
-        target.dead = true;
-        target.hp = 0;
-        game.releaseClaims(target.id);
-        game.grief += 6;
-        game.log(target.name + ' was cut down by bandits.', 'bad');
+        HF.Colonists.die(game, target, ' was cut down by bandits.');
       }
       return;
     }
@@ -2335,8 +2606,12 @@ HF.Events = {
     const spot = spots[Math.min(spots.length - 1, game.rng.int(2, 6))];
     const c = HF.Colonists.create(game, spot.x, spot.y);
     game.colonists.push(c);
-    game.log(c.name + ' has come down from the hills to join the village, skilled in ' +
-             (HF.SKILL_LABELS[c.specialty] || c.specialty) + '.', 'good');
+    HF.Colonists.bind(game, c);
+    // Introduce them by where they have been, not by their skill numbers - the
+    // numbers are on the card, and a stranger with a history is a stranger the
+    // player will notice dying later.
+    game.log(c.name + ' has come down the valley road and asked to stay. ' +
+             HF.U.capitalize(c.name.split(' ')[0]) + ' ' + c.origin + '.', 'good');
   },
 
   announceSeason: function (game) {
@@ -2388,6 +2663,7 @@ HF.Game = function (seed) {
   this.banditsKilled = 0;
   this.dirtyTerrain = true;
   this.spoiledThisTurn = false;
+  this.spoilLogged = {};
 
   const site = HF.Map.findStartSite(this, this.rng);
   this.startSite = site;
@@ -2399,8 +2675,13 @@ HF.Game = function (seed) {
     this.colonists.push(HF.Colonists.create(this, s.x, s.y));
   }
 
+  for (const c of this.colonists) HF.Colonists.bind(this, c);
+
   this.log('Four peasants settle this valley. Three harvests, three levies - hold the village together.',
            'season');
+  for (const c of this.colonists) {
+    this.log(c.name + ' ' + c.origin + '.', 'info');
+  }
   this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
   HF.Events.announceSeason(this);
 };
@@ -2459,7 +2740,7 @@ HF.Game.prototype = {
       this.levyHistory.push({ year: this.year(), demand: demand, paid: true });
       this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle.', 'levy');
       this.grief = Math.max(0, this.grief - 4);
-      for (const c of this.aliveColonists()) c.mood = HF.U.clamp(c.mood + 7, 0, 100);
+      HF.Colonists.rememberAll(this, 'levyPaid');
     } else {
       const short = demand - have;
       this.res.food = 0;
@@ -2481,18 +2762,17 @@ HF.Game.prototype = {
         this.grief += 5;
         this.log('The levy falls ' + short + ' koku short. The collectors take everything and ' +
                  'note the shortfall against the village.', 'bad');
+        HF.Colonists.rememberAll(this, 'levyShort');
       } else {
         this.levyStrikes += L.strikeBad;
         this.grief += 10;
         this.log('The levy falls ' + short + ' koku short - far short. The collectors strip the ' +
                  'granary bare.', 'bad');
+        HF.Colonists.rememberAll(this, 'levyStripped');
         const alive = this.aliveColonists();
         if (alive.length > 1 && this.levyStrikes <= L.strikesAllowed) {
           const gone = this.rng.pick(alive);
-          gone.dead = true;
-          gone.departed = true;
-          this.releaseClaims(gone.id);
-          this.log(gone.name + ' has walked out rather than starve for the castle.', 'bad');
+          HF.Colonists.die(this, gone, ' has walked out rather than starve for the castle.', true);
         }
       }
       if (this.levyStrikes <= L.strikesAllowed && left > 0) {
@@ -2557,9 +2837,17 @@ HF.Game.prototype = {
     const before = this.res[r];
     this.res[r] = HF.U.clamp(before + n, 0, cap);
     const lost = before + n - this.res[r];
-    if (lost > 0.5 && !this.spoiledThisTurn) {
+    // Overflowing stores is worth saying, but it stays true for as long as the
+    // player ignores it, and repeating the identical line every few turns
+    // buries the levy warnings and the deaths. Say it, then hold off.
+    this.spoilLogged = this.spoilLogged || {};
+    if (lost > 0.5 && !this.spoiledThisTurn && this.turn - (this.spoilLogged[r] || -99) >= 12) {
       this.spoiledThisTurn = true;
-      this.log('Storage is full - ' + Math.round(lost) + ' ' + r + ' went to waste.', 'bad');
+      this.spoilLogged[r] = this.turn;
+      const res = HF.RESOURCES[r] || { label: r, unit: '' };
+      this.log('Nowhere to put it - ' + Math.round(lost) + ' ' +
+               (res.unit ? res.unit + ' of ' : '') + res.label.toLowerCase() +
+               ' spoiled for want of a kura.', 'bad');
     }
   },
 
@@ -2645,7 +2933,10 @@ HF.Game.prototype = {
       this.log(withdrew + ' raider' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.', 'info');
     }
     this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
-    if (before > 0 && this.raiders.length === 0 && killed > 0) this.log('The raid is broken.', 'good');
+    if (before > 0 && this.raiders.length === 0 && killed > 0) {
+      this.log('The raid is broken.', 'good');
+      HF.Colonists.rememberAll(this, 'raidBroken');
+    }
 
     HF.Events.tick(this);
 
@@ -2721,6 +3012,7 @@ HF.Game.prototype = {
       levyFailures: this.levyFailures, levyStrikes: this.levyStrikes,
       levyHistory: this.levyHistory,
       banditsKilled: this.banditsKilled, startSite: this.startSite,
+      spoilLogged: this.spoilLogged,
     });
   },
 };
@@ -2733,6 +3025,7 @@ HF.Game.load = function (json) {
   g.rng.s = d.rngState >>> 0;
   g.dirtyTerrain = true;
   g.spoiledThisTurn = false;
+  g.spoilLogged = d.spoilLogged || {};
   return g;
 };
 
@@ -4033,6 +4326,51 @@ HF.UI = (function () {
            '<span>' + label + '</span></div>';
   }
 
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+    });
+  }
+
+  /* Who this person is, and every reason they feel the way they do.
+
+     The thought list is the whole point of the panel. The mood arithmetic has
+     always been there; showing it by name is what lets the player see that the
+     village is miserable because nobody has a bed and the collectors came, and
+     not just that a bar is low. */
+  function detail(c) {
+    const trait = HF.TRAITS[c.trait];
+    const bond = c.bondTo != null ? game.colonistById(c.bondTo) : null;
+
+    let h = '<div class="detail">';
+    h += '<p class="who">' + esc(HF.U.capitalize(c.name.split(' ')[0])) + ' ' + esc(c.origin) +
+         ', with ' + esc(c.mark) + '.</p>';
+    if (trait) h += '<p class="who"><b>' + trait.label + '.</b> ' + trait.note + '</p>';
+    if (bond && !bond.dead) {
+      h += '<p class="who">' + esc(HF.U.capitalize(c.name.split(' ')[0])) + ' is ' +
+           esc(c.bondKind || 'close to') + ' ' + esc(bond.name) + '.</p>';
+    }
+
+    const thoughts = HF.Colonists.thoughts(game, c).slice().sort(function (a, b) {
+      return a.delta - b.delta;
+    });
+    h += '<h3>Thoughts</h3>';
+    if (!thoughts.length) {
+      h += '<p class="who">Nothing much on their mind.</p>';
+    } else {
+      h += '<ul class="thoughts">';
+      for (const t of thoughts) {
+        const n = Math.round(t.delta);
+        if (!n) continue;
+        h += '<li class="' + (n > 0 ? 'up' : 'down') + '"><span>' + esc(t.label) +
+             (t.fades ? '<em> &middot; fading</em>' : '') + '</span><b>' +
+             (n > 0 ? '+' : '') + n + '</b></li>';
+      }
+      h += '</ul>';
+    }
+    return h + '</div>';
+  }
+
   function renderColonists() {
     const alive = game.aliveColonists();
     const beds = HF.Build.bedCount(game);
@@ -4044,15 +4382,26 @@ HF.UI = (function () {
 
     for (const c of alive) {
       const selected = view.selectedId === c.id;
+      const trait = HF.TRAITS[c.trait];
       html += '<div class="colonist' + (selected ? ' selected' : '') + '" data-id="' + c.id + '">';
-      html += '<div class="row-head"><span class="name">' + c.name + '</span>' +
+      html += '<div class="row-head">' +
+              '<button class="name" data-rename="' + c.id + '" title="Tap to rename">' +
+              esc(c.name) + '</button>' +
               '<span class="activity">' + c.activity + '</span></div>';
+      if (trait) {
+        html += '<div class="trait-line"><span class="trait">' + trait.label + '</span> &middot; ' +
+                (HF.SKILL_LABELS[c.specialty] || c.specialty) + '</div>';
+      }
       html += '<div class="bars">' +
               bar('Food', c.needs.food, 100, 'food') +
               bar('Rest', c.needs.rest, 100, 'rest') +
               bar('Spirit', c.mood, 100, 'mood') +
               bar('Health', c.hp, c.maxHp, 'hp') +
               '</div>';
+
+      // Everything below only appears for the villager the player has actually
+      // asked about, so the roster stays scannable and tapping earns something.
+      if (selected) html += detail(c);
 
       html += '<div class="works">';
       for (const wt of HF.WORK_TYPES) {
@@ -4067,15 +4416,36 @@ HF.UI = (function () {
 
     el.colonists.innerHTML = html;
 
+    /* Letting the player put their own names in is the cheapest way to make
+       them care what happens to these people. */
+    for (const btn of el.colonists.querySelectorAll('[data-rename]')) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const c = game.colonistById(parseInt(btn.dataset.rename, 10));
+        if (!c) return;
+        const next = window.prompt('Call this villager:', c.name);
+        if (next == null) return;
+        const clean = next.trim().slice(0, 28);
+        if (!clean) return;
+        c.name = clean;
+        c.renamed = true;
+        renderColonists();
+        HF.Render.invalidate();
+      });
+    }
+
     for (const node of el.colonists.querySelectorAll('.colonist')) {
       node.addEventListener('click', function (e) {
-        if (e.target.closest('.work')) return;
-        view.selectedId = parseInt(node.dataset.id, 10);
+        if (e.target.closest('.work') || e.target.closest('[data-rename]')) return;
+        const id = parseInt(node.dataset.id, 10);
+        // Tapping the selected villager again folds them back up. The sheet
+        // deliberately stays open on a phone now: selecting is what reveals the
+        // thought list, so closing it would hide the thing just asked for.
+        view.selectedId = view.selectedId === id ? null : id;
         const c = game.colonistById(view.selectedId);
         if (c) HF.Camera.centerOn(c.x, c.y);
         renderColonists();
         HF.Render.invalidate();
-        if (isNarrow()) closeSheet();
       });
     }
     for (const btn of el.colonists.querySelectorAll('.work')) {

@@ -65,14 +65,37 @@ use, and four needs that don't care how busy you are:
   shared stores. With nothing in the kura they starve.
 - **Rest** falls every turn. Below about a quarter they sleep — in a bed if a
   minka has one free, otherwise on the ground, which wrecks morale.
-- **Spirit** is computed from everything else: full belly, a bed of their own,
-  warmth in winter, full stores, recent deaths, a levy paid or missed. Someone
-  who stays miserable long enough stops working for a few turns.
+- **Spirit** is the sum of everything they are currently thinking. Tap a villager
+  to read the list.
 - **Health** regenerates when fed, drains when starving or caught out in the cold.
 
 The four toggles under each name control which work that villager will accept.
 They prefer the nearest job they're willing to do, nudged toward what they're
 good at.
+
+Everyone also has an origin, a distinguishing mark, one trait, and a tie to one
+other villager. Tap a name to replace it with one of your own.
+
+### Thoughts
+
+Spirit is never shown as a bare number without its reasons:
+
+```
+Lost Toshi of Shirakawa · fading   -25
+The collectors stripped us bare    -22
+No hearth in this cold             -20
+Nothing left in the kura           -14
+Sleeping on bare earth             -11
+Well rested                         +6
+```
+
+Some are conditions you can fix this turn — build a minka, light a hearth. Some
+are memories that fade over ten to thirty turns, which is what makes a paid levy
+feel like relief and a missed one hang over the next two seasons. A **Sullen**
+villager takes every bad thought 40% harder and a **Steady** one 40% lighter, so
+the same winter reads differently down the roster.
+
+A villager who stays miserable long enough sits down and stops working.
 
 ### The year
 
@@ -118,6 +141,32 @@ tested tile by tile.
 Save and load use `localStorage`. A save is the whole game state as JSON,
 including the RNG's internal state, so a restored village continues on exactly
 the random stream it left off on.
+
+## Design notes
+
+Shaped by Tynan Sylvester's [*The Simulation
+Dream*](https://tynansylvester.com/2013/06/the-simulation-dream/), which argues
+that a simulation only counts insofar as it reaches the player's head.
+
+**Named thoughts.** The mood calculation always weighed eight conditions, and
+always threw the reasoning away to show one number. `HF.Colonists.thoughts()`
+returns the same arithmetic with its reasons attached, and the panel prints
+them. No new simulation — the same simulation, made visible.
+
+**Hair complexity.** Origins and marks affect nothing whatsoever. They exist so
+the player has someone to picture, they cost nothing to balance, and a player
+who doesn't care can ignore them entirely.
+
+**Minimum representation.** A bond is one id on one villager and does nothing at
+all while both are alive. That is the whole design: the smallest thing that
+supports the story it exists for, which is the one where somebody doesn't come
+back. Traits get exactly one hook each, and every hook is legible in the
+thoughts list.
+
+**Story-richness.** Skill-ups aren't logged, breakdowns log once per villager
+per fifteen turns, and spoilage once per twelve — bookkeeping crowds out the
+lines that are about something. What survives in the Chronicle names an actor
+and has something at stake.
 
 ## Controls
 

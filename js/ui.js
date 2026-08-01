@@ -539,6 +539,51 @@ HF.UI = (function () {
            '<span>' + label + '</span></div>';
   }
 
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (ch) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+    });
+  }
+
+  /* Who this person is, and every reason they feel the way they do.
+
+     The thought list is the whole point of the panel. The mood arithmetic has
+     always been there; showing it by name is what lets the player see that the
+     village is miserable because nobody has a bed and the collectors came, and
+     not just that a bar is low. */
+  function detail(c) {
+    const trait = HF.TRAITS[c.trait];
+    const bond = c.bondTo != null ? game.colonistById(c.bondTo) : null;
+
+    let h = '<div class="detail">';
+    h += '<p class="who">' + esc(HF.U.capitalize(c.name.split(' ')[0])) + ' ' + esc(c.origin) +
+         ', with ' + esc(c.mark) + '.</p>';
+    if (trait) h += '<p class="who"><b>' + trait.label + '.</b> ' + trait.note + '</p>';
+    if (bond && !bond.dead) {
+      h += '<p class="who">' + esc(HF.U.capitalize(c.name.split(' ')[0])) + ' is ' +
+           esc(c.bondKind || 'close to') + ' ' + esc(bond.name) + '.</p>';
+    }
+
+    const thoughts = HF.Colonists.thoughts(game, c).slice().sort(function (a, b) {
+      return a.delta - b.delta;
+    });
+    h += '<h3>Thoughts</h3>';
+    if (!thoughts.length) {
+      h += '<p class="who">Nothing much on their mind.</p>';
+    } else {
+      h += '<ul class="thoughts">';
+      for (const t of thoughts) {
+        const n = Math.round(t.delta);
+        if (!n) continue;
+        h += '<li class="' + (n > 0 ? 'up' : 'down') + '"><span>' + esc(t.label) +
+             (t.fades ? '<em> &middot; fading</em>' : '') + '</span><b>' +
+             (n > 0 ? '+' : '') + n + '</b></li>';
+      }
+      h += '</ul>';
+    }
+    return h + '</div>';
+  }
+
   function renderColonists() {
     const alive = game.aliveColonists();
     const beds = HF.Build.bedCount(game);
@@ -550,15 +595,26 @@ HF.UI = (function () {
 
     for (const c of alive) {
       const selected = view.selectedId === c.id;
+      const trait = HF.TRAITS[c.trait];
       html += '<div class="colonist' + (selected ? ' selected' : '') + '" data-id="' + c.id + '">';
-      html += '<div class="row-head"><span class="name">' + c.name + '</span>' +
+      html += '<div class="row-head">' +
+              '<button class="name" data-rename="' + c.id + '" title="Tap to rename">' +
+              esc(c.name) + '</button>' +
               '<span class="activity">' + c.activity + '</span></div>';
+      if (trait) {
+        html += '<div class="trait-line"><span class="trait">' + trait.label + '</span> &middot; ' +
+                (HF.SKILL_LABELS[c.specialty] || c.specialty) + '</div>';
+      }
       html += '<div class="bars">' +
               bar('Food', c.needs.food, 100, 'food') +
               bar('Rest', c.needs.rest, 100, 'rest') +
               bar('Spirit', c.mood, 100, 'mood') +
               bar('Health', c.hp, c.maxHp, 'hp') +
               '</div>';
+
+      // Everything below only appears for the villager the player has actually
+      // asked about, so the roster stays scannable and tapping earns something.
+      if (selected) html += detail(c);
 
       html += '<div class="works">';
       for (const wt of HF.WORK_TYPES) {
@@ -573,15 +629,36 @@ HF.UI = (function () {
 
     el.colonists.innerHTML = html;
 
+    /* Letting the player put their own names in is the cheapest way to make
+       them care what happens to these people. */
+    for (const btn of el.colonists.querySelectorAll('[data-rename]')) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        const c = game.colonistById(parseInt(btn.dataset.rename, 10));
+        if (!c) return;
+        const next = window.prompt('Call this villager:', c.name);
+        if (next == null) return;
+        const clean = next.trim().slice(0, 28);
+        if (!clean) return;
+        c.name = clean;
+        c.renamed = true;
+        renderColonists();
+        HF.Render.invalidate();
+      });
+    }
+
     for (const node of el.colonists.querySelectorAll('.colonist')) {
       node.addEventListener('click', function (e) {
-        if (e.target.closest('.work')) return;
-        view.selectedId = parseInt(node.dataset.id, 10);
+        if (e.target.closest('.work') || e.target.closest('[data-rename]')) return;
+        const id = parseInt(node.dataset.id, 10);
+        // Tapping the selected villager again folds them back up. The sheet
+        // deliberately stays open on a phone now: selecting is what reveals the
+        // thought list, so closing it would hide the thing just asked for.
+        view.selectedId = view.selectedId === id ? null : id;
         const c = game.colonistById(view.selectedId);
         if (c) HF.Camera.centerOn(c.x, c.y);
         renderColonists();
         HF.Render.invalidate();
-        if (isNarrow()) closeSheet();
       });
     }
     for (const btn of el.colonists.querySelectorAll('.work')) {

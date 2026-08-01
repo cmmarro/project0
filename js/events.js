@@ -70,11 +70,7 @@ HF.Events = {
       const dmg = game.rng.int(4, 7);
       target.hp -= dmg;
       if (target.hp <= 0 && !target.dead) {
-        target.dead = true;
-        target.hp = 0;
-        game.releaseClaims(target.id);
-        game.grief += 6;
-        game.log(target.name + ' was cut down by bandits.', 'bad');
+        HF.Colonists.die(game, target, ' was cut down by bandits.');
       }
       return;
     }
@@ -169,8 +165,12 @@ HF.Events = {
     const spot = spots[Math.min(spots.length - 1, game.rng.int(2, 6))];
     const c = HF.Colonists.create(game, spot.x, spot.y);
     game.colonists.push(c);
-    game.log(c.name + ' has come down from the hills to join the village, skilled in ' +
-             (HF.SKILL_LABELS[c.specialty] || c.specialty) + '.', 'good');
+    HF.Colonists.bind(game, c);
+    // Introduce them by where they have been, not by their skill numbers - the
+    // numbers are on the card, and a stranger with a history is a stranger the
+    // player will notice dying later.
+    game.log(c.name + ' has come down the valley road and asked to stay. ' +
+             HF.U.capitalize(c.name.split(' ')[0]) + ' ' + c.origin + '.', 'good');
   },
 
   announceSeason: function (game) {

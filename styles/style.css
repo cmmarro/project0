@@ -397,7 +397,21 @@ kbd {
 .colonist.selected { border-color: var(--gold); }
 
 .row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.row-head .name { font: 600 14px/1.3 var(--display); }
+
+/* The name is a button because the player can put their own in. Styled to look
+   like the heading it replaced, with the affordance held back until hover. */
+.row-head .name {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  background: none;
+  color: var(--ink);
+  font: 600 14px/1.3 var(--display);
+  text-align: left;
+  cursor: text;
+}
+.row-head .name:hover { border-bottom-color: var(--line); }
+.row-head .name:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .row-head .activity {
   font-size: 11px;
   color: var(--ink-dim);
@@ -424,6 +438,56 @@ kbd {
 .bar.rest .fill { background: #3a5a72; }
 .bar.mood .fill { background: #7a5c2c; }
 .bar.hp   .fill { background: #7a3a2f; }
+
+/* ---------- who a villager is, and what is on their mind ---------- */
+
+.trait-line {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+.trait-line .trait { color: var(--gold); font-weight: 600; }
+
+.detail {
+  margin: 8px 0;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: #12171e;
+}
+
+.detail .who {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+.detail .who b { color: var(--ink); }
+
+.detail h3 {
+  margin: 10px 0 5px;
+  font: 600 10px/1 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.thoughts { list-style: none; margin: 0; padding: 0; }
+.thoughts li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid #1b212a;
+  font-size: 12px;
+}
+.thoughts li:last-child { border-bottom: 0; }
+.thoughts li b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.thoughts li em { font-style: normal; color: #5f6875; font-size: 11px; }
+.thoughts li.up { color: #b9cdae; }
+.thoughts li.up b { color: var(--good); }
+.thoughts li.down { color: #cfb3ad; }
+.thoughts li.down b { color: var(--bad); }
 
 .works { display: flex; gap: 3px; }
 .works .work {
@@ -623,8 +687,12 @@ kbd {
 
 @media (max-width: 900px) {
   #app {
+    /* Named so the villager sheet can park itself exactly on top of the
+       toolbar instead of hard-coding the same number twice. */
+    --tools-h: 100px;
+    --top-h: 68px;
     grid-template-columns: 1fr;
-    grid-template-rows: 68px 1fr 100px;
+    grid-template-rows: var(--top-h) 1fr var(--tools-h);
     grid-template-areas: "top" "stage" "tools";
   }
 
@@ -651,20 +719,23 @@ kbd {
   #calendar .season { font-size: 11px; }
 
   /* The sidebar becomes a sheet over the map. */
+  /* The sheet stops above the toolbar rather than covering it. Selecting a
+     villager is what reveals their thoughts, so the sheet has to be able to
+     stay open - which means End Turn has to stay reachable underneath it. */
   #sidebar {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: var(--tools-h);
     z-index: 30;
     display: block;
-    max-height: 66%;
+    max-height: calc(100% - var(--tools-h) - var(--top-h));
     overflow-y: auto;
     border-top: 1px solid var(--line);
     border-radius: 14px 14px 0 0;
     background: var(--panel);
     box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55);
-    transform: translateY(101%);
+    transform: translateY(calc(100% + var(--tools-h) + 2px));
     transition: transform 0.22s ease;
   }
   #sidebar.open { transform: none; }
@@ -726,7 +797,7 @@ kbd {
 }
 
 @media (max-width: 900px) and (max-height: 560px) {
-  #sidebar { max-height: 84%; }
+  #sidebar { max-height: calc(100% - var(--tools-h) - 8px); }
   .picker-sheet { max-height: 90vh; }
 }
 
