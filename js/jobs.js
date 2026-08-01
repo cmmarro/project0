@@ -1,0 +1,337 @@
+/* What each colonist decides to do on a turn, and what happens when they do it.
+
+   Priority order is fixed: survive (eat, sleep), defend, then work. Which work
+   they will accept is up to the player's per-colonist toggles; which job they
+   pick from that set is nearest-first. */
+window.HF = window.HF || {};
+
+HF.Jobs = {
+  /* ---------- job descriptors ---------- */
+
+  standsFor: function (game, task) {
+    if (task.targetType === 'designation') {
+      return HF.Map.workStands(game, task.tx, task.ty, false);
+    }
+    if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      if (!b) return [];
+      return HF.Map.workStands(game, b.x, b.y, !!HF.BUILDINGS[b.type].adjacentWork);
+    }
+    return [{ x: task.tx, y: task.ty }];
+  },
+
+  taskStillValid: function (game, c, task) {
+    if (!task) return false;
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      return !!d && (d.claimedBy === c.id || d.claimedBy == null);
+    }
+    if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      return !!b && !b.built && !b.cancelled;
+    }
+    if (task.targetType === 'raider') {
+      const r = game.raiderById(task.targetKey);
+      return !!r && !r.dead;
+    }
+    return true;
+  },
+
+  workTypeOf: function (game, task) {
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      return d ? HF.ORDERS[d.type].workType : null;
+    }
+    if (task.targetType === 'building') return 'build';
+    return null;
+  },
+
+  skillFor: function (workTypeId) {
+    const wt = HF.WORK_TYPES.find(function (w) { return w.id === workTypeId; });
+    return wt ? wt.skill : 'construction';
+  },
+
+  /* ---------- choosing work ---------- */
+
+  findWork: function (game, c) {
+    const candidates = [];
+
+    for (const key in game.designations) {
+      const d = game.designations[key];
+      if (d.claimedBy != null && d.claimedBy !== c.id) continue;
+      const order = HF.ORDERS[d.type];
+      if (!c.work[order.workType]) continue;
+      candidates.push({
+        targetType: 'designation', targetKey: key, tx: d.x, ty: d.y,
+        skill: order.workType,
+        d: HF.U.dist(c.x, c.y, d.x, d.y),
+      });
+    }
+
+    if (c.work.build) {
+      for (const b of game.buildings) {
+        if (!b || b.built || b.cancelled) continue;
+        if (b.claimedBy != null && b.claimedBy !== c.id) continue;
+        candidates.push({
+          targetType: 'building', targetKey: b.id, tx: b.x, ty: b.y,
+          skill: 'build',
+          d: HF.U.dist(c.x, c.y, b.x, b.y),
+        });
+      }
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Nearest first, with a nudge towards jobs this colonist is good at so the
+    // carpenter tends to drift to the building site.
+    candidates.sort(function (a, b) {
+      const sa = a.d - HF.Colonists.skillLevel(c, HF.Jobs.skillFor(a.skill)) * 0.9;
+      const sb = b.d - HF.Colonists.skillLevel(c, HF.Jobs.skillFor(b.skill)) * 0.9;
+      return sa - sb;
+    });
+
+    // Pathfinding is the expensive part, so only test the closest handful.
+    for (let i = 0; i < Math.min(candidates.length, 14); i++) {
+      const cand = candidates[i];
+      const task = {
+        kind: 'work',
+        targetType: cand.targetType,
+        targetKey: cand.targetKey,
+        tx: cand.tx, ty: cand.ty,
+        path: null,
+      };
+      const stands = HF.Jobs.standsFor(game, task);
+      if (stands.length === 0) continue;
+      const path = HF.Path.find(game, c.x, c.y, stands);
+      if (path === null) continue;
+      task.path = path;
+      game.claim(task, c.id);
+      return task;
+    }
+    return null;
+  },
+
+  nearestRaider: function (game, c, radius) {
+    let best = null, bestD = Infinity;
+    for (const r of game.raiders) {
+      if (r.dead) continue;
+      const d = HF.U.dist(c.x, c.y, r.x, r.y);
+      if (d <= radius && d < bestD) { bestD = d; best = r; }
+    }
+    return best;
+  },
+
+  /* ---------- the per-colonist turn ---------- */
+
+  takeTurn: function (game, c) {
+    if (c.dead) return;
+
+    HF.Colonists.decayNeeds(game, c);
+    HF.Colonists.updateMood(game, c);
+
+    // Waking up takes priority over everything: a colonist at full rest gets up.
+    if (c.asleep) {
+      if (c.needs.rest >= HF.CFG.WAKE_AT || HF.Jobs.nearestRaider(game, c, 4)) {
+        c.asleep = false;
+        c.task = null;
+      } else {
+        c.activity = 'Sleeping';
+        HF.Colonists.applyHealth(game, c);
+        return;
+      }
+    }
+
+    if (c.breakdown > 0) {
+      c.breakdown--;
+      game.releaseClaims(c.id);
+      c.task = null;
+      c.activity = 'Wandering (low mood)';
+      HF.Jobs.wander(game, c);
+      HF.Colonists.applyHealth(game, c);
+      return;
+    }
+
+    // Eating is instantaneous - food is a shared stockpile, not a hauled item.
+    if (c.needs.food < HF.CFG.EAT_THRESHOLD && game.res.food >= HF.CFG.MEAL_FOOD) {
+      game.res.food -= HF.CFG.MEAL_FOOD;
+      c.needs.food = HF.U.clamp(c.needs.food + HF.CFG.MEAL_RESTORE, 0, 100);
+      c.activity = 'Eating';
+      HF.Colonists.applyHealth(game, c);
+      return;
+    }
+
+    const threat = HF.Jobs.nearestRaider(game, c, 7);
+    if (threat) {
+      game.releaseClaims(c.id);
+      c.task = { kind: 'fight', targetType: 'raider', targetKey: threat.id, tx: threat.x, ty: threat.y, path: null };
+    } else if (c.needs.rest < HF.CFG.SLEEP_THRESHOLD && (!c.task || c.task.kind !== 'sleep')) {
+      game.releaseClaims(c.id);
+      const bed = HF.Colonists.freeBed(game, c);
+      c.task = bed
+        ? { kind: 'sleep', targetType: 'bed', targetKey: bed.id, tx: bed.x, ty: bed.y, path: null }
+        : { kind: 'sleep', targetType: null, targetKey: null, tx: c.x, ty: c.y, path: [] };
+    }
+
+    if (!HF.Jobs.taskStillValid(game, c, c.task)) {
+      game.releaseClaims(c.id);
+      c.task = null;
+    }
+
+    if (!c.task) {
+      c.task = HF.Jobs.findWork(game, c);
+      if (!c.task) {
+        c.activity = 'Idle';
+        HF.Jobs.wander(game, c);
+        HF.Colonists.applyHealth(game, c);
+        return;
+      }
+    }
+
+    HF.Jobs.execute(game, c, c.task);
+    HF.Colonists.applyHealth(game, c);
+  },
+
+  execute: function (game, c, task) {
+    if (task.kind === 'fight') {
+      const r = game.raiderById(task.targetKey);
+      if (!r || r.dead) { c.task = null; return; }
+      if (HF.U.dist(c.x, c.y, r.x, r.y) <= 1) {
+        HF.Colonists.attack(game, c, r);
+        return;
+      }
+      task.path = HF.Path.find(game, c.x, c.y, [{ x: r.x, y: r.y }]);
+      c.activity = 'Closing on a raider';
+      if (task.path === null || task.path.length === 0) { c.task = null; return; }
+      task.path.pop();                 // stop next to the raider, not on it
+      HF.Jobs.move(game, c, task);
+      return;
+    }
+
+    if (task.kind === 'sleep') {
+      if (task.targetType === 'bed') {
+        const bed = game.buildings[task.targetKey];
+        if (!bed || !bed.built) { c.task = null; return; }
+        if (c.x === bed.x && c.y === bed.y) { c.asleep = true; c.activity = 'Sleeping'; return; }
+        if (!task.path || task.path.length === 0) {
+          task.path = HF.Path.find(game, c.x, c.y, [{ x: bed.x, y: bed.y }]);
+        }
+        c.activity = 'Heading to bed';
+        if (task.path === null) { c.task = null; c.asleep = true; return; }
+        HF.Jobs.move(game, c, task);
+        if (c.x === bed.x && c.y === bed.y) { c.asleep = true; c.activity = 'Sleeping'; }
+      } else {
+        c.asleep = true;
+        c.activity = 'Sleeping rough';
+      }
+      return;
+    }
+
+    // Regular work: walk to a stand tile, then put turns into the job.
+    const stands = HF.Jobs.standsFor(game, task);
+    if (stands.length === 0) { game.releaseClaims(c.id); c.task = null; return; }
+
+    const atStand = stands.some(function (s) { return s.x === c.x && s.y === c.y; });
+    if (!atStand) {
+      if (!task.path || task.path.length === 0) {
+        task.path = HF.Path.find(game, c.x, c.y, stands);
+      }
+      if (task.path === null) { game.releaseClaims(c.id); c.task = null; c.activity = 'Idle'; return; }
+      c.activity = HF.Jobs.describe(game, task, true);
+      HF.Jobs.move(game, c, task);
+      const arrived = stands.some(function (s) { return s.x === c.x && s.y === c.y; });
+      if (!arrived) return;
+    }
+
+    c.activity = HF.Jobs.describe(game, task, false);
+    HF.Jobs.applyWork(game, c, task);
+  },
+
+  describe: function (game, task, travelling) {
+    const VERBS = { chop: 'Chopping', mine: 'Mining', forage: 'Foraging', harvest: 'Harvesting' };
+    let what = 'Work';
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      if (d) what = VERBS[d.type];
+    } else if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
+    }
+    return travelling ? 'Walking to ' + what.toLowerCase() : what;
+  },
+
+  move: function (game, c, task) {
+    let budget = HF.CFG.MOVE_BUDGET;
+    let moved = 0;
+    while (task.path && task.path.length > 0) {
+      const next = task.path[0];
+      if (!HF.Map.passable(game, next.x, next.y)) { task.path = null; return; }
+      const diagonal = next.x !== c.x && next.y !== c.y;
+      const cost = HF.Map.moveCost(game, next.x, next.y) * (diagonal ? 1.4 : 1);
+      if (cost > budget && moved > 0) break;
+      budget -= cost;
+      c.x = next.x; c.y = next.y;
+      task.path.shift();
+      moved++;
+      if (budget <= 0) break;
+    }
+  },
+
+  wander: function (game, c) {
+    if (!game.rng.chance(0.4)) return;
+    const d = game.rng.pick(HF.U.NEIGHBORS);
+    if (HF.Map.passable(game, c.x + d[0], c.y + d[1])) { c.x += d[0]; c.y += d[1]; }
+  },
+
+  applyWork: function (game, c, task) {
+    const workType = HF.Jobs.workTypeOf(game, task);
+    const skill = HF.Jobs.skillFor(workType);
+    const amount = HF.Colonists.workRate(c, skill);
+    HF.Colonists.gainXp(game, c, skill, amount);
+
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      if (!d) { c.task = null; return; }
+      d.workDone += amount;
+      if (d.workDone >= HF.ORDERS[d.type].work) HF.Jobs.completeDesignation(game, c, d);
+    } else if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      if (!b) { c.task = null; return; }
+      b.workDone += amount;
+      if (b.workDone >= HF.BUILDINGS[b.type].work) HF.Jobs.completeBuilding(game, c, b);
+    }
+  },
+
+  completeDesignation: function (game, c, d) {
+    const tile = HF.Map.at(game, d.x, d.y);
+    const yields = HF.YIELDS[d.type] || {};
+
+    if (d.type === 'chop') {
+      tile.terrain = 'grass';
+      tile.regrow = game.turn + game.rng.int(55, 85);   // saplings come back
+    } else if (d.type === 'mine') {
+      tile.terrain = tile.terrain === 'mountain' ? 'hill' : 'grass';
+    } else if (d.type === 'forage') {
+      tile.feature = null;
+      tile.regrow = game.turn + game.rng.int(22, 34);
+    } else if (d.type === 'harvest') {
+      const farm = game.buildingAt(d.x, d.y);
+      if (farm) farm.growth = 0;
+    }
+
+    for (const r in yields) game.addResource(r, yields[r]);
+    game.dirtyTerrain = true;
+    delete game.designations[HF.U.key(d.x, d.y)];
+    c.task = null;
+  },
+
+  completeBuilding: function (game, c, b) {
+    b.built = true;
+    b.workDone = HF.BUILDINGS[b.type].work;
+    b.claimedBy = null;
+    if (HF.BUILDINGS[b.type].hp) b.hp = HF.BUILDINGS[b.type].hp;
+    if (HF.BUILDINGS[b.type].farm) b.growth = 0;
+    game.dirtyTerrain = true;
+    game.log(HF.BUILDINGS[b.type].label + ' finished by ' + c.name + '.', 'good');
+    c.task = null;
+  },
+};

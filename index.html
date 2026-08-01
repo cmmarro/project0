@@ -2,13 +2,91 @@
 <html lang="en" dir="ltr">
 
 <head>
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-  <link rel="stylesheet" href="css/style.css">
   <meta charset="utf-8">
-  <title></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hearthfall &mdash; a turn-based colony</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312141a'/><path d='M8 3l5 5H3z' fill='%23e0b64a'/><rect x='5' y='8' width='6' height='5' fill='%238a6a45'/></svg>">
+  <link rel="stylesheet" href="styles/style.css">
 </head>
 
 <body>
+  <div id="app">
+
+    <header id="topbar">
+      <div class="brand">Hearthfall</div>
+      <div id="stats"></div>
+      <div id="calendar"></div>
+    </header>
+
+    <main id="stage">
+      <canvas id="board" width="1056" height="672"></canvas>
+      <div id="tooltip"></div>
+      <div id="banner"></div>
+
+      <div id="help">
+        <div class="sheet">
+          <h2>How Hearthfall works</h2>
+          <p>Four settlers, one valley, and three years to survive. Nothing happens
+             until you end the turn &mdash; you have all the time you want to plan.</p>
+          <ul>
+            <li><strong>Give orders, not commands.</strong> Paint work orders on the map
+                (<kbd>C</kbd>hop, <kbd>M</kbd>ine, <kbd>F</kbd>orage) and drop blueprints
+                (<kbd>1</kbd>&ndash;<kbd>5</kbd>). Drag to cover an area. Colonists pick up
+                the nearest job they are willing to do.</li>
+            <li><strong>Everyone has a mind of their own.</strong> Each colonist has skills,
+                hunger, tiredness and a mood. Use the toggles beside their name to decide
+                which kinds of work they will accept.</li>
+            <li><strong>Eat, sleep, repeat.</strong> Food is a shared stockpile. Rest needs a
+                bed, and a bed needs a house &mdash; sleeping rough wrecks morale.</li>
+            <li><strong>Winter is the test.</strong> Crops stop growing and anyone more than
+                five tiles from a campfire loses health. Stockpile in autumn.</li>
+            <li><strong>Raiders come from year two.</strong> Colonists fight automatically
+                when raiders get close. Stone walls buy you time.</li>
+          </ul>
+          <p class="keys"><kbd>Space</kbd> end turn &middot; <kbd>X</kbd> cancel tool &middot;
+             <kbd>Esc</kbd> deselect &middot; <kbd>H</kbd> this sheet &middot;
+             right-click clears the current tool</p>
+          <button id="help-close">Got it</button>
+        </div>
+      </div>
+    </main>
+
+    <aside id="sidebar">
+      <section id="colonist-panel"></section>
+      <section id="log-panel">
+        <h2>Chronicle</h2>
+        <ul id="log"></ul>
+      </section>
+    </aside>
+
+    <footer id="toolbar">
+      <div class="toolbar-scroll">
+        <div class="tool-group" id="orders"></div>
+        <div class="tool-group" id="builds"></div>
+      </div>
+      <div class="tool-group right">
+        <button id="btn-help" class="plain">Help</button>
+        <button id="btn-save" class="plain">Save</button>
+        <button id="btn-load" class="plain">Load</button>
+        <button id="btn-new" class="plain">New</button>
+        <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
+      </div>
+    </footer>
+
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/util.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/path.js"></script>
+  <script src="js/colonists.js"></script>
+  <script src="js/jobs.js"></script>
+  <script src="js/buildings.js"></script>
+  <script src="js/events.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
 </body>
 
 </html>
