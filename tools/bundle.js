@@ -3,8 +3,8 @@
    serves one file) without changing how the sources are organised.
 
    Usage:
-     node tools/bundle.js                 -> dist/hearthfall.html   (standalone page)
-     node tools/bundle.js --fragment      -> dist/hearthfall-fragment.html
+     node tools/bundle.js                 -> dist/hyakusho.html   (standalone page)
+     node tools/bundle.js --fragment      -> dist/hyakusho-fragment.html
                                              (no <html>/<head>/<body>, for hosts
                                               that supply their own skeleton)
 */
@@ -32,7 +32,7 @@ const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/);
 if (!bodyMatch) throw new Error('could not find <body> in index.html');
 const body = bodyMatch[1].replace(/<script src="[^"]+"><\/script>\s*/g, '').trim();
 
-const title = (html.match(/<title>([\s\S]*?)<\/title>/) || [, 'Hearthfall'])[1];
+const title = (html.match(/<title>([\s\S]*?)<\/title>/) || [, 'Hyakush\u014d'])[1];
 
 /* The favicon is an inline SVG data URI, so its attribute value contains ">".
    Match whole quoted attributes rather than stopping at the first ">", or the
@@ -79,7 +79,7 @@ if (fragment) {
 
 const outDir = path.join(ROOT, 'dist');
 fs.mkdirSync(outDir, { recursive: true });
-const outFile = path.join(outDir, fragment ? 'hearthfall-fragment.html' : 'hearthfall.html');
+const outFile = path.join(outDir, fragment ? 'hyakusho-fragment.html' : 'hyakusho.html');
 fs.writeFileSync(outFile, parts.join('\n') + '\n');
 
 console.log('wrote ' + path.relative(ROOT, outFile) + ' (' +

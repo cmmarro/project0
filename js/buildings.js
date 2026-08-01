@@ -99,7 +99,7 @@ HF.Build = {
       if (t.terrain === 'grass' && !t.feature) {
         // Whichever was stripped here grows back: trees, or the bush.
         if (game.rng.chance(0.6)) t.terrain = 'forest';
-        else t.feature = 'berries';
+        else t.feature = 'chestnut';
         game.dirtyTerrain = true;
       }
     }

@@ -18,7 +18,9 @@ HF.Colonists = {
 
     const c = {
       id: game.nextId++,
-      name: rng.pick(HF.NAMES.first) + ' ' + rng.pick(HF.NAMES.last),
+      // Peasants of the period rarely had surnames; they were known by name
+      // and by where they came from.
+      name: rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place),
       specialty: specialty,
       x: x, y: y,
       hp: HF.CFG.COLONIST_HP,
@@ -33,6 +35,7 @@ HF.Colonists = {
       task: null,
       activity: 'Idle',
       dead: false,
+      departed: false,
     };
     return c;
   },
@@ -57,7 +60,7 @@ HF.Colonists = {
     if (s.xp >= need) {
       s.xp -= need;
       s.level++;
-      game.log(c.name + ' is now ' + HF.U.capitalize(skill) + ' ' + s.level + '.', 'good');
+      game.log(c.name + ' is now ' + (HF.SKILL_LABELS[skill] || skill) + ' ' + s.level + '.', 'good');
     }
   },
 
@@ -156,13 +159,29 @@ HF.Colonists = {
     }
   },
 
-  attack: function (game, c, raider) {
-    const dmg = game.rng.int(5, 9) + Math.floor(HF.Colonists.skillLevel(c, 'mining') / 4);
-    raider.hp -= dmg;
+  /* A yagura does not fight, but villagers within sight of one strike with
+     more confidence - which is the whole reason to spend stone on it. */
+  guardBonus: function (game, c) {
+    let best = 0;
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.guard) continue;
+      if (HF.U.dist(c.x, c.y, b.x, b.y) <= def.guard) best = Math.max(best, def.guardBonus);
+    }
+    return best;
+  },
+
+  attack: function (game, c, bandit) {
+    const dmg = game.rng.int(5, 9)
+              + Math.floor(HF.Colonists.skillLevel(c, 'mining') / 4)
+              + HF.Colonists.guardBonus(game, c);
+    bandit.hp -= dmg;
     c.activity = 'Fighting';
-    if (raider.hp <= 0) {
-      raider.dead = true;
-      game.log(c.name + ' cut down a raider.', 'good');
+    if (bandit.hp <= 0) {
+      bandit.dead = true;
+      game.banditsKilled = (game.banditsKilled || 0) + 1;
+      game.log(c.name + ' cut down a bandit.', 'good');
     }
   },
 };

@@ -45,7 +45,7 @@ HF.Events = {
         lost: 0,
       });
     }
-    game.log(count + ' raider' + (count > 1 ? 's' : '') + ' sighted to the ' +
+    game.log(count + ' bandit' + (count > 1 ? 's' : '') + ' sighted to the ' +
              HF.Events.compass(spawn, centre) + '.', 'bad');
     game.nextRaidTurn = game.turn + game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP);
   },
@@ -74,7 +74,7 @@ HF.Events = {
         target.hp = 0;
         game.releaseClaims(target.id);
         game.grief += 6;
-        game.log(target.name + ' was killed by raiders.', 'bad');
+        game.log(target.name + ' was cut down by bandits.', 'bad');
       }
       return;
     }
@@ -99,7 +99,7 @@ HF.Events = {
         if (b && b.built && HF.BUILDINGS[b.type].blocks) {
           b.hp -= game.rng.int(6, 11);
           if (b.hp <= 0) {
-            game.log('Raiders smashed through a wall.', 'bad');
+            game.log('Bandits have broken through the ishigaki.', 'bad');
             game.buildings[b.id] = null;
             tile.building = null;
             game.dirtyTerrain = true;
@@ -151,14 +151,14 @@ HF.Events = {
       if (farms.length) {
         const f = game.rng.pick(farms);
         f.growth = Math.max(0, f.growth - 10);
-        game.log('Blight struck a farm plot.', 'bad');
+        game.log('Rice blast has struck a paddy.', 'bad');
       }
     }
 
     if (game.rng.chance(0.04)) {
       const bonus = game.rng.int(6, 14);
       game.addResource('food', bonus);
-      game.log('A hunting party brought in ' + bonus + ' food.', 'good');
+      game.log('Foragers came back from the hills with ' + bonus + ' koku of stores.', 'good');
     }
   },
 
@@ -169,17 +169,17 @@ HF.Events = {
     const spot = spots[Math.min(spots.length - 1, game.rng.int(2, 6))];
     const c = HF.Colonists.create(game, spot.x, spot.y);
     game.colonists.push(c);
-    game.log(c.name + ' has joined the colony, skilled in ' +
-             HF.U.capitalize(c.specialty) + '.', 'good');
+    game.log(c.name + ' has come down from the hills to join the village, skilled in ' +
+             (HF.SKILL_LABELS[c.specialty] || c.specialty) + '.', 'good');
   },
 
   announceSeason: function (game) {
     const s = game.season();
     const notes = {
-      Spring: 'Spring. The ground thaws and crops start to grow.',
-      Summer: 'Summer. Crops ripen fastest now.',
-      Autumn: 'Autumn. Growth slows - stock the storehouse.',
-      Winter: 'Winter. Nothing grows, and the cold bites anyone far from a fire.',
+      Spring: 'Spring. The paddies thaw and the rice begins to come on.',
+      Summer: 'Summer. The rice swells fastest now.',
+      Autumn: 'Autumn. Growth slows, and the collectors are coming - fill the kura.',
+      Winter: 'Winter. Nothing grows, and the cold takes anyone far from a hearth.',
     };
     game.log(notes[s], 'season');
   },

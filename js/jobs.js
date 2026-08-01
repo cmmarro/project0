@@ -247,11 +247,10 @@ HF.Jobs = {
   },
 
   describe: function (game, task, travelling) {
-    const VERBS = { chop: 'Chopping', mine: 'Mining', forage: 'Foraging', harvest: 'Harvesting' };
     let what = 'Work';
     if (task.targetType === 'designation') {
       const d = game.designations[task.targetKey];
-      if (d) what = VERBS[d.type];
+      if (d) what = HF.ORDERS[d.type].verb;
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';

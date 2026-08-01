@@ -1,29 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Hearthfall &mdash; a turn-based colony</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312141a'/><path d='M8 3l5 5H3z' fill='%23e0b64a'/><rect x='5' y='8' width='6' height='5' fill='%238a6a45'/></svg>">
+<title>Hyakushō &mdash; a village in the Sengoku</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23141a20'/><path d='M2 9l6-5 6 5z' fill='%23c4462f'/><rect x='4' y='9' width='8' height='4' fill='%23b59660'/></svg>">
 <style>
-/* Hearthfall */
+/* Hyakushō — a village in the Sengoku.
+
+   The chrome is lacquer and sumi ink around a daylit valley: near-black grounds
+   with a blue cast, washi-cream text, vermilion for anything that demands
+   action, and a muted gold for the calendar. Deliberately single-theme — the
+   game is a lit screen, not a document. */
 
 :root {
-  /* Hearthfall commits to one visual world - a lamplit game screen - so it does
-     not follow the viewer's light/dark preference. Declaring the scheme keeps
-     scrollbars and form controls in the same key. */
   color-scheme: dark;
 
-  --bg: #12141a;
-  --panel: #1b1f27;
-  --panel-2: #232833;
-  --line: #333a47;
-  --ink: #e9e3d5;
-  --ink-dim: #9aa1ae;
-  --gold: #e0b64a;
-  --good: #7ec46a;
-  --bad: #d9584f;
-  --warn: #e0a83f;
+  --bg: #0f1319;
+  --panel: #171d26;
+  --panel-2: #202836;
+  --line: #2f3a48;
+  --ink: #ece4d3;
+  --ink-dim: #939fae;
+
+  --shu: #c4462f;          /* vermilion — the accent, spent sparingly */
+  --shu-soft: #e0705a;
+  --gold: #d0a24a;         /* kincha — calendar and highlights */
+  --moss: #7d9a5b;
+
+  --rice: #d8c26a;
+  --timber: #c69a63;
+  --stone: #a8b0bb;
+
+  --display: Georgia, 'Hiragino Mincho ProN', 'Yu Mincho', 'Songti SC', 'Noto Serif', serif;
+  --ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -34,11 +39,15 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 14px/1.45 var(--ui);
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
 }
+
+button { font-family: inherit; }
+
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 kbd {
   display: inline-block;
@@ -47,26 +56,21 @@ kbd {
   border: 1px solid var(--line);
   border-bottom-width: 2px;
   border-radius: 4px;
-  background: #11131a;
+  background: #0d1116;
   color: var(--ink-dim);
   font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 #app {
-  /* Pinned to the viewport rather than sized by the document, so the game fills
-     the screen even when it is embedded in a host page with its own body
-     margins, padding or scroll container. */
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-columns: 1fr 330px;
-  grid-template-rows: 52px 1fr 66px;
+  grid-template-columns: 1fr 336px;
+  grid-template-rows: 56px 1fr 66px;
   grid-template-areas:
     "top    top"
     "stage  side"
     "tools  tools";
-  height: 100vh;
-  height: 100dvh;
   gap: 1px;
   background: var(--line);
 }
@@ -77,25 +81,23 @@ kbd {
   grid-area: top;
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 16px;
   padding: 0 16px;
   background: var(--panel);
   min-width: 0;
 }
 
-.brand {
-  font-size: 17px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--gold);
-  flex-shrink: 0;
+.brand { display: flex; align-items: baseline; gap: 9px; flex-shrink: 0; }
+.brand .mark { font: 20px/1 var(--display); color: var(--shu); }
+.brand .name {
+  font: 600 15px/1 var(--display);
+  letter-spacing: 0.06em;
+  color: var(--ink);
 }
 
 #stats {
   display: flex;
-  gap: 8px;
-  flex: 1;
+  gap: 7px;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -107,38 +109,61 @@ kbd {
   flex-direction: column;
   flex-shrink: 0;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--panel-2);
-  min-width: 84px;
+  min-width: 82px;
 }
 
 .stat .label {
   font-size: 10px;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-dim);
 }
 
-.stat .value { font-size: 14px; font-weight: 600; }
-.stat.food  .value { color: #8fd06f; }
-.stat.wood  .value { color: #d8a86a; }
-.stat.stone .value { color: #adb6c4; }
-.stat.pop   .value { color: var(--gold); }
-.stat.bed   .value { color: #8fb8e0; }
+.stat .value { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat.food  .value { color: var(--rice); }
+.stat.wood  .value { color: var(--timber); }
+.stat.stone .value { color: var(--stone); }
+
+/* The levy clock. It escalates in colour as it comes due, and turns vermilion
+   when the granary cannot cover it. */
+#levy {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel-2);
+}
+
+.levy-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.levy-value { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+#levy.warn   { border-color: #6d5a2c; }
+#levy.warn .levy-value { color: var(--gold); }
+#levy.due    { border-color: var(--gold); }
+#levy.due .levy-value { color: var(--gold); }
+#levy.urgent { border-color: var(--shu); background: #2a1a17; }
+#levy.urgent .levy-value { color: var(--shu-soft); }
 
 #calendar { text-align: right; flex-shrink: 0; }
 
 #calendar .season {
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  font: 600 12px/1.3 var(--display);
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  font-size: 12px;
 }
-#calendar .season.spring { color: #8fd06f; }
-#calendar .season.summer { color: #e8c94a; }
-#calendar .season.autumn { color: #e08c4a; }
-#calendar .season.winter { color: #9fcfe8; }
-#calendar .date { font-size: 11px; color: var(--ink-dim); }
+#calendar .season.spring { color: #9ac47a; }
+#calendar .season.summer { color: #d9c14a; }
+#calendar .season.autumn { color: #d98a48; }
+#calendar .season.winter { color: #9fc6de; }
+#calendar .date { font-size: 11px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
 
 /* ---------- stage ---------- */
 
@@ -146,8 +171,8 @@ kbd {
   grid-area: stage;
   position: relative;
   overflow: hidden;
-  background: #0d0f14;
-  touch-action: none;              /* gestures are ours, not the browser's */
+  background: #0b0e13;
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -178,25 +203,24 @@ kbd {
   height: 38px;
   border: 1px solid var(--line);
   border-radius: 9px;
-  background: rgba(20, 23, 30, 0.9);
+  background: rgba(16, 20, 26, 0.9);
   color: var(--ink);
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
 }
-
-#map-controls button:active { background: #2b313d; }
+#map-controls button:active { background: var(--panel-2); }
 
 #tooltip {
   position: absolute;
   display: none;
-  padding: 6px 9px;
+  padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
-  background: rgba(12, 14, 19, 0.94);
+  background: rgba(11, 14, 19, 0.95);
   color: var(--ink);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   pointer-events: none;
   white-space: nowrap;
   z-index: 5;
@@ -207,10 +231,10 @@ kbd {
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
-  padding: 6px 14px;
+  padding: 7px 14px;
   border: 1px solid var(--gold);
   border-radius: 20px;
-  background: rgba(12, 14, 19, 0.92);
+  background: rgba(11, 14, 19, 0.94);
   color: var(--gold);
   font-size: 12px;
   font-weight: 600;
@@ -222,25 +246,24 @@ kbd {
   z-index: 6;
 }
 #mode-hint.show { opacity: 1; pointer-events: auto; }
-
 #mode-hint .clear {
   display: inline-block;
   margin-left: 8px;
   padding: 0 6px;
   border-radius: 10px;
-  background: rgba(224, 182, 74, 0.18);
+  background: rgba(208, 162, 74, 0.2);
   font-size: 14px;
 }
 
 #banner {
   position: absolute;
-  top: 18px;
+  top: 16px;
   left: 50%;
   transform: translate(-50%, -14px);
   max-width: min(92%, 460px);
   padding: 9px 18px;
   border-radius: 8px;
-  background: rgba(12, 14, 19, 0.95);
+  background: rgba(11, 14, 19, 0.96);
   border: 1px solid var(--line);
   font-weight: 600;
   text-align: center;
@@ -249,53 +272,90 @@ kbd {
   transition: opacity 0.25s, transform 0.25s;
   z-index: 6;
 }
-
 #banner.show { opacity: 1; transform: translate(-50%, 0); }
-#banner.good { border-color: var(--good); color: var(--good); }
-#banner.bad  { border-color: var(--bad);  color: var(--bad); }
-#banner.warn { border-color: var(--warn); color: var(--warn); }
+#banner.good { border-color: var(--moss); color: var(--moss); }
+#banner.bad  { border-color: var(--shu);  color: var(--shu-soft); }
+#banner.warn { border-color: var(--gold); color: var(--gold); }
 
-/* ---------- help sheet ---------- */
+/* ---------- overlays: help and ending ---------- */
 
-#help {
+#help, #ending {
   position: absolute;
   inset: 0;
   display: none;
   align-items: center;
   justify-content: center;
   padding: 12px;
-  background: rgba(8, 9, 13, 0.8);
-  z-index: 10;
+  background: rgba(6, 8, 11, 0.84);
+  z-index: 12;
 }
+#help.open, #ending.open { display: flex; }
 
-#help.open { display: flex; }
-
-#help .sheet {
-  max-width: 560px;
+#help .sheet, #ending .sheet {
+  max-width: 580px;
   max-height: 100%;
   overflow-y: auto;
-  padding: 22px 24px;
+  padding: 24px 26px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-top: 3px solid var(--shu);
+  border-radius: 10px;
   background: var(--panel);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 
-#help h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
-#help ul { margin: 12px 0; padding-left: 18px; }
-#help li { margin-bottom: 8px; }
-#help .keys { color: var(--ink-dim); font-size: 12px; }
+#help h2, #ending h2 {
+  margin: 0 0 10px;
+  font: 600 21px/1.25 var(--display);
+  color: var(--ink);
+  text-wrap: balance;
+}
 
-#help button {
-  margin-top: 8px;
+#help .lede { margin: 0 0 14px; color: var(--ink-dim); }
+#help .steps { margin: 0 0 14px; padding-left: 20px; display: grid; gap: 9px; }
+#help .steps b { color: var(--gold); font-weight: 600; }
+#help .keys { margin: 10px 0 0; color: var(--ink-dim); font-size: 12px; }
+#help .keys b { color: var(--ink); }
+
+#help button, #ending button {
+  margin-top: 14px;
   padding: 10px 18px;
-  border: 1px solid var(--gold);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: transparent;
-  color: var(--gold);
+  background: var(--panel-2);
+  color: var(--ink);
   font: inherit;
   cursor: pointer;
 }
+#help button { border-color: var(--shu); color: var(--shu-soft); }
+
+#ending { text-align: center; }
+#ending .sheet { max-width: 420px; }
+#ending .mark {
+  font: 46px/1 var(--display);
+  color: var(--shu);
+  margin-bottom: 6px;
+}
+#ending p { margin: 0 0 16px; color: var(--ink-dim); text-wrap: balance; }
+
+#ending-stats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+  border-top: 1px solid var(--line);
+}
+#ending-stats li {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+#ending-stats b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+#ending .actions { display: flex; gap: 10px; justify-content: center; }
+#ending .actions .primary { border-color: var(--shu); background: #2a1a17; color: var(--shu-soft); }
 
 /* ---------- sidebar ---------- */
 
@@ -314,40 +374,33 @@ kbd {
   background: var(--panel);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 10px 12px;
+  padding: 11px 13px;
 }
 
 #sidebar h2 {
-  margin: 0 0 8px;
+  margin: 0 0 9px;
   font-size: 11px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--ink-dim);
+  font-weight: 600;
 }
-
 #sidebar h2 .count { color: var(--gold); }
-#sidebar h2 .count.short { color: var(--bad); }
+#sidebar h2 .count.short { color: var(--shu-soft); }
 
 .colonist {
-  padding: 8px;
+  padding: 9px;
   margin-bottom: 7px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--panel-2);
   cursor: pointer;
 }
-
-.colonist:hover { border-color: #3d4655; }
+.colonist:hover { border-color: #3a4657; }
 .colonist.selected { border-color: var(--gold); }
 
-.row-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.row-head .name { font-weight: 600; }
+.row-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.row-head .name { font: 600 14px/1.3 var(--display); }
 .row-head .activity {
   font-size: 11px;
   color: var(--ink-dim);
@@ -357,68 +410,57 @@ kbd {
   text-overflow: ellipsis;
 }
 
-.bars { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 6px 0; }
+.bars { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 7px 0; }
 
-.bar {
-  position: relative;
-  height: 14px;
-  border-radius: 3px;
-  background: #12151c;
-  overflow: hidden;
-}
-
+.bar { position: relative; height: 15px; border-radius: 3px; background: #0f131a; overflow: hidden; }
 .bar .fill { position: absolute; inset: 0; width: 0; }
 .bar span {
   position: relative;
   display: block;
   padding-left: 5px;
   font-size: 10px;
-  line-height: 14px;
-  color: #e9e3d5;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  line-height: 15px;
+  color: var(--ink);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
-
-.bar.food .fill { background: #4f7a3c; }
-.bar.rest .fill { background: #3f6480; }
-.bar.mood .fill { background: #8a6a2f; }
-.bar.hp   .fill { background: #7d3733; }
+.bar.food .fill { background: #6b6a2f; }
+.bar.rest .fill { background: #3a5a72; }
+.bar.mood .fill { background: #7a5c2c; }
+.bar.hp   .fill { background: #7a3a2f; }
 
 .works { display: flex; gap: 3px; }
-
 .works .work {
   flex: 1;
-  padding: 4px 2px;
+  padding: 5px 2px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  background: #14171e;
+  background: #12171e;
   color: var(--ink-dim);
-  font: 10px/1.2 system-ui, sans-serif;
+  font: 10px/1.2 var(--ui);
   cursor: pointer;
 }
-
-.works .work.on { background: #2c3a2a; border-color: #4d6b45; color: #cfe6c4; }
-.works .work .lvl { display: block; font-weight: 700; }
+.works .work.on { background: #26331f; border-color: #46603a; color: #cbe0b8; }
+.works .work .lvl { display: block; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 #log { list-style: none; margin: 0; padding: 0; }
-
 #log li {
-  padding: 3px 0 3px 2px;
-  border-bottom: 1px solid #21252e;
+  padding: 4px 0 4px 2px;
+  border-bottom: 1px solid #1e242e;
   font-size: 12px;
   color: var(--ink-dim);
 }
-
 #log li .turn {
   display: inline-block;
   min-width: 26px;
   margin-right: 6px;
-  color: #5d6674;
+  color: #5b6673;
   font: 11px/1 ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
-
-#log li.good   { color: var(--good); }
-#log li.bad    { color: var(--bad); }
+#log li.good   { color: var(--moss); }
+#log li.bad    { color: var(--shu-soft); }
 #log li.season { color: var(--gold); }
+#log li.levy   { color: #d9b26a; font-weight: 600; }
 
 .empty { color: var(--ink-dim); font-style: italic; }
 
@@ -428,118 +470,190 @@ kbd {
   grid-area: tools;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 12px;
   background: var(--panel);
   overflow: hidden;
 }
 
-/* Only the order and build palettes scroll on a narrow window - End Turn and
-   the Colony button stay pinned to the right where a thumb can reach them. */
-.toolbar-scroll {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-  padding: 4px 0;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tool-group { display: flex; align-items: center; gap: 5px; }
-.tool-group.meta { margin-left: auto; }
-.tool-group.pinned { flex-shrink: 0; }
-
-.group-label {
-  margin-right: 4px;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-  flex-shrink: 0;
-}
+.tool-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tool-row:first-child { flex: 1; }
+.tool-group.meta { display: flex; gap: 6px; margin-left: auto; }
+.tool-row.pinned { flex-shrink: 0; gap: 8px; }
 
 .tool, #toolbar button {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   white-space: nowrap;
-  gap: 4px;
-  padding: 7px 9px;
+  gap: 5px;
+  padding: 8px 11px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel-2);
   color: var(--ink);
-  font: 12px/1.2 system-ui, sans-serif;
+  font: 12px/1.2 var(--ui);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
+.tool:hover, #toolbar button:hover { background: #2a3342; }
 
-.tool:hover, #toolbar button:hover { background: #2b313d; }
-.tool.active { border-color: var(--gold); background: #3a3223; color: var(--gold); }
-.tool.danger.active { border-color: var(--bad); background: #3a2422; color: var(--bad); }
+.picker-btn .lbl {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.picker-btn .sel { font-weight: 600; }
+.picker-btn::after { content: '▾'; margin-left: 2px; color: var(--ink-dim); }
 
-.tool .cost { margin-left: 4px; font-size: 10px; color: var(--ink-dim); }
-
-.tool .swatch { width: 9px; height: 9px; border-radius: 2px; margin-right: 2px; }
-.swatch.chop   { background: #e0a83f; }
-.swatch.mine   { background: #7fa8d9; }
-.swatch.forage { background: #dd7f8d; }
+.tool.active { border-color: var(--gold); background: #2e2818; }
+.tool.active .sel, .tool.active .lbl { color: var(--gold); }
+.tool.danger.active { border-color: var(--shu); background: #2a1a17; color: var(--shu-soft); }
 
 #btn-panel .badge {
   margin-left: 5px;
   padding: 0 5px;
   border-radius: 8px;
   background: var(--gold);
-  color: #1b1f27;
+  color: #161b23;
   font-size: 10px;
   font-weight: 700;
 }
 
 #btn-endturn {
-  padding: 9px 18px;
-  border-color: var(--gold);
-  background: #3a3223;
-  color: var(--gold);
+  padding: 10px 18px;
+  border-color: var(--shu);
+  background: #2a1a17;
+  color: var(--shu-soft);
   font-weight: 700;
 }
+#btn-endturn:hover { background: #38211c; }
 
-#btn-endturn:hover { background: #4a4029; }
+/* ---------- the tool picker ---------- */
+
+#picker {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: rgba(6, 8, 11, 0.72);
+  z-index: 40;
+}
+#picker.open { display: flex; }
+
+.picker-sheet {
+  width: min(560px, 100%);
+  max-height: 78vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+  background: var(--panel);
+  box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.6);
+}
+
+.picker-sheet .sheet-grip {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  z-index: 2;
+}
+.picker-sheet .sheet-grip button {
+  width: 34px; height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#picker-list { padding: 8px; display: grid; gap: 6px; }
+
+.pick {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pick:hover:not(:disabled) { border-color: var(--gold); background: #262f3d; }
+.pick:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.pick-mark { width: 12px; height: 12px; border-radius: 3px; background: var(--ink-dim); }
+.pick-mark.build.house      { background: #b59660; }
+.pick-mark.build.storehouse { background: #ded7c4; }
+.pick-mark.build.farm       { background: #4d7a72; }
+.pick-mark.build.campfire   { background: #d9702a; }
+.pick-mark.build.tower      { background: #8a6c4c; }
+.pick-mark.build.wall       { background: #9b958a; }
+
+.pick-name { display: block; font: 600 14px/1.3 var(--display); }
+.pick-name em { font-style: normal; font-size: 11px; color: var(--ink-dim); }
+.pick-desc { display: block; font-size: 12px; line-height: 1.4; color: var(--ink-dim); }
+.pick-cost {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pick-cost.free { color: var(--moss); }
+.pick-cost.short { color: var(--shu-soft); }
 
 /* ---------- phones and small windows ---------- */
 
 @media (max-width: 900px) {
   #app {
     grid-template-columns: 1fr;
-    grid-template-rows: 46px 1fr 98px;
+    grid-template-rows: 68px 1fr 100px;
     grid-template-areas: "top" "stage" "tools";
   }
 
-  /* Two rows at the bottom: the palette gets the full width to scroll in, and
-     Colony / End Turn get a row of their own instead of eating half of it. */
-  #toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 5px;
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  /* Stores, the levy clock and the calendar will not fit on one line at phone
+     widths - the levy chip was squeezing the rice count out of view - so wrap
+     into two thin rows instead of letting anything get clipped. */
+  #topbar {
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 4px 8px;
+    padding: 4px 10px;
   }
-
-  .toolbar-scroll { flex: 0 0 auto; padding: 0; }
-  .tool-group.meta { margin-left: 0; }
-  .tool-group.pinned { gap: 8px; }
-  #btn-panel { flex: 0 0 auto; }
-  #btn-endturn { flex: 1; justify-content: center; }
-
   .brand { display: none; }
-  #topbar { gap: 10px; padding: 0 10px; }
-  .stat { min-width: 0; padding: 3px 8px; }
-  .stat .value { font-size: 13px; }
-  #calendar .date { font-size: 10px; }
+  #stats { flex: 1 0 100%; order: 1; }
+  #levy { order: 2; margin-left: 0; padding: 2px 9px; }
+  #calendar { order: 3; margin-left: auto; }
 
-  /* The sidebar becomes a bottom sheet over the map. */
+  .stat { min-width: 0; padding: 2px 8px; }
+  .stat .label { font-size: 9px; }
+  .stat .value { font-size: 13px; }
+  .levy-label { font-size: 9px; }
+  .levy-value { font-size: 12px; }
+  #calendar .date { font-size: 10px; }
+  #calendar .season { font-size: 11px; }
+
+  /* The sidebar becomes a sheet over the map. */
   #sidebar {
     position: absolute;
     left: 0;
@@ -556,28 +670,25 @@ kbd {
     transform: translateY(101%);
     transition: transform 0.22s ease;
   }
-
   #sidebar.open { transform: none; }
 
-  .sheet-grip {
+  #sidebar .sheet-grip {
     position: sticky;
     top: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 11px 14px;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
     font-size: 11px;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.13em;
     text-transform: uppercase;
     color: var(--ink-dim);
     z-index: 2;
   }
-
-  .sheet-grip button {
-    width: 34px;
-    height: 34px;
+  #sidebar .sheet-grip button {
+    width: 34px; height: 34px;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--panel-2);
@@ -586,45 +697,63 @@ kbd {
     line-height: 1;
     cursor: pointer;
   }
-
   #sidebar section { overflow: visible; }
 
-  /* Bigger tap targets everywhere along the bottom. */
+  /* Two rows: tools on top, and the two things you press constantly below. */
+  #toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 7px 8px calc(7px + env(safe-area-inset-bottom, 0px));
+  }
+  .tool-row { flex: 0 0 auto; }
+  .tool-row:first-child { overflow-x: auto; scrollbar-width: none; }
+  .tool-row:first-child::-webkit-scrollbar { display: none; }
+  .tool-group.meta { margin-left: 6px; }
+  #pick-order, #pick-build { flex: 1 1 auto; justify-content: center; }
+  #btn-panel { flex: 0 0 auto; }
+  #btn-endturn { flex: 1; justify-content: center; }
+
   .tool, #toolbar button { padding: 9px 11px; font-size: 13px; }
   .tool kbd, #btn-endturn kbd { display: none; }
-  #btn-endturn { padding: 10px 14px; }
-  .works .work { padding: 7px 2px; font-size: 11px; }
-  .bars { grid-template-columns: 1fr 1fr; gap: 4px; }
-  .bar { height: 16px; }
-  .bar span { line-height: 16px; font-size: 11px; }
+  .works .work { padding: 8px 2px; font-size: 11px; }
+  .bar { height: 17px; }
+  .bar span { line-height: 17px; font-size: 11px; }
 
   #map-controls { bottom: 8px; right: 8px; }
   #map-controls button { width: 42px; height: 42px; font-size: 19px; }
   #mode-hint { bottom: 10px; left: 12px; transform: none; }
+
+  .picker-sheet { max-height: 82vh; }
+  .pick { padding: 14px 13px; }
 }
 
 @media (max-width: 900px) and (max-height: 560px) {
-  #sidebar { max-height: 80%; }
+  #sidebar { max-height: 84%; }
+  .picker-sheet { max-height: 90vh; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }
 
 </style>
-</head>
-<body>
 <div id="app">
 
     <header id="topbar">
-      <div class="brand">Hearthfall</div>
+      <div class="brand"><span class="mark">百姓</span><span class="name">Hyakushō</span></div>
       <div id="stats"></div>
+      <div id="levy"></div>
       <div id="calendar"></div>
     </header>
 
     <main id="stage">
-      <canvas id="board" width="1056" height="672"></canvas>
+      <canvas id="board"></canvas>
 
       <div id="map-controls">
-        <button id="zoom-in" title="Zoom in">+</button>
-        <button id="zoom-out" title="Zoom out">&minus;</button>
-        <button id="recenter" title="Centre on the colony">&#9678;</button>
+        <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+        <button id="recenter" title="Centre on the village" aria-label="Centre on the village">&#9678;</button>
       </div>
 
       <div id="mode-hint"></div>
@@ -633,50 +762,73 @@ kbd {
 
       <div id="help">
         <div class="sheet">
-          <h2>How Hearthfall works</h2>
-          <p>Four settlers, one valley, and three years to survive. Nothing happens
-             until you end the turn &mdash; you have all the time you want to plan.</p>
-          <ul>
-            <li><strong>Give orders, not commands.</strong> Pick a tool from the bar at the
-                bottom, then drag across the map to mark work or drop blueprints.
-                Colonists pick up the nearest job they are willing to do.</li>
-            <li><strong>Everyone has a mind of their own.</strong> Each colonist has skills,
-                hunger, tiredness and a mood. Open <strong>Colony</strong> to see them and to
-                choose which kinds of work each one will accept.</li>
-            <li><strong>Eat, sleep, repeat.</strong> Food is a shared stockpile. Rest needs a
-                bed, and a bed needs a house &mdash; sleeping rough wrecks morale.</li>
-            <li><strong>Winter is the test.</strong> Crops stop growing and anyone more than
-                five tiles from a campfire loses health. Stockpile in autumn.</li>
-            <li><strong>Raiders come from year two.</strong> Colonists fight automatically
-                when raiders get close. Stone walls buy you time.</li>
-          </ul>
-          <p class="keys"><strong>Moving the map:</strong> drag with no tool selected to pan,
-             pinch or scroll to zoom, tap a tile to inspect it, tap a colonist to select them.</p>
-          <p class="keys"><strong>Keyboard:</strong> <kbd>Space</kbd> end turn &middot;
-             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> orders &middot;
-             <kbd>1</kbd>&ndash;<kbd>5</kbd> buildings &middot; <kbd>X</kbd> cancel tool &middot;
-             <kbd>Esc</kbd> deselect &middot; <kbd>H</kbd> this sheet</p>
-          <button id="help-close">Got it</button>
+          <h2>How to hold a village together</h2>
+          <p class="lede">Four peasants, one valley, and three years. Nothing happens until you
+             end the turn, so there is no hurry &mdash; only consequences.</p>
+          <ol class="steps">
+            <li><b>The levy is the whole game.</b> After each harvest the daimyō's collectors
+                come for rice: 40 koku, then 75, then 115. Miss two and the village is broken up.
+                The countdown is in the bar at the top.</li>
+            <li><b>Rice comes from paddies, and only from paddies.</b> Foraging and hunting will
+                not cover a levy. Tap <b>Build &rarr; Rice Paddy</b> early and often.</li>
+            <li><b>Build shelter before winter.</b> A <b>Minka</b> sleeps two; villagers without a
+                bed lose heart. A <b>Hearth Fire</b> keeps anyone within five tiles alive through
+                the cold. A <b>Kura</b> raises how much you can store &mdash; everything over the
+                cap rots.</li>
+            <li><b>You give orders, not commands.</b> Choose a work order or a building, then drag
+                across the map. Villagers pick up the nearest job they are willing to do; the
+                toggles under each name in <b>Village</b> decide what that is.</li>
+            <li><b>Bandits come from year two.</b> Villagers fight automatically when one gets
+                close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
+                waste turns breaking through.</li>
+          </ol>
+          <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
+             to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
+             chosen, dragging paints instead &mdash; tap the chip at the bottom of the map to put
+             it down.</p>
+          <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> end turn &middot; <kbd>B</kbd> build
+             menu &middot; <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot;
+             <kbd>X</kbd> cancel tool &middot; <kbd>Esc</kbd> put the tool down &middot;
+             <kbd>H</kbd> this page</p>
+          <button id="help-close">Begin</button>
+        </div>
+      </div>
+
+      <div id="ending">
+        <div class="sheet">
+          <div id="ending-mark" class="mark"></div>
+          <h2 id="ending-title"></h2>
+          <p id="ending-sub"></p>
+          <ul id="ending-stats"></ul>
+          <div class="actions">
+            <button id="ending-continue" class="primary">Carry on</button>
+            <button id="ending-new">New village</button>
+          </div>
         </div>
       </div>
     </main>
 
     <aside id="sidebar">
       <div class="sheet-grip">
-        <span>Colony</span>
+        <span>The Village</span>
         <button id="sheet-close" aria-label="Close">&times;</button>
       </div>
       <section id="colonist-panel"></section>
       <section id="log-panel">
-        <h2>Chronicle</h2>
+        <h2>Record</h2>
         <ul id="log"></ul>
       </section>
     </aside>
 
     <footer id="toolbar">
-      <div class="toolbar-scroll">
-        <div class="tool-group" id="orders"></div>
-        <div class="tool-group" id="builds"></div>
+      <div class="tool-row">
+        <button id="pick-order" class="tool picker-btn">
+          <span class="lbl">Work</span><span class="sel">Choose…</span>
+        </button>
+        <button id="pick-build" class="tool picker-btn">
+          <span class="lbl">Build</span><span class="sel">Choose…</span>
+        </button>
+        <button id="tool-cancel" class="tool danger">Cancel</button>
         <div class="tool-group meta">
           <button id="btn-help" class="plain">Help</button>
           <button id="btn-save" class="plain">Save</button>
@@ -684,29 +836,49 @@ kbd {
           <button id="btn-new" class="plain">New</button>
         </div>
       </div>
-      <div class="tool-group pinned">
-        <button id="btn-panel" class="plain">Colony</button>
+      <div class="tool-row pinned">
+        <button id="btn-panel" class="plain">Village</button>
         <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
       </div>
     </footer>
 
+    <div id="picker">
+      <div class="picker-sheet">
+        <div class="sheet-grip">
+          <span id="picker-title"></span>
+          <button id="picker-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="picker-list"></div>
+      </div>
+    </div>
+
   </div>
 <script>
+(function () {
+  if (document.querySelector('meta[name="viewport"]')) return;
+  var m = document.createElement("meta");
+  m.name = "viewport";
+  m.content = "width=device-width, initial-scale=1, viewport-fit=cover";
+  document.head.appendChild(m);
+})();
 /* ===== js/config.js ===== */
-/* Hearthfall - balance constants and content definitions.
-   Everything tunable lives here so the rest of the code stays about mechanics. */
+/* Hyakushō - balance constants and content definitions.
+
+   A village of peasants in the Sengoku period. Everything tunable lives here so
+   the rest of the code stays about mechanics. Internal ids (food/wood/stone,
+   grass/forest/hill) are deliberately plain; the words the player reads come
+   from the `name` and `label` fields. */
 window.HF = window.HF || {};
 
 HF.CFG = {
   MAP_W: 44,
   MAP_H: 28,
-  TILE: 24,
 
   START_COLONISTS: 4,
   START_RES: { food: 55, wood: 45, stone: 12 },
   BASE_STORAGE: 150,
 
-  MOVE_BUDGET: 3,          // movement points per colonist per turn
+  MOVE_BUDGET: 3,          // movement points per villager per turn
   TURNS_PER_SEASON: 10,
   SEASONS: ['Spring', 'Summer', 'Autumn', 'Winter'],
 
@@ -715,7 +887,7 @@ HF.CFG = {
   EAT_THRESHOLD: 34,
   SLEEP_THRESHOLD: 24,
   WAKE_AT: 92,
-  MEAL_FOOD: 1,            // stockpile food spent per meal
+  MEAL_FOOD: 1,
   MEAL_RESTORE: 46,
   BED_REST: 13,
   GROUND_REST: 6,
@@ -729,83 +901,127 @@ HF.CFG = {
   RAID_MIN_GAP: 24,
   RAID_MAX_GAP: 38,
   MIGRANT_GAP: 26,
-  MILESTONE_TURN: 120,     // "three years endured"
+
+  /* The spine of the game. The daimyo's collectors come after each harvest,
+     before winter, and they do not care whether you can spare it. */
+  LEVY: {
+    turns: [30, 70, 110],
+    demands: [40, 75, 115],
+    laterIncrease: 45,      // per year beyond the third
+    warnAhead: 8,
+    /* Missing a levy earns strikes rather than ending things outright: a near
+       miss costs one, a bad miss costs two, and three break up the village.
+       So you can survive one bad year, or two tight ones, but not both. */
+    tolerance: 0.65,        // paying at least this share of the demand is a near miss
+    strikeNear: 1,
+    strikeBad: 2,
+    strikesAllowed: 2,
+  },
+
+  VICTORY_TURN: 120,        // end of the third year
 
   SKILL_MAX: 10,
   XP_PER_LEVEL: 14,
 };
 
-/* ---------- terrain ---------- */
-HF.TERRAIN = {
-  water:    { id: 'water',    name: 'Water',    passable: false, cost: 99, build: false },
-  sand:     { id: 'sand',     name: 'Sand',     passable: true,  cost: 1,  build: true  },
-  grass:    { id: 'grass',    name: 'Meadow',   passable: true,  cost: 1,  build: true  },
-  forest:   { id: 'forest',   name: 'Forest',   passable: true,  cost: 2,  build: false },
-  hill:     { id: 'hill',     name: 'Rocky Hill', passable: true, cost: 2, build: true  },
-  mountain: { id: 'mountain', name: 'Mountain', passable: false, cost: 99, build: false },
+/* What the player calls each resource. */
+HF.RESOURCES = {
+  food:  { label: 'Rice',   unit: 'koku', color: '#d8c26a' },
+  wood:  { label: 'Timber', unit: '',     color: '#c69a63' },
+  stone: { label: 'Stone',  unit: '',     color: '#a8b0bb' },
 };
 
-/* ---------- work types (per-colonist toggles) ---------- */
+/* ---------- terrain ----------
+   `elev` is in whole tile-heights and drives the isometric relief. */
+HF.TERRAIN = {
+  water:    { id: 'water',    name: 'River',        passable: false, cost: 99, build: false, elev: 0 },
+  sand:     { id: 'sand',     name: 'Riverbank',    passable: true,  cost: 1,  build: true,  elev: 0 },
+  grass:    { id: 'grass',    name: 'Meadow',       passable: true,  cost: 1,  build: true,  elev: 0 },
+  forest:   { id: 'forest',   name: 'Pine Grove',   passable: true,  cost: 2,  build: false, elev: 0 },
+  hill:     { id: 'hill',     name: 'Rocky Slope',  passable: true,  cost: 2,  build: true,  elev: 1 },
+  mountain: { id: 'mountain', name: 'Mountain',     passable: false, cost: 99, build: false, elev: 2 },
+};
+
+/* ---------- work types (per-villager toggles) ---------- */
 HF.WORK_TYPES = [
-  { id: 'woodcut', label: 'Woodcutting', short: 'Wood',  skill: 'woodcutting' },
-  { id: 'mine',    label: 'Mining',      short: 'Mine',  skill: 'mining' },
-  { id: 'build',   label: 'Building',    short: 'Build', skill: 'construction' },
-  { id: 'farm',    label: 'Farming',     short: 'Farm',  skill: 'farming' },
+  { id: 'woodcut', label: 'Forestry',  short: 'Wood',  skill: 'woodcutting' },
+  { id: 'mine',    label: 'Quarrying', short: 'Stone', skill: 'mining' },
+  { id: 'build',   label: 'Carpentry', short: 'Build', skill: 'construction' },
+  { id: 'farm',    label: 'Farming',   short: 'Rice',  skill: 'farming' },
 ];
 
 HF.SKILLS = ['woodcutting', 'mining', 'construction', 'farming'];
+HF.SKILL_LABELS = {
+  woodcutting: 'Forestry', mining: 'Quarrying',
+  construction: 'Carpentry', farming: 'Farming',
+};
 
-/* ---------- designations the player paints onto tiles ---------- */
+/* ---------- work orders the player paints onto tiles ---------- */
 HF.ORDERS = {
   chop: {
-    id: 'chop', label: 'Chop', key: 'C', work: 10, workType: 'woodcut',
+    id: 'chop', label: 'Fell Timber', verb: 'Felling', key: 'C', work: 10, workType: 'woodcut',
+    color: '#d9a441',
     valid: function (t) { return t.terrain === 'forest'; },
-    hint: 'Fell trees for wood.',
+    hint: 'Fell pine for timber. The grove grows back in time.',
   },
   mine: {
-    id: 'mine', label: 'Mine', key: 'M', work: 15, workType: 'mine',
+    id: 'mine', label: 'Quarry Stone', verb: 'Quarrying', key: 'M', work: 15, workType: 'mine',
+    color: '#89a9cf',
     valid: function (t) { return t.terrain === 'mountain' || t.terrain === 'hill'; },
-    hint: 'Cut stone from rock. Mountains must be worked from an adjacent tile.',
+    hint: 'Cut stone from slopes and mountains. Mountains are worked from an adjacent tile.',
   },
   forage: {
-    id: 'forage', label: 'Forage', key: 'F', work: 6, workType: 'farm',
-    valid: function (t) { return t.feature === 'berries'; },
-    hint: 'Gather berries. Bushes regrow, but not in winter.',
+    id: 'forage', label: 'Gather Chestnuts', verb: 'Gathering', key: 'F', work: 6, workType: 'farm',
+    color: '#c9738a',
+    valid: function (t) { return t.feature === 'chestnut'; },
+    hint: 'Gather chestnuts for the stores. They ripen again, but never in winter.',
   },
-  harvest: { // created automatically by ripe farm plots
-    id: 'harvest', label: 'Harvest', key: null, work: 8, workType: 'farm',
+  harvest: {                                   // raised automatically by ripe paddies
+    id: 'harvest', label: 'Harvest', verb: 'Harvesting', key: null, work: 8, workType: 'farm',
+    color: '#9ac46a',
     valid: function () { return false; },
-    hint: 'Bring in a ripe crop.',
+    hint: 'Bring in a ripe paddy.',
   },
 };
 
 /* ---------- buildings ---------- */
 HF.BUILDINGS = {
   house: {
-    id: 'house', label: 'House', cost: { wood: 22 }, work: 26, beds: 2,
+    id: 'house', label: 'Minka', sub: 'farmhouse',
+    cost: { wood: 22 }, work: 26, beds: 2,
     on: ['grass', 'sand', 'hill'],
-    desc: 'Sleeps 2. Rested colonists work faster and stay cheerful.',
+    desc: 'A thatched farmhouse. Sleeps two. Villagers with a bed work harder and keep their spirits.',
   },
   storehouse: {
-    id: 'storehouse', label: 'Storehouse', cost: { wood: 28 }, work: 24, storage: 150,
+    id: 'storehouse', label: 'Kura', sub: 'granary',
+    cost: { wood: 28 }, work: 24, storage: 150,
     on: ['grass', 'sand', 'hill'],
-    desc: '+150 to the cap on every resource. Surplus above the cap spoils.',
+    desc: 'A plastered granary. Raises the cap on every store by 150. Anything over the cap rots.',
   },
   farm: {
-    id: 'farm', label: 'Farm Plot', cost: { wood: 5 }, work: 12, farm: true,
+    id: 'farm', label: 'Rice Paddy', sub: '',
+    cost: { wood: 5 }, work: 12, farm: true,
     on: ['grass'],
-    desc: 'Ripens over time, then asks to be harvested. Dormant all winter.',
+    desc: 'Floods, ripens, and asks to be harvested. Your only real source of rice. Dormant all winter.',
   },
   campfire: {
-    id: 'campfire', label: 'Campfire', cost: { wood: 12 }, work: 8, warmth: 5,
+    id: 'campfire', label: 'Hearth Fire', sub: '',
+    cost: { wood: 12 }, work: 8, warmth: 5,
     on: ['grass', 'sand', 'hill'],
-    desc: 'Keeps colonists within 5 tiles warm through winter.',
+    desc: 'Keeps anyone within five tiles alive through the winter cold.',
+  },
+  tower: {
+    id: 'tower', label: 'Yagura', sub: 'watchtower',
+    cost: { wood: 16, stone: 8 }, work: 22, guard: 6, guardBonus: 4,
+    on: ['grass', 'sand', 'hill'],
+    desc: 'Villagers fighting within six tiles strike harder. Bandits are the price of a full granary.',
   },
   wall: {
-    id: 'wall', label: 'Stone Wall', cost: { stone: 6 }, work: 10, blocks: true, hp: 80,
+    id: 'wall', label: 'Ishigaki', sub: 'stone rampart',
+    cost: { stone: 6 }, work: 10, blocks: true, hp: 80,
     adjacentWork: true,
     on: ['grass', 'sand', 'hill'],
-    desc: 'Impassable. Raiders must break through it.',
+    desc: 'Impassable. Bandits must break it down, which costs them turns you can use.',
   },
 };
 
@@ -818,14 +1034,16 @@ HF.YIELDS = {
   harvest: { food: HF.FARM.YIELD },
 };
 
-/* ---------- names ---------- */
+/* ---------- names ----------
+   Peasants of the period generally had no surname, so villagers are known by a
+   given name and where they are from. */
 HF.NAMES = {
-  first: ['Ada', 'Bran', 'Cyra', 'Dov', 'Eira', 'Finn', 'Greta', 'Hale', 'Ines', 'Jori',
-          'Kess', 'Lune', 'Mira', 'Nels', 'Orin', 'Pell', 'Quill', 'Rowan', 'Sena', 'Tove',
-          'Uma', 'Vesa', 'Wren', 'Yarl', 'Zora'],
-  last:  ['Ashfell', 'Brookmere', 'Cairn', 'Dunmoor', 'Emberly', 'Frostvale', 'Gladholt',
-          'Harrow', 'Ironwood', 'Kelder', 'Lowmarsh', 'Northgate', 'Oakhurst', 'Quarry',
-          'Redsong', 'Stonebrook', 'Thornby', 'Weatherall'],
+  first: ['Tarō', 'Hana', 'Jirō', 'Kiku', 'Saburō', 'Ume', 'Gorō', 'Yuki', 'Sen', 'Toshi',
+          'Aki', 'Matsu', 'Nao', 'Haru', 'Riku', 'Kane', 'Tsune', 'Yoshi', 'Sato', 'Mine',
+          'Take', 'Chiyo', 'Iwa', 'Suke', 'Kiyo', 'Shino'],
+  place: ['Kurogawa', 'Hinodani', 'Yamashita', 'Kawabe', 'Sugihara', 'Nomura', 'Takigawa',
+          'Ishimura', 'Ozawa', 'Fujino', 'Aramaki', 'Shirakawa', 'Tanigawa', 'Onoda',
+          'Kiyama', 'Mizuno'],
 };
 
 /* ===== js/util.js ===== */
@@ -915,6 +1133,85 @@ HF.U = {
   },
 };
 
+/* ===== js/iso.js ===== */
+/* Isometric projection.
+
+   The simulation stays a plain square grid; this is the only place that knows
+   the map is drawn as diamonds. Tiles are 2:1, and terrain elevation lifts a
+   tile's top face while exposing the two side faces below it. */
+window.HF = window.HF || {};
+
+HF.Iso = (function () {
+  const TW = 48, TH = 24;                 // tile footprint on screen
+  const HW = TW / 2, HH = TH / 2;
+  const ELEV = 13;                        // pixels per step of elevation
+  const HEADROOM = 76;                    // space above the map for tall things
+  const FOOTER = 26;
+
+  const W = HF.CFG.MAP_W, H = HF.CFG.MAP_H;
+
+  // Left edge belongs to the tile with the most negative (x - y): tile (0, H-1).
+  const originX = (H - 1) * HW + HW;
+  const originY = HEADROOM;
+
+  const width = (W + H) * HW;
+  const height = (W + H - 1) * HH + HH + HEADROOM + FOOTER;
+
+  function elevOf(tile) {
+    return HF.TERRAIN[tile.terrain].elev || 0;
+  }
+
+  /* Centre of a tile's top face, in canvas pixels. */
+  function toScreen(x, y, elev) {
+    return {
+      sx: (x - y) * HW + originX,
+      sy: (x + y) * HH + originY - (elev || 0) * ELEV,
+    };
+  }
+
+  function inDiamond(px, py, sx, sy) {
+    return Math.abs(px - sx) / HW + Math.abs(py - sy) / HH <= 1;
+  }
+
+  return {
+    TW: TW, TH: TH, HW: HW, HH: HH, ELEV: ELEV,
+    width: width, height: height,
+    originX: originX, originY: originY,
+    elevOf: elevOf,
+    toScreen: toScreen,
+    inDiamond: inDiamond,
+
+    /* Depth order: everything on a lower (x + y) is further away. */
+    maxDepth: (W - 1) + (H - 1),
+    rowStart: function (d) { return Math.max(0, d - (H - 1)); },
+    rowEnd: function (d) { return Math.min(W - 1, d); },
+
+    /* Canvas pixel -> tile.
+
+       Raised tiles are drawn higher up the screen, so a point can fall inside
+       more than one tile's diamond. Walk front to back and take the first hit,
+       which is what the eye picks too. Falls back to the flat ground plane so a
+       click never lands on nothing. */
+    toTile: function (game, px, py) {
+      for (let d = HF.Iso.maxDepth; d >= 0; d--) {
+        const x0 = HF.Iso.rowStart(d), x1 = HF.Iso.rowEnd(d);
+        for (let x = x0; x <= x1; x++) {
+          const y = d - x;
+          const tile = game.tiles[y * W + x];
+          const p = toScreen(x, y, elevOf(tile));
+          if (inDiamond(px, py, p.sx, p.sy)) return { x: x, y: y };
+        }
+      }
+      const fx = (px - originX) / HW;
+      const fy = (py - originY) / HH;
+      const x = Math.floor((fy + fx) / 2);
+      const y = Math.floor((fy - fx) / 2);
+      if (x < 0 || y < 0 || x >= W || y >= H) return null;
+      return { x: x, y: y };
+    },
+  };
+})();
+
 /* ===== js/map.js ===== */
 /* Terrain generation and tile queries. */
 window.HF = window.HF || {};
@@ -946,7 +1243,7 @@ HF.Map = {
         else if (m > 0.56) terrain = 'forest';
         else terrain = 'grass';
 
-        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'berries';
+        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'chestnut';
 
         tiles[i] = {
           terrain: terrain,
@@ -1235,7 +1532,9 @@ HF.Colonists = {
 
     const c = {
       id: game.nextId++,
-      name: rng.pick(HF.NAMES.first) + ' ' + rng.pick(HF.NAMES.last),
+      // Peasants of the period rarely had surnames; they were known by name
+      // and by where they came from.
+      name: rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place),
       specialty: specialty,
       x: x, y: y,
       hp: HF.CFG.COLONIST_HP,
@@ -1250,6 +1549,7 @@ HF.Colonists = {
       task: null,
       activity: 'Idle',
       dead: false,
+      departed: false,
     };
     return c;
   },
@@ -1274,7 +1574,7 @@ HF.Colonists = {
     if (s.xp >= need) {
       s.xp -= need;
       s.level++;
-      game.log(c.name + ' is now ' + HF.U.capitalize(skill) + ' ' + s.level + '.', 'good');
+      game.log(c.name + ' is now ' + (HF.SKILL_LABELS[skill] || skill) + ' ' + s.level + '.', 'good');
     }
   },
 
@@ -1373,13 +1673,29 @@ HF.Colonists = {
     }
   },
 
-  attack: function (game, c, raider) {
-    const dmg = game.rng.int(5, 9) + Math.floor(HF.Colonists.skillLevel(c, 'mining') / 4);
-    raider.hp -= dmg;
+  /* A yagura does not fight, but villagers within sight of one strike with
+     more confidence - which is the whole reason to spend stone on it. */
+  guardBonus: function (game, c) {
+    let best = 0;
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.guard) continue;
+      if (HF.U.dist(c.x, c.y, b.x, b.y) <= def.guard) best = Math.max(best, def.guardBonus);
+    }
+    return best;
+  },
+
+  attack: function (game, c, bandit) {
+    const dmg = game.rng.int(5, 9)
+              + Math.floor(HF.Colonists.skillLevel(c, 'mining') / 4)
+              + HF.Colonists.guardBonus(game, c);
+    bandit.hp -= dmg;
     c.activity = 'Fighting';
-    if (raider.hp <= 0) {
-      raider.dead = true;
-      game.log(c.name + ' cut down a raider.', 'good');
+    if (bandit.hp <= 0) {
+      bandit.dead = true;
+      game.banditsKilled = (game.banditsKilled || 0) + 1;
+      game.log(c.name + ' cut down a bandit.', 'good');
     }
   },
 };
@@ -1634,11 +1950,10 @@ HF.Jobs = {
   },
 
   describe: function (game, task, travelling) {
-    const VERBS = { chop: 'Chopping', mine: 'Mining', forage: 'Foraging', harvest: 'Harvesting' };
     let what = 'Work';
     if (task.targetType === 'designation') {
       const d = game.designations[task.targetKey];
-      if (d) what = VERBS[d.type];
+      if (d) what = HF.ORDERS[d.type].verb;
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
@@ -1825,7 +2140,7 @@ HF.Build = {
       if (t.terrain === 'grass' && !t.feature) {
         // Whichever was stripped here grows back: trees, or the bush.
         if (game.rng.chance(0.6)) t.terrain = 'forest';
-        else t.feature = 'berries';
+        else t.feature = 'chestnut';
         game.dirtyTerrain = true;
       }
     }
@@ -1896,7 +2211,7 @@ HF.Events = {
         lost: 0,
       });
     }
-    game.log(count + ' raider' + (count > 1 ? 's' : '') + ' sighted to the ' +
+    game.log(count + ' bandit' + (count > 1 ? 's' : '') + ' sighted to the ' +
              HF.Events.compass(spawn, centre) + '.', 'bad');
     game.nextRaidTurn = game.turn + game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP);
   },
@@ -1925,7 +2240,7 @@ HF.Events = {
         target.hp = 0;
         game.releaseClaims(target.id);
         game.grief += 6;
-        game.log(target.name + ' was killed by raiders.', 'bad');
+        game.log(target.name + ' was cut down by bandits.', 'bad');
       }
       return;
     }
@@ -1950,7 +2265,7 @@ HF.Events = {
         if (b && b.built && HF.BUILDINGS[b.type].blocks) {
           b.hp -= game.rng.int(6, 11);
           if (b.hp <= 0) {
-            game.log('Raiders smashed through a wall.', 'bad');
+            game.log('Bandits have broken through the ishigaki.', 'bad');
             game.buildings[b.id] = null;
             tile.building = null;
             game.dirtyTerrain = true;
@@ -2002,14 +2317,14 @@ HF.Events = {
       if (farms.length) {
         const f = game.rng.pick(farms);
         f.growth = Math.max(0, f.growth - 10);
-        game.log('Blight struck a farm plot.', 'bad');
+        game.log('Rice blast has struck a paddy.', 'bad');
       }
     }
 
     if (game.rng.chance(0.04)) {
       const bonus = game.rng.int(6, 14);
       game.addResource('food', bonus);
-      game.log('A hunting party brought in ' + bonus + ' food.', 'good');
+      game.log('Foragers came back from the hills with ' + bonus + ' koku of stores.', 'good');
     }
   },
 
@@ -2020,17 +2335,17 @@ HF.Events = {
     const spot = spots[Math.min(spots.length - 1, game.rng.int(2, 6))];
     const c = HF.Colonists.create(game, spot.x, spot.y);
     game.colonists.push(c);
-    game.log(c.name + ' has joined the colony, skilled in ' +
-             HF.U.capitalize(c.specialty) + '.', 'good');
+    game.log(c.name + ' has come down from the hills to join the village, skilled in ' +
+             (HF.SKILL_LABELS[c.specialty] || c.specialty) + '.', 'good');
   },
 
   announceSeason: function (game) {
     const s = game.season();
     const notes = {
-      Spring: 'Spring. The ground thaws and crops start to grow.',
-      Summer: 'Summer. Crops ripen fastest now.',
-      Autumn: 'Autumn. Growth slows - stock the storehouse.',
-      Winter: 'Winter. Nothing grows, and the cold bites anyone far from a fire.',
+      Spring: 'Spring. The paddies thaw and the rice begins to come on.',
+      Summer: 'Summer. The rice swells fastest now.',
+      Autumn: 'Autumn. Growth slows, and the collectors are coming - fill the kura.',
+      Winter: 'Winter. Nothing grows, and the cold takes anyone far from a hearth.',
     };
     game.log(notes[s], 'season');
   },
@@ -2065,7 +2380,12 @@ HF.Game = function (seed) {
   this.nextRaidTurn = HF.CFG.RAID_START_TURN;
   this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
   this.gameOver = null;
-  this.milestoneShown = false;
+  this.endless = false;
+  this.levyIndex = 0;          // how many levies have been collected
+  this.levyFailures = 0;
+  this.levyStrikes = 0;
+  this.levyHistory = [];
+  this.banditsKilled = 0;
   this.dirtyTerrain = true;
   this.spoiledThisTurn = false;
 
@@ -2079,7 +2399,9 @@ HF.Game = function (seed) {
     this.colonists.push(HF.Colonists.create(this, s.x, s.y));
   }
 
-  this.log('Your party makes camp. Endure three years here.', 'season');
+  this.log('Four peasants settle this valley. Three harvests, three levies - hold the village together.',
+           'season');
+  this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
   HF.Events.announceSeason(this);
 };
 
@@ -2098,6 +2420,93 @@ HF.Game.prototype = {
   },
   dayOfSeason: function () {
     return ((this.turn - 1) % HF.CFG.TURNS_PER_SEASON) + 1;
+  },
+
+  /* ---------- the levy ----------
+     The daimyo's collectors come after each harvest. Rice is not just food:
+     it is what the village owes, and a granary that looks comfortable in
+     autumn can leave you starving through winter once they have been. */
+
+  levyDemand: function (index) {
+    const L = HF.CFG.LEVY;
+    if (index < L.demands.length) return L.demands[index];
+    return L.demands[L.demands.length - 1] + (index - L.demands.length + 1) * L.laterIncrease;
+  },
+
+  nextLevyTurn: function () {
+    const L = HF.CFG.LEVY;
+    if (this.levyIndex < L.turns.length) return L.turns[this.levyIndex];
+    const beyond = this.levyIndex - L.turns.length + 1;
+    return L.turns[L.turns.length - 1] + beyond * HF.CFG.TURNS_PER_SEASON * 4;
+  },
+
+  turnsToLevy: function () { return this.nextLevyTurn() - this.turn; },
+
+  checkLevy: function () {
+    const due = this.nextLevyTurn();
+    const demand = this.levyDemand(this.levyIndex);
+
+    if (this.turn === due - HF.CFG.LEVY.warnAhead) {
+      this.log('Word from the castle: the collectors come in ' + HF.CFG.LEVY.warnAhead +
+               ' turns for ' + demand + ' koku of rice.', 'levy');
+    }
+    if (this.turn < due) return;
+
+    const have = Math.floor(this.res.food);
+
+    if (have >= demand) {
+      this.res.food -= demand;
+      this.levyHistory.push({ year: this.year(), demand: demand, paid: true });
+      this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle.', 'levy');
+      this.grief = Math.max(0, this.grief - 4);
+      for (const c of this.aliveColonists()) c.mood = HF.U.clamp(c.mood + 7, 0, 100);
+    } else {
+      const short = demand - have;
+      this.res.food = 0;
+
+      // A near miss is a warning, not a strike. Without this band one bad
+      // harvest zeroes the granary and takes a villager, and the village can
+      // never climb back - the game would be decided turns before it ended.
+      const tolerated = have >= demand * HF.CFG.LEVY.tolerance;
+      this.levyHistory.push({
+        year: this.year(), demand: demand, paid: false, short: short, tolerated: tolerated,
+      });
+
+      this.levyFailures++;
+      const L = HF.CFG.LEVY;
+      const left = L.strikesAllowed + 1 - this.levyStrikes;
+
+      if (tolerated) {
+        this.levyStrikes += L.strikeNear;
+        this.grief += 5;
+        this.log('The levy falls ' + short + ' koku short. The collectors take everything and ' +
+                 'note the shortfall against the village.', 'bad');
+      } else {
+        this.levyStrikes += L.strikeBad;
+        this.grief += 10;
+        this.log('The levy falls ' + short + ' koku short - far short. The collectors strip the ' +
+                 'granary bare.', 'bad');
+        const alive = this.aliveColonists();
+        if (alive.length > 1 && this.levyStrikes <= L.strikesAllowed) {
+          const gone = this.rng.pick(alive);
+          gone.dead = true;
+          gone.departed = true;
+          this.releaseClaims(gone.id);
+          this.log(gone.name + ' has walked out rather than starve for the castle.', 'bad');
+        }
+      }
+      if (this.levyStrikes <= L.strikesAllowed && left > 0) {
+        this.log('The village stands, but only just. Another year like this ends it.', 'levy');
+      }
+    }
+
+    this.levyIndex++;
+
+    if (this.levyStrikes > HF.CFG.LEVY.strikesAllowed) {
+      this.gameOver = 'dissolved';
+      this.log('The castle has run out of patience. The village is broken up and its people ' +
+               'scattered across the province.', 'bad');
+    }
   },
 
   /* ---------- lookups ---------- */
@@ -2255,13 +2664,45 @@ HF.Game.prototype = {
 
     this.grief = Math.max(0, this.grief - 0.5);
 
+    this.checkLevy();
+
     if (this.aliveColonists().length === 0) {
       this.gameOver = 'lost';
-      this.log('The last of your colonists is gone. The camp falls silent.', 'bad');
-    } else if (!this.milestoneShown && this.turn >= HF.CFG.MILESTONE_TURN) {
-      this.milestoneShown = true;
-      this.log('Three years endured. The colony is here to stay - keep going as long as you can.', 'good');
+      this.log('The last of the villagers is gone. The valley falls silent.', 'bad');
+    } else if (!this.gameOver && !this.endless &&
+               this.turn >= HF.CFG.VICTORY_TURN && this.levyIndex >= HF.CFG.LEVY.turns.length) {
+      this.gameOver = 'won';
+      this.log('Three years, three levies, and the village still stands.', 'good');
     }
+  },
+
+  /* Dismisses the victory screen and lets the village keep going, with the
+     levies continuing to climb once a year. */
+  continuePlaying: function () {
+    if (this.gameOver !== 'won') return;
+    this.gameOver = null;
+    this.endless = true;
+    this.log('The village carries on. The castle will send for rice again next autumn.', 'levy');
+  },
+
+  /* Numbers for the ending screen. */
+  summary: function () {
+    const built = this.buildings.filter(function (b) { return b && b.built; });
+    const counts = {};
+    for (const b of built) counts[b.type] = (counts[b.type] || 0) + 1;
+    return {
+      turn: this.turn,
+      years: this.year(),
+      alive: this.aliveColonists().length,
+      lost: this.colonists.filter(function (c) { return c.dead && !c.departed; }).length,
+      departed: this.colonists.filter(function (c) { return c.departed; }).length,
+      rice: Math.floor(this.res.food),
+      leviesPaid: this.levyHistory.filter(function (l) { return l.paid; }).length,
+      leviesMissed: this.levyFailures,
+      bandits: this.banditsKilled,
+      buildings: counts,
+      built: built.length,
+    };
   },
 
   /* ---------- persistence ---------- */
@@ -2276,7 +2717,10 @@ HF.Game.prototype = {
       designations: this.designations, res: this.res, entries: this.entries,
       grief: this.grief, nextRaidTurn: this.nextRaidTurn,
       nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
-      milestoneShown: this.milestoneShown, startSite: this.startSite,
+      endless: this.endless, levyIndex: this.levyIndex,
+      levyFailures: this.levyFailures, levyStrikes: this.levyStrikes,
+      levyHistory: this.levyHistory,
+      banditsKilled: this.banditsKilled, startSite: this.startSite,
     });
   },
 };
@@ -2295,16 +2739,15 @@ HF.Game.load = function (json) {
 /* ===== js/camera.js ===== */
 /* Map viewport: pan and zoom.
 
-   The canvas stays a fixed-size bitmap and the camera moves it with a CSS
-   transform, so nothing in the renderer has to know about scrolling. Screen
-   coordinates are converted back to tiles here rather than measured off the
-   element, which keeps the maths exact under any transform. */
+   The canvas stays a fixed-size bitmap of the whole isometric map and the
+   camera moves it with a CSS transform, so the renderer never has to think
+   about scrolling. Screen coordinates are converted back to canvas space here;
+   turning canvas space into a tile is the projection's job, not the camera's. */
 window.HF = window.HF || {};
 
 HF.Camera = (function () {
-  const T = HF.CFG.TILE;
-  const MIN_SCALE = 0.3;
-  const MAX_SCALE = 3.2;
+  const MIN_SCALE = 0.22;
+  const MAX_SCALE = 2.4;
 
   let canvas = null;
   let stage = null;
@@ -2320,6 +2763,7 @@ HF.Camera = (function () {
   function apply() {
     canvas.style.transform =
       'translate(' + cam.x.toFixed(2) + 'px,' + cam.y.toFixed(2) + 'px) scale(' + cam.scale + ')';
+    if (HF.Render) HF.Render.invalidate();
   }
 
   /* Keeps the map inside the viewport, centring whichever axis is smaller than
@@ -2375,452 +2819,685 @@ HF.Camera = (function () {
     centerOn: function (tx, ty, scale) {
       const r = box();
       if (scale) cam.scale = HF.U.clamp(scale, MIN_SCALE, MAX_SCALE);
-      cam.x = r.width / 2 - (tx + 0.5) * T * cam.scale;
-      cam.y = r.height / 2 - (ty + 0.5) * T * cam.scale;
+      const p = HF.Iso.toScreen(tx, ty, 0);
+      cam.x = r.width / 2 - p.sx * cam.scale;
+      cam.y = r.height / 2 - p.sy * cam.scale;
       clampView();
       apply();
     },
 
-    /* Scale that fits roughly `tiles` tiles across the viewport - used to open
-       a phone at a tappable zoom instead of a 9-pixel-per-tile postage stamp. */
+    /* Scale that fits roughly `tiles` tiles across, used to open a phone at a
+       tappable zoom instead of showing the whole valley at once. */
     scaleForTilesAcross: function (tiles) {
-      return HF.U.clamp(box().width / (tiles * T), MIN_SCALE, MAX_SCALE);
+      return HF.U.clamp(box().width / (tiles * HF.Iso.TW), MIN_SCALE, MAX_SCALE);
     },
 
-    screenToTile: function (clientX, clientY) {
+    /* Screen point -> canvas pixel. */
+    toCanvas: function (clientX, clientY) {
       const r = box();
-      const x = Math.floor((clientX - r.left - cam.x) / cam.scale / T);
-      const y = Math.floor((clientY - r.top - cam.y) / cam.scale / T);
-      if (x < 0 || y < 0 || x >= HF.CFG.MAP_W || y >= HF.CFG.MAP_H) return null;
-      return { x: x, y: y };
+      return {
+        x: (clientX - r.left - cam.x) / cam.scale,
+        y: (clientY - r.top - cam.y) / cam.scale,
+      };
     },
 
-    /* Re-clamp after a resize or orientation change. */
+    /* The slice of the canvas currently on screen, so the renderer can skip
+       everything else. */
+    visibleRect: function () {
+      const r = box();
+      return {
+        x0: -cam.x / cam.scale,
+        y0: -cam.y / cam.scale,
+        x1: (r.width - cam.x) / cam.scale,
+        y1: (r.height - cam.y) / cam.scale,
+      };
+    },
+
     refresh: function () { clampView(); apply(); },
   };
 })();
 
 /* ===== js/render.js ===== */
-/* Canvas drawing. Terrain is painted once into an offscreen buffer and only
-   repainted when the map actually changes; everything that moves is drawn on
-   top of that each frame. */
+/* Isometric canvas drawing.
+
+   The scene is painted back to front, one diagonal at a time: every tile on a
+   given (x + y) is at the same depth, so ground goes down for the whole
+   diagonal and then everything standing on it. Nothing is cached - the game is
+   turn-based, so a frame is only drawn when something actually changed, and
+   tiles outside the viewport are skipped entirely. */
 window.HF = window.HF || {};
 
 HF.Render = (function () {
-  const T = HF.CFG.TILE;
+  const I = HF.Iso;
 
-  const COLORS = {
-    water: ['#2b556e', '#33627d'],
-    sand: ['#c9b184', '#d4bd92'],
-    grass: ['#63864a', '#719654'],
-    forest: ['#4d7040', '#567a46'],
-    hill: ['#847d6d', '#918a79'],
-    mountain: ['#6b665e', '#7a746b'],
+  /* Ground palettes, keyed by terrain. Sides are derived, not authored. */
+  const GROUND = {
+    water:    '#31536b',
+    sand:     '#c9b98d',
+    grass:    '#6f8b4e',
+    forest:   '#5e7c46',
+    hill:     '#8a8171',
+    mountain: '#7c7768',
   };
 
-  const ORDER_COLOR = {
-    chop: '#e0a83f',
-    mine: '#7fa8d9',
-    forage: '#dd7f8d',
-    harvest: '#9ad46a',
-  };
-
-  let canvas, ctx, buffer, bctx;
-
-  function mix(hexA, hexB, t) {
-    const a = parseInt(hexA.slice(1), 16), b = parseInt(hexB.slice(1), 16);
-    const ar = a >> 16, ag = (a >> 8) & 255, ab = a & 255;
-    const br = b >> 16, bg = (b >> 8) & 255, bb = b & 255;
-    const r = Math.round(ar + (br - ar) * t);
-    const g = Math.round(ag + (bg - ag) * t);
-    const bl = Math.round(ab + (bb - ab) * t);
-    return 'rgb(' + r + ',' + g + ',' + bl + ')';
-  }
+  let canvas, ctx;
+  let dirty = true;
 
   function init(cv) {
     canvas = cv;
-    canvas.width = HF.CFG.MAP_W * T;
-    canvas.height = HF.CFG.MAP_H * T;
+    canvas.width = I.width;
+    canvas.height = I.height;
     ctx = canvas.getContext('2d');
-    buffer = document.createElement('canvas');
-    buffer.width = canvas.width;
-    buffer.height = canvas.height;
-    bctx = buffer.getContext('2d');
+    dirty = true;
   }
 
-  /* ---------- terrain buffer ---------- */
+  function invalidate() { dirty = true; }
 
-  function paintTerrain(game) {
-    bctx.clearRect(0, 0, buffer.width, buffer.height);
+  /* ---------- colour helpers ---------- */
 
-    for (let y = 0; y < game.h; y++) {
-      for (let x = 0; x < game.w; x++) {
-        const tile = game.tiles[y * game.w + x];
-        const px = x * T, py = y * T;
-        const pal = COLORS[tile.terrain] || COLORS.grass;
-        bctx.fillStyle = mix(pal[0], pal[1], tile.variant);
-        bctx.fillRect(px, py, T, T);
+  /* Accepts both '#rrggbb' and the 'rgb(r,g,b)' that blend() and shade() hand
+     back, so colours can be piped through more than one of them. Parsing only
+     hex here meant every seasonally tinted tile came out as NaN, i.e. black. */
+  function parse(color) {
+    if (color.charCodeAt(0) === 35) {
+      const n = parseInt(color.slice(1), 16);
+      return [n >> 16, (n >> 8) & 255, n & 255];
+    }
+    const m = color.match(/-?\d+(\.\d+)?/g);
+    return [+m[0], +m[1], +m[2]];
+  }
+  function rgb(c) {
+    return 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')';
+  }
+  function shade(hex, f) {
+    const c = parse(hex);
+    return rgb([c[0] * f, c[1] * f, c[2] * f]);
+  }
+  function blend(hex, hex2, t) {
+    const a = parse(hex), b = parse(hex2);
+    return rgb([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+  }
 
-        if (tile.terrain === 'forest') drawTree(bctx, px, py, tile.variant);
-        else if (tile.terrain === 'mountain') drawMountain(bctx, px, py, tile.variant);
-        else if (tile.terrain === 'hill') drawRocks(bctx, px, py, tile.variant);
-        else if (tile.terrain === 'water') drawRipple(bctx, px, py, tile.variant);
+  /* Season is the loudest thing on the map, so it is painted into the ground
+     rather than washed over the top of it. */
+  function groundColor(tile, season, variant) {
+    let base = GROUND[tile.terrain];
+    const green = tile.terrain === 'grass' || tile.terrain === 'forest';
+    if (season === 'Summer' && green) base = blend(base, '#4f7a3a', 0.35);
+    else if (season === 'Autumn' && green) base = blend(base, '#a87c3a', 0.45);
+    else if (season === 'Winter' && tile.terrain !== 'water') base = blend(base, '#dde6ec', 0.55);
+    else if (season === 'Spring' && green) base = blend(base, '#8aa85c', 0.3);
+    const c = parse(base);
+    const j = (variant - 0.5) * 12;
+    return rgb([c[0] + j, c[1] + j, c[2] + j]);
+  }
 
-        if (tile.feature === 'berries') drawBerries(bctx, px, py, tile.variant);
+  /* ---------- primitives ---------- */
+
+  function diamond(sx, sy, hw, hh) {
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - hh);
+    ctx.lineTo(sx + hw, sy);
+    ctx.lineTo(sx, sy + hh);
+    ctx.lineTo(sx - hw, sy);
+    ctx.closePath();
+  }
+
+  /* A box standing on the diamond centred at (sx, sy). */
+  function isoBox(sx, sy, hw, hh, h, top, left, right) {
+    ctx.fillStyle = left;
+    ctx.beginPath();
+    ctx.moveTo(sx - hw, sy);
+    ctx.lineTo(sx, sy + hh);
+    ctx.lineTo(sx, sy + hh - h);
+    ctx.lineTo(sx - hw, sy - h);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = right;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy + hh);
+    ctx.lineTo(sx + hw, sy);
+    ctx.lineTo(sx + hw, sy - h);
+    ctx.lineTo(sx, sy + hh - h);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = top;
+    diamond(sx, sy - h, hw, hh);
+    ctx.fill();
+  }
+
+  function shadow(sx, sy, r) {
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* ---------- ground ---------- */
+
+  function drawGround(game, x, y, season) {
+    const tile = game.tiles[y * game.w + x];
+    const elev = I.elevOf(tile);
+    const p = I.toScreen(x, y, elev);
+    const top = groundColor(tile, season, tile.variant);
+
+    if (elev > 0) {
+      const h = elev * I.ELEV;
+      ctx.fillStyle = shade(GROUND[tile.terrain], 0.62);
+      ctx.beginPath();
+      ctx.moveTo(p.sx - I.HW, p.sy);
+      ctx.lineTo(p.sx, p.sy + I.HH);
+      ctx.lineTo(p.sx, p.sy + I.HH + h);
+      ctx.lineTo(p.sx - I.HW, p.sy + h);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = shade(GROUND[tile.terrain], 0.44);
+      ctx.beginPath();
+      ctx.moveTo(p.sx, p.sy + I.HH);
+      ctx.lineTo(p.sx + I.HW, p.sy);
+      ctx.lineTo(p.sx + I.HW, p.sy + h);
+      ctx.lineTo(p.sx, p.sy + I.HH + h);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.fillStyle = top;
+    diamond(p.sx, p.sy, I.HW, I.HH);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.13)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (tile.terrain === 'water') {
+      ctx.strokeStyle = 'rgba(210,232,245,0.22)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      const o = (tile.variant - 0.5) * 8;
+      ctx.moveTo(p.sx - 11 + o, p.sy + 2);
+      ctx.lineTo(p.sx + 1 + o, p.sy + 8);
+      ctx.stroke();
+    }
+    return p;
+  }
+
+  /* ---------- scenery ---------- */
+
+  function drawPine(sx, sy, v, season) {
+    shadow(sx + 3, sy + 3, 9);
+    ctx.fillStyle = '#4a3b2a';
+    ctx.fillRect(sx - 1.5, sy - 10, 3, 12);
+    const dark = season === 'Winter' ? '#3f5a49' : '#2f5535';
+    const lit = season === 'Winter' ? '#5b7a68' : '#3d6b3f';
+    for (let i = 0; i < 3; i++) {
+      const w = 13 - i * 3, top = sy - 14 - i * 9, base = sy - 4 - i * 9;
+      ctx.fillStyle = i === 2 ? lit : dark;
+      ctx.beginPath();
+      ctx.moveTo(sx, top);
+      ctx.lineTo(sx + w, base);
+      ctx.lineTo(sx - w, base);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (season === 'Winter') {
+      ctx.fillStyle = 'rgba(238,246,250,0.75)';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 32);
+      ctx.lineTo(sx + 5, sy - 25);
+      ctx.lineTo(sx - 5, sy - 25);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  function drawBamboo(sx, sy, v, season) {
+    shadow(sx + 2, sy + 3, 8);
+    const n = 4;
+    for (let i = 0; i < n; i++) {
+      const ox = (i - (n - 1) / 2) * 5 + (v - 0.5) * 3;
+      const hgt = 26 + ((i * 7 + v * 13) % 9);
+      ctx.strokeStyle = season === 'Autumn' ? '#a8a05a' : '#7f9c4a';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy);
+      ctx.lineTo(sx + ox + 1.5, sy - hgt);
+      ctx.stroke();
+      ctx.fillStyle = season === 'Winter' ? '#8fae86' : '#93b356';
+      ctx.beginPath();
+      ctx.ellipse(sx + ox + 2, sy - hgt - 2, 5, 2.4, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawChestnut(sx, sy, v, season) {
+    shadow(sx + 2, sy + 3, 9);
+    ctx.fillStyle = '#5a4530';
+    ctx.fillRect(sx - 1.5, sy - 12, 3, 13);
+    ctx.fillStyle = season === 'Autumn' ? '#b8863a' : season === 'Winter' ? '#7d7a6a' : '#557f3f';
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 17, 11, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (season !== 'Winter') {
+      ctx.fillStyle = '#8a5a2a';
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(sx - 5 + i * 5, sy - 13 + (i === 1 ? -3 : 0), 2, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
-
-    // Faint grid so the tile structure reads without dominating the art.
-    bctx.strokeStyle = 'rgba(0,0,0,0.10)';
-    bctx.lineWidth = 1;
-    bctx.beginPath();
-    for (let x = 0; x <= game.w; x++) { bctx.moveTo(x * T + 0.5, 0); bctx.lineTo(x * T + 0.5, buffer.height); }
-    for (let y = 0; y <= game.h; y++) { bctx.moveTo(0, y * T + 0.5); bctx.lineTo(buffer.width, y * T + 0.5); }
-    bctx.stroke();
   }
 
-  function drawTree(c, px, py, v) {
-    const cx = px + T / 2 + (v - 0.5) * 4;
-    const cy = py + T / 2 + (v - 0.5) * 3;
-    const r = T * 0.30 + v * 2;
-    c.fillStyle = '#3a5c33';
-    c.fillRect(cx - 1.5, cy, 3, T * 0.28);
-    c.fillStyle = v > 0.5 ? '#2f5730' : '#356334';
-    c.beginPath();
-    c.moveTo(cx, cy - r * 1.5);
-    c.lineTo(cx + r, cy + r * 0.55);
-    c.lineTo(cx - r, cy + r * 0.55);
-    c.closePath();
-    c.fill();
+  function drawRocks(sx, sy, v) {
+    ctx.fillStyle = 'rgba(58,54,48,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(sx - 5 + v * 6, sy - 1, 6, 3.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(sx + 7 - v * 5, sy - 5, 4.2, 2.4, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  function drawMountain(c, px, py, v) {
-    c.fillStyle = '#585349';
-    c.beginPath();
-    c.moveTo(px + T * 0.5, py + T * 0.12);
-    c.lineTo(px + T * 0.95, py + T * 0.9);
-    c.lineTo(px + T * 0.05, py + T * 0.9);
-    c.closePath();
-    c.fill();
-    c.fillStyle = v > 0.6 ? '#cfd3d6' : '#8d8880';
-    c.beginPath();
-    c.moveTo(px + T * 0.5, py + T * 0.12);
-    c.lineTo(px + T * 0.68, py + T * 0.45);
-    c.lineTo(px + T * 0.32, py + T * 0.45);
-    c.closePath();
-    c.fill();
-  }
-
-  function drawRocks(c, px, py, v) {
-    c.fillStyle = 'rgba(60,56,50,0.55)';
-    c.beginPath();
-    c.ellipse(px + T * (0.3 + v * 0.2), py + T * 0.62, T * 0.16, T * 0.11, 0, 0, Math.PI * 2);
-    c.fill();
-    c.beginPath();
-    c.ellipse(px + T * (0.65 - v * 0.15), py + T * 0.38, T * 0.11, T * 0.08, 0, 0, Math.PI * 2);
-    c.fill();
-  }
-
-  function drawRipple(c, px, py, v) {
-    c.strokeStyle = 'rgba(255,255,255,0.10)';
-    c.lineWidth = 1.5;
-    c.beginPath();
-    c.moveTo(px + T * 0.2, py + T * (0.35 + v * 0.3));
-    c.lineTo(px + T * 0.8, py + T * (0.35 + v * 0.3));
-    c.stroke();
-  }
-
-  function drawBerries(c, px, py, v) {
-    c.fillStyle = '#4a6b3a';
-    c.beginPath();
-    c.ellipse(px + T / 2, py + T * 0.6, T * 0.26, T * 0.2, 0, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = '#c8434f';
-    for (let i = 0; i < 3; i++) {
-      c.beginPath();
-      c.arc(px + T * (0.35 + i * 0.15), py + T * (0.52 + (i === 1 ? 0.14 : 0.05) + v * 0.05), 1.9, 0, Math.PI * 2);
-      c.fill();
+  function drawPeak(sx, sy, v, season) {
+    const h = 20 + v * 10;
+    ctx.fillStyle = '#6d6a5f';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - I.HH - h);
+    ctx.lineTo(sx + I.HW * 0.8, sy + 2);
+    ctx.lineTo(sx - I.HW * 0.8, sy + 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#84806f';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - I.HH - h);
+    ctx.lineTo(sx + I.HW * 0.8, sy + 2);
+    ctx.lineTo(sx, sy + 2);
+    ctx.closePath();
+    ctx.fill();
+    if (v > 0.45 || season === 'Winter') {
+      ctx.fillStyle = '#e8f0f5';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - I.HH - h);
+      ctx.lineTo(sx + 8, sy - I.HH - h + 13);
+      ctx.lineTo(sx - 8, sy - I.HH - h + 13);
+      ctx.closePath();
+      ctx.fill();
     }
+  }
+
+  function drawScenery(game, x, y, season) {
+    const tile = game.tiles[y * game.w + x];
+    if (tile.building != null) return;
+    const p = I.toScreen(x, y, I.elevOf(tile));
+    if (tile.terrain === 'forest') {
+      if (tile.variant > 0.68) drawBamboo(p.sx, p.sy, tile.variant, season);
+      else drawPine(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'mountain') {
+      drawPeak(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'hill') {
+      drawRocks(p.sx, p.sy, tile.variant);
+    }
+    if (tile.feature === 'chestnut') drawChestnut(p.sx, p.sy, tile.variant, season);
   }
 
   /* ---------- buildings ---------- */
 
-  function drawBuilding(c, game, b) {
-    const px = b.x * T, py = b.y * T;
+  function drawBuilding(game, b, season) {
+    const tile = game.tiles[b.y * game.w + b.x];
+    const p = I.toScreen(b.x, b.y, I.elevOf(tile));
     const def = HF.BUILDINGS[b.type];
 
     if (!b.built) {
-      c.save();
-      c.fillStyle = 'rgba(220,230,255,0.12)';
-      c.fillRect(px + 2, py + 2, T - 4, T - 4);
-      c.setLineDash([4, 3]);
-      c.strokeStyle = 'rgba(200,220,255,0.85)';
-      c.lineWidth = 1.5;
-      c.strokeRect(px + 2.5, py + 2.5, T - 5, T - 5);
-      c.restore();
-      c.fillStyle = 'rgba(230,240,255,0.9)';
-      c.font = 'bold 11px system-ui, sans-serif';
-      c.textAlign = 'center';
-      c.fillText(def.label.charAt(0), px + T / 2, py + T / 2 + 4);
-      progressBar(c, px, py, b.workDone / def.work, '#8fc7ff');
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = 'rgba(198,220,240,0.9)';
+      ctx.lineWidth = 1.6;
+      diamond(p.sx, p.sy, I.HW - 3, I.HH - 2);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(190,215,240,0.16)';
+      diamond(p.sx, p.sy, I.HW - 3, I.HH - 2);
+      ctx.fill();
+      progressPip(p.sx, p.sy - 16, b.workDone / def.work, '#9fd0ff');
       return;
     }
 
     if (b.type === 'house') {
-      c.fillStyle = '#8a6a45';
-      c.fillRect(px + 3, py + T * 0.42, T - 6, T * 0.5);
-      c.fillStyle = '#a8493c';
-      c.beginPath();
-      c.moveTo(px + T * 0.5, py + T * 0.12);
-      c.lineTo(px + T - 2, py + T * 0.45);
-      c.lineTo(px + 2, py + T * 0.45);
-      c.closePath();
-      c.fill();
-      c.fillStyle = '#3c2d1e';
-      c.fillRect(px + T * 0.42, py + T * 0.6, T * 0.16, T * 0.3);
-    } else if (b.type === 'storehouse') {
-      c.fillStyle = '#6f5837';
-      c.fillRect(px + 2, py + T * 0.3, T - 4, T * 0.62);
-      c.fillStyle = '#8a7048';
-      c.fillRect(px + 2, py + T * 0.3, T - 4, T * 0.14);
-      c.strokeStyle = '#3f3223';
-      c.lineWidth = 1;
-      c.strokeRect(px + 2.5, py + T * 0.3, T - 5, T * 0.62);
-    } else if (b.type === 'farm') {
-      const ripeness = HF.U.clamp(b.growth / HF.FARM.RIPE_AT, 0, 1);
-      c.fillStyle = '#5b452c';
-      c.fillRect(px + 1, py + 1, T - 2, T - 2);
-      c.strokeStyle = mix('#6d8c48', '#e0c14a', ripeness);
-      c.lineWidth = 2;
-      c.beginPath();
-      for (let i = 0; i < 3; i++) {
-        const yy = py + T * (0.28 + i * 0.22);
-        c.moveTo(px + 3, yy);
-        c.lineTo(px + T - 3, yy);
+      shadow(p.sx, p.sy + 4, 17);
+      isoBox(p.sx, p.sy, 15, 7.5, 9, '#6a5540', '#54432f', '#3f3325');   // walls
+      // thatched hipped roof
+      const ry = p.sy - 9;
+      ctx.fillStyle = '#b59660';
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 19, ry);
+      ctx.lineTo(p.sx, ry + 9);
+      ctx.lineTo(p.sx, ry - 4);
+      ctx.lineTo(p.sx - 6, ry - 15);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#8f7448';
+      ctx.beginPath();
+      ctx.moveTo(p.sx + 19, ry);
+      ctx.lineTo(p.sx, ry + 9);
+      ctx.lineTo(p.sx, ry - 4);
+      ctx.lineTo(p.sx + 6, ry - 15);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#a3854f';
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 6, ry - 15);
+      ctx.lineTo(p.sx + 6, ry - 15);
+      ctx.lineTo(p.sx + 19, ry);
+      ctx.lineTo(p.sx - 19, ry);
+      ctx.closePath();
+      ctx.fill();
+      if (season === 'Winter') {
+        ctx.fillStyle = 'rgba(238,246,250,0.6)';
+        ctx.beginPath();
+        ctx.moveTo(p.sx - 6, ry - 15);
+        ctx.lineTo(p.sx + 6, ry - 15);
+        ctx.lineTo(p.sx + 12, ry - 8);
+        ctx.lineTo(p.sx - 12, ry - 8);
+        ctx.closePath();
+        ctx.fill();
       }
-      c.stroke();
-      if (ripeness >= 1) {
-        c.fillStyle = '#f0d24a';
-        c.beginPath();
-        c.arc(px + T - 5, py + 5, 2.5, 0, Math.PI * 2);
-        c.fill();
+    } else if (b.type === 'storehouse') {
+      shadow(p.sx, p.sy + 4, 15);
+      isoBox(p.sx, p.sy, 13, 6.5, 17, '#ded7c4', '#c3bba6', '#a49c88');  // plaster
+      const ry = p.sy - 17;
+      ctx.fillStyle = '#414852';
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 16, ry + 1);
+      ctx.lineTo(p.sx, ry + 9);
+      ctx.lineTo(p.sx + 16, ry + 1);
+      ctx.lineTo(p.sx, ry - 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#2c3138';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    } else if (b.type === 'farm') {
+      const ripe = HF.U.clamp(b.growth / HF.FARM.RIPE_AT, 0, 1);
+      const water = season === 'Winter' ? '#8d9aa2' : '#4d7a72';
+      ctx.fillStyle = blend(water, '#cfae4a', ripe);
+      diamond(p.sx, p.sy, I.HW - 1, I.HH - 0.5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(30,40,30,0.45)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // rows of shoots running along the paddy
+      ctx.strokeStyle = ripe >= 1 ? '#e6c65c' : blend('#6f9a52', '#d8bf58', ripe);
+      ctx.lineWidth = 2;
+      for (let i = -1; i <= 1; i++) {
+        const off = i * 7;
+        ctx.beginPath();
+        ctx.moveTo(p.sx - 16 + off, p.sy + 8 - Math.abs(off) * 0.5);
+        ctx.lineTo(p.sx + off, p.sy - 8 + Math.abs(off) * 0.5 + 8);
+        ctx.stroke();
+      }
+      if (ripe >= 1) {
+        ctx.fillStyle = '#f0d874';
+        ctx.beginPath();
+        ctx.arc(p.sx + 15, p.sy - 8, 3, 0, Math.PI * 2);
+        ctx.fill();
       }
     } else if (b.type === 'campfire') {
-      c.fillStyle = '#4a4038';
-      c.beginPath();
-      c.arc(px + T / 2, py + T / 2, T * 0.34, 0, Math.PI * 2);
-      c.fill();
-      c.fillStyle = '#e8892e';
-      c.beginPath();
-      c.moveTo(px + T * 0.5, py + T * 0.24);
-      c.lineTo(px + T * 0.68, py + T * 0.66);
-      c.lineTo(px + T * 0.32, py + T * 0.66);
-      c.closePath();
-      c.fill();
-      c.fillStyle = '#f5cf5a';
-      c.beginPath();
-      c.arc(px + T * 0.5, py + T * 0.56, T * 0.1, 0, Math.PI * 2);
-      c.fill();
+      shadow(p.sx, p.sy + 2, 12);
+      ctx.fillStyle = '#5a5347';
+      for (let i = 0; i < 5; i++) {
+        const a = i / 5 * Math.PI * 2;
+        ctx.beginPath();
+        ctx.ellipse(p.sx + Math.cos(a) * 11, p.sy + Math.sin(a) * 5.5, 3.4, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#d9702a';
+      ctx.beginPath();
+      ctx.moveTo(p.sx, p.sy - 18);
+      ctx.lineTo(p.sx + 7, p.sy + 1);
+      ctx.lineTo(p.sx - 7, p.sy + 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#f2cc55';
+      ctx.beginPath();
+      ctx.moveTo(p.sx, p.sy - 10);
+      ctx.lineTo(p.sx + 3.5, p.sy);
+      ctx.lineTo(p.sx - 3.5, p.sy);
+      ctx.closePath();
+      ctx.fill();
+    } else if (b.type === 'tower') {
+      shadow(p.sx, p.sy + 4, 15);
+      isoBox(p.sx, p.sy, 8, 4, 30, '#7a6045', '#5f4a34', '#463628');     // legs
+      isoBox(p.sx, p.sy - 30, 13, 6.5, 11, '#8a6c4c', '#6d543a', '#52402c');
+      const ry = p.sy - 41;
+      ctx.fillStyle = '#4a5058';
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 16, ry + 1);
+      ctx.lineTo(p.sx, ry + 9);
+      ctx.lineTo(p.sx + 16, ry + 1);
+      ctx.lineTo(p.sx, ry - 7);
+      ctx.closePath();
+      ctx.fill();
     } else if (b.type === 'wall') {
-      c.fillStyle = '#9a958c';
-      c.fillRect(px + 1, py + 1, T - 2, T - 2);
-      c.strokeStyle = '#6f6b64';
-      c.lineWidth = 1;
-      c.strokeRect(px + 1.5, py + 1.5, T - 3, T - 3);
-      c.beginPath();
-      c.moveTo(px + 1, py + T * 0.5); c.lineTo(px + T - 1, py + T * 0.5);
-      c.moveTo(px + T * 0.5, py + 1); c.lineTo(px + T * 0.5, py + T * 0.5);
-      c.moveTo(px + T * 0.3, py + T * 0.5); c.lineTo(px + T * 0.3, py + T - 1);
-      c.stroke();
-      if (def.hp && b.hp < def.hp) progressBar(c, px, py, b.hp / def.hp, '#d9584f');
+      shadow(p.sx, p.sy + 3, 14);
+      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 15, '#9b958a', '#7d776d', '#5f5a52');
+      ctx.strokeStyle = 'rgba(40,38,34,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(p.sx - I.HW + 2, p.sy - 8); ctx.lineTo(p.sx, p.sy - 2);
+      ctx.moveTo(p.sx + I.HW - 2, p.sy - 8); ctx.lineTo(p.sx, p.sy - 2);
+      ctx.stroke();
+      if (def.hp && b.hp < def.hp) progressPip(p.sx, p.sy - 26, b.hp / def.hp, '#d9584f');
     }
   }
 
-  function progressBar(c, px, py, frac, color) {
-    const w = T - 6;
-    c.fillStyle = 'rgba(0,0,0,0.55)';
-    c.fillRect(px + 3, py + T - 6, w, 4);
-    c.fillStyle = color;
-    c.fillRect(px + 3, py + T - 6, w * HF.U.clamp(frac, 0, 1), 4);
+  function progressPip(sx, sy, frac, color) {
+    const w = 26;
+    ctx.fillStyle = 'rgba(12,14,18,0.75)';
+    ctx.fillRect(sx - w / 2 - 1, sy - 4, w + 2, 6);
+    ctx.fillStyle = color;
+    ctx.fillRect(sx - w / 2, sy - 3, w * HF.U.clamp(frac, 0, 1), 4);
   }
 
-  /* ---------- overlays ---------- */
+  /* ---------- overlays and figures ---------- */
 
-  function drawDesignation(c, d) {
-    const px = d.x * T, py = d.y * T;
-    const color = ORDER_COLOR[d.type] || '#ffffff';
-    c.strokeStyle = color;
-    c.lineWidth = 2;
-    const s = 6;
-    // corner brackets
-    c.beginPath();
-    c.moveTo(px + 2, py + 2 + s); c.lineTo(px + 2, py + 2); c.lineTo(px + 2 + s, py + 2);
-    c.moveTo(px + T - 2 - s, py + 2); c.lineTo(px + T - 2, py + 2); c.lineTo(px + T - 2, py + 2 + s);
-    c.moveTo(px + 2, py + T - 2 - s); c.lineTo(px + 2, py + T - 2); c.lineTo(px + 2 + s, py + T - 2);
-    c.moveTo(px + T - 2 - s, py + T - 2); c.lineTo(px + T - 2, py + T - 2); c.lineTo(px + T - 2, py + T - 2 - s);
-    c.stroke();
-    const work = HF.ORDERS[d.type].work;
-    if (d.workDone > 0.01) progressBar(c, px, py, d.workDone / work, color);
+  function drawDesignation(game, d) {
+    const tile = game.tiles[d.y * game.w + d.x];
+    const p = I.toScreen(d.x, d.y, I.elevOf(tile));
+    const order = HF.ORDERS[d.type];
+    ctx.strokeStyle = order.color;
+    ctx.lineWidth = 2;
+    diamond(p.sx, p.sy, I.HW - 4, I.HH - 2);
+    ctx.stroke();
+    ctx.fillStyle = order.color;
+    ctx.globalAlpha = 0.16;
+    diamond(p.sx, p.sy, I.HW - 4, I.HH - 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    if (d.workDone > 0.01) progressPip(p.sx, p.sy - 4, d.workDone / order.work, order.color);
   }
 
   function moodColor(mood) {
-    if (mood >= 60) return '#7ec46a';
-    if (mood >= 35) return '#e0c14a';
-    return '#d9584f';
+    if (mood >= 60) return '#8ac46a';
+    if (mood >= 35) return '#e0b64a';
+    return '#c8452f';
   }
 
-  function drawColonist(c, game, col, selected) {
-    const cx = col.x * T + T / 2;
-    const cy = col.y * T + T / 2;
-
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    c.beginPath();
-    c.ellipse(cx, cy + T * 0.32, T * 0.28, T * 0.12, 0, 0, Math.PI * 2);
-    c.fill();
+  /* A peasant: indigo work clothes and a straw kasa, which reads at any zoom. */
+  function drawVillager(game, c, selected) {
+    const tile = game.tiles[c.y * game.w + c.x];
+    const p = I.toScreen(c.x, c.y, I.elevOf(tile));
 
     if (selected) {
-      c.strokeStyle = '#f0c25a';
-      c.lineWidth = 2.5;
-      c.beginPath();
-      c.arc(cx, cy, T * 0.46, 0, Math.PI * 2);
-      c.stroke();
+      ctx.strokeStyle = '#e0b64a';
+      ctx.lineWidth = 2.5;
+      diamond(p.sx, p.sy, I.HW - 5, I.HH - 3);
+      ctx.stroke();
     }
+    shadow(p.sx, p.sy + 1, 8);
 
-    c.fillStyle = '#efe3c8';
-    c.strokeStyle = '#22252c';
-    c.lineWidth = 2;
-    c.beginPath();
-    c.arc(cx, cy, T * 0.32, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
+    const bodyTop = p.sy - 19, bodyBot = p.sy - 2;
+    ctx.fillStyle = c.asleep ? '#4a5a72' : '#3d5a7d';
+    ctx.beginPath();
+    ctx.moveTo(p.sx - 3.5, bodyTop);
+    ctx.lineTo(p.sx + 3.5, bodyTop);
+    ctx.lineTo(p.sx + 5.5, bodyBot);
+    ctx.lineTo(p.sx - 5.5, bodyBot);
+    ctx.closePath();
+    ctx.fill();
 
-    c.fillStyle = '#22252c';
-    c.font = 'bold 10px system-ui, sans-serif';
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillText(col.name.charAt(0), cx, cy + 0.5);
-    c.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#e6c9a4';
+    ctx.beginPath();
+    ctx.arc(p.sx, bodyTop - 3, 3.4, 0, Math.PI * 2);
+    ctx.fill();
 
-    // mood pip
-    c.fillStyle = moodColor(col.mood);
-    c.beginPath();
-    c.arc(cx + T * 0.28, cy - T * 0.28, 3, 0, Math.PI * 2);
-    c.fill();
+    ctx.fillStyle = '#d3b476';                       // kasa
+    ctx.beginPath();
+    ctx.moveTo(p.sx, bodyTop - 11);
+    ctx.lineTo(p.sx + 8.5, bodyTop - 4);
+    ctx.lineTo(p.sx - 8.5, bodyTop - 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(70,55,30,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 
-    if (col.asleep) {
-      c.fillStyle = '#cfe3ff';
-      c.font = 'bold 10px system-ui, sans-serif';
-      c.fillText('z', cx - T * 0.3, cy - T * 0.24);
+    ctx.fillStyle = moodColor(c.mood);
+    ctx.beginPath();
+    ctx.arc(p.sx + 8, bodyTop - 10, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (c.asleep) {
+      ctx.fillStyle = '#cfe3ff';
+      ctx.font = 'bold 11px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('z', p.sx - 9, bodyTop - 8);
     }
-    if (col.hp < col.maxHp) progressBar(c, col.x * T, col.y * T, col.hp / col.maxHp, '#d9584f');
+    if (c.hp < c.maxHp) progressPip(p.sx, p.sy - 30, c.hp / c.maxHp, '#c8452f');
   }
 
-  function drawRaider(c, r) {
-    const cx = r.x * T + T / 2, cy = r.y * T + T / 2;
-    c.fillStyle = 'rgba(0,0,0,0.35)';
-    c.beginPath();
-    c.ellipse(cx, cy + T * 0.32, T * 0.26, T * 0.11, 0, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = '#a5342f';
-    c.strokeStyle = '#2a1414';
-    c.lineWidth = 2;
-    c.beginPath();
-    c.moveTo(cx, cy - T * 0.36);
-    c.lineTo(cx + T * 0.32, cy);
-    c.lineTo(cx, cy + T * 0.36);
-    c.lineTo(cx - T * 0.32, cy);
-    c.closePath();
-    c.fill();
-    c.stroke();
-    if (r.hp < r.maxHp) progressBar(c, r.x * T, r.y * T, r.hp / r.maxHp, '#ff6b5e');
+  function drawBandit(game, r) {
+    const tile = game.tiles[r.y * game.w + r.x];
+    const p = I.toScreen(r.x, r.y, I.elevOf(tile));
+    shadow(p.sx, p.sy + 1, 8);
+    const bodyTop = p.sy - 20, bodyBot = p.sy - 2;
+    ctx.fillStyle = '#4a3f3a';
+    ctx.beginPath();
+    ctx.moveTo(p.sx - 4, bodyTop);
+    ctx.lineTo(p.sx + 4, bodyTop);
+    ctx.lineTo(p.sx + 6, bodyBot);
+    ctx.lineTo(p.sx - 6, bodyBot);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#d8b48c';
+    ctx.beginPath();
+    ctx.arc(p.sx, bodyTop - 3.5, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#b7332a';                       // hachimaki
+    ctx.fillRect(p.sx - 4, bodyTop - 6.5, 8, 2.4);
+    ctx.strokeStyle = '#cfd4da';                     // blade
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(p.sx + 6, bodyTop + 2);
+    ctx.lineTo(p.sx + 13, bodyTop - 7);
+    ctx.stroke();
+    if (r.hp < r.maxHp) progressPip(p.sx, p.sy - 31, r.hp / r.maxHp, '#e0705f');
   }
 
   /* ---------- frame ---------- */
 
-  function draw(game, view) {
-    if (game.dirtyTerrain) { paintTerrain(game); game.dirtyTerrain = false; }
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(buffer, 0, 0);
+  function draw(game, view, force) {
+    if (!dirty && !force) return;
+    dirty = false;
 
-    if (game.season() === 'Winter') {
-      ctx.fillStyle = 'rgba(198,220,240,0.18)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (game.season() === 'Autumn') {
-      ctx.fillStyle = 'rgba(224,160,60,0.08)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
+    const season = game.season();
+    ctx.fillStyle = '#0e1116';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // warmth radius of campfires, so winter planning is visible
-    if (game.season() === 'Winter') {
-      for (const b of game.buildings) {
-        if (!b || !b.built) continue;
-        const def = HF.BUILDINGS[b.type];
-        if (!def.warmth) continue;
-        const grd = ctx.createRadialGradient(
-          b.x * T + T / 2, b.y * T + T / 2, T,
-          b.x * T + T / 2, b.y * T + T / 2, def.warmth * T
-        );
-        grd.addColorStop(0, 'rgba(255,180,80,0.18)');
-        grd.addColorStop(1, 'rgba(255,180,80,0)');
-        ctx.fillStyle = grd;
-        ctx.fillRect((b.x - def.warmth) * T, (b.y - def.warmth) * T,
-                     def.warmth * 2 * T, def.warmth * 2 * T);
-      }
-    }
+    const vis = HF.Camera.visibleRect();
+    const pad = 90;
 
-    for (const b of game.buildings) if (b) drawBuilding(ctx, game, b);
-    for (const k in game.designations) drawDesignation(ctx, game.designations[k]);
+    // Index movable things by tile so they can be drawn at the right depth.
+    const byTile = {};
+    function put(key, item) { (byTile[key] || (byTile[key] = [])).push(item); }
+    for (const c of game.colonists) if (!c.dead) put(HF.U.key(c.x, c.y), { kind: 'v', c: c });
+    for (const r of game.raiders) if (!r.dead) put(HF.U.key(r.x, r.y), { kind: 'b', r: r });
 
-    // path of the selected colonist
     const sel = view.selectedId != null ? game.colonistById(view.selectedId) : null;
-    if (sel && sel.task && sel.task.path && sel.task.path.length) {
-      ctx.strokeStyle = 'rgba(240,194,90,0.75)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(sel.x * T + T / 2, sel.y * T + T / 2);
-      for (const p of sel.task.path) ctx.lineTo(p.x * T + T / 2, p.y * T + T / 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+    const dragRect = view.drag ? {
+      x0: Math.min(view.drag.x0, view.drag.x1), x1: Math.max(view.drag.x0, view.drag.x1),
+      y0: Math.min(view.drag.y0, view.drag.y1), y1: Math.max(view.drag.y0, view.drag.y1),
+    } : null;
 
-    for (const c of game.colonists) if (!c.dead) drawColonist(ctx, game, c, sel && sel.id === c.id);
-    for (const r of game.raiders) if (!r.dead) drawRaider(ctx, r);
+    /* Screen position is a pure function of the tile, so the visible tiles can
+       be solved for rather than tested one by one: a diagonal's y depends only
+       on d = x + y, and within a diagonal x is linear in screen x. On a phone
+       this is the difference between touching sixty tiles and all twelve
+       hundred of them. */
+    const dFrom = Math.max(0, Math.floor((vis.y0 - pad - I.originY) / I.HH));
+    const dTo = Math.min(I.maxDepth, Math.ceil((vis.y1 + pad - I.originY) / I.HH));
 
-    // hover / drag preview
-    if (view.drag) {
-      const x0 = Math.min(view.drag.x0, view.drag.x1), x1 = Math.max(view.drag.x0, view.drag.x1);
-      const y0 = Math.min(view.drag.y0, view.drag.y1), y1 = Math.max(view.drag.y0, view.drag.y1);
-      ctx.fillStyle = 'rgba(240,194,90,0.18)';
-      ctx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T);
-      ctx.strokeStyle = '#f0c25a';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x0 * T + 1, y0 * T + 1, (x1 - x0 + 1) * T - 2, (y1 - y0 + 1) * T - 2);
-    } else if (view.hover) {
-      const hx = view.hover.x * T, hy = view.hover.y * T;
-      let ok = true;
-      if (view.mode && view.mode.kind === 'build') {
-        ok = HF.Build.canPlace(game, view.mode.id, view.hover.x, view.hover.y).ok;
-      } else if (view.mode && view.mode.kind === 'order') {
-        const tile = HF.Map.at(game, view.hover.x, view.hover.y);
-        ok = tile && HF.ORDERS[view.mode.id].valid(tile) && tile.building == null;
+    for (let d = dFrom; d <= dTo; d++) {
+      const lo = (vis.x0 - pad - I.originX) / I.HW;
+      const hi = (vis.x1 + pad - I.originX) / I.HW;
+      const from = Math.max(I.rowStart(d), Math.floor((lo + d) / 2));
+      const to = Math.min(I.rowEnd(d), Math.ceil((hi + d) / 2));
+
+      for (let x = from; x <= to; x++) {
+        drawGround(game, x, d - x, season);
       }
-      ctx.strokeStyle = ok ? 'rgba(255,255,255,0.85)' : 'rgba(217,88,79,0.9)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(hx + 1, hy + 1, T - 2, T - 2);
+
+      for (let x = from; x <= to; x++) {
+        const y = d - x;
+        const key = HF.U.key(x, y);
+        const des = game.designations[key];
+        if (des) drawDesignation(game, des);
+
+        if (dragRect && x >= dragRect.x0 && x <= dragRect.x1 &&
+            y >= dragRect.y0 && y <= dragRect.y1) {
+          const tp = I.toScreen(x, y, I.elevOf(game.tiles[y * game.w + x]));
+          ctx.fillStyle = 'rgba(224,182,74,0.3)';
+          diamond(tp.sx, tp.sy, I.HW - 2, I.HH - 1);
+          ctx.fill();
+        }
+
+        if (view.hover && view.hover.x === x && view.hover.y === y && !dragRect) {
+          const tp = I.toScreen(x, y, I.elevOf(game.tiles[y * game.w + x]));
+          ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+          ctx.lineWidth = 2;
+          diamond(tp.sx, tp.sy, I.HW - 2, I.HH - 1);
+          ctx.stroke();
+        }
+
+        drawScenery(game, x, y, season);
+
+        const tile = game.tiles[y * game.w + x];
+        if (tile.building != null) {
+          const b = game.buildings[tile.building];
+          if (b) drawBuilding(game, b, season);
+        }
+
+        const here = byTile[key];
+        if (here) {
+          for (const item of here) {
+            if (item.kind === 'v') drawVillager(game, item.c, !!sel && sel.id === item.c.id);
+            else drawBandit(game, item.r);
+          }
+        }
+      }
     }
   }
 
-  return { init: init, draw: draw, TILE: T };
+  return { init: init, draw: draw, invalidate: invalidate };
 })();
 
 /* ===== js/ui.js ===== */
 /* DOM panels and input handling.
 
    Everything the player can do goes through a single "mode" (none / order /
-   build / cancel) applied to a tile or a dragged rectangle of tiles. Input is
-   pointer-based so mouse and touch share one path: with a tool selected a drag
-   paints, with no tool a drag pans, and two fingers always pinch-zoom. */
+   build / cancel) applied to a tile or a dragged rectangle of tiles. Tools are
+   chosen from a picker sheet that lists every option with its cost and what it
+   is for, rather than a strip of buttons that can scroll out of reach. */
 window.HF = window.HF || {};
 
 HF.UI = (function () {
@@ -2829,6 +3506,7 @@ HF.UI = (function () {
   let stage = null;
   const view = { hover: null, selectedId: null, mode: { kind: 'none', id: null }, drag: null };
 
+  let endingDismissedFor = null;   // which gameOver state the player has closed
   const el = {};
   function $(id) { return document.getElementById(id); }
   function isNarrow() { return window.innerWidth < 900; }
@@ -2844,15 +3522,16 @@ HF.UI = (function () {
 
     el.stats = $('stats');
     el.calendar = $('calendar');
+    el.levy = $('levy');
     el.colonists = $('colonist-panel');
     el.log = $('log');
     el.tooltip = $('tooltip');
     el.banner = $('banner');
-    el.orders = $('orders');
-    el.builds = $('builds');
     el.sidebar = $('sidebar');
+    el.picker = $('picker');
+    el.pickerList = $('picker-list');
+    el.pickerTitle = $('picker-title');
 
-    buildToolbar();
     bindPointer();
     bindButtons();
     bindKeys();
@@ -2866,72 +3545,27 @@ HF.UI = (function () {
 
   function resetCamera() {
     const c = game.colonyCentre();
-    if (isNarrow()) HF.Camera.centerOn(c.x, c.y, HF.Camera.scaleForTilesAcross(15));
-    else HF.Camera.fit();
+    if (isNarrow()) HF.Camera.centerOn(c.x, c.y, HF.Camera.scaleForTilesAcross(11));
+    else HF.Camera.centerOn(c.x, c.y, 0.85);
   }
 
   function setGame(g) {
     game = g;
     view.selectedId = null;
     view.drag = null;
+    endingDismissedFor = null;
     setMode('none', null);
-    game.dirtyTerrain = true;
     resetCamera();
     refresh();
   }
 
+  /* The game is turn-based, so a frame is only painted when something moved. */
   function frame() {
     HF.Render.draw(game, view);
     requestAnimationFrame(frame);
   }
 
-  /* ---------- toolbar ---------- */
-
-  function buildToolbar() {
-    el.orders.innerHTML = '<span class="group-label">Orders</span>';
-    for (const id in HF.ORDERS) {
-      const o = HF.ORDERS[id];
-      if (!o.key) continue;                       // harvest is issued by the farm itself
-      const b = document.createElement('button');
-      b.className = 'tool';
-      b.dataset.mode = 'order';
-      b.dataset.id = id;
-      b.innerHTML = '<span class="swatch ' + id + '"></span>' + o.label + '<kbd>' + o.key + '</kbd>';
-      b.title = o.hint;
-      b.addEventListener('click', function () { setMode('order', id); });
-      el.orders.appendChild(b);
-    }
-    const cancel = document.createElement('button');
-    cancel.className = 'tool danger';
-    cancel.dataset.mode = 'cancel';
-    cancel.innerHTML = 'Cancel<kbd>X</kbd>';
-    cancel.title = 'Remove work orders and buildings. Finished buildings refund half.';
-    cancel.addEventListener('click', function () { setMode('cancel', null); });
-    el.orders.appendChild(cancel);
-
-    el.builds.innerHTML = '<span class="group-label">Build</span>';
-    let n = 1;
-    for (const id in HF.BUILDINGS) {
-      const def = HF.BUILDINGS[id];
-      const key = String(n++);
-      const b = document.createElement('button');
-      b.className = 'tool';
-      b.dataset.mode = 'build';
-      b.dataset.id = id;
-      b.innerHTML = def.label + '<span class="cost">' + costText(def) + '</span><kbd>' + key + '</kbd>';
-      b.title = def.desc;
-      b.addEventListener('click', function () { setMode('build', id); });
-      el.builds.appendChild(b);
-    }
-  }
-
-  const RES_ABBR = { wood: 'w', stone: 's', food: 'f' };
-
-  function costText(def) {
-    const parts = [];
-    for (const r in def.cost) parts.push(def.cost[r] + (RES_ABBR[r] || r.charAt(0)));
-    return parts.join(' ');
-  }
+  /* ---------- tool selection ---------- */
 
   function setMode(kind, id) {
     if (view.mode.kind === kind && view.mode.id === id) {
@@ -2939,13 +3573,21 @@ HF.UI = (function () {
     } else {
       view.mode = { kind: kind, id: id };
     }
-    for (const b of document.querySelectorAll('.tool')) {
-      b.classList.toggle('active',
-        b.dataset.mode === view.mode.kind && (b.dataset.id || null) === view.mode.id);
-    }
     stage.classList.toggle('painting', view.mode.kind !== 'none');
-    // A tool is useless behind the colony sheet, so close it when one is picked.
     if (view.mode.kind !== 'none') closeSheet();
+    updateToolButtons();
+    HF.Render.invalidate();
+  }
+
+  function updateToolButtons() {
+    const orderBtn = $('pick-order'), buildBtn = $('pick-build'), cancelBtn = $('tool-cancel');
+    orderBtn.querySelector('.sel').textContent =
+      view.mode.kind === 'order' ? HF.ORDERS[view.mode.id].label : 'Choose…';
+    buildBtn.querySelector('.sel').textContent =
+      view.mode.kind === 'build' ? HF.BUILDINGS[view.mode.id].label : 'Choose…';
+    orderBtn.classList.toggle('active', view.mode.kind === 'order');
+    buildBtn.classList.toggle('active', view.mode.kind === 'build');
+    cancelBtn.classList.toggle('active', view.mode.kind === 'cancel');
     updateHint();
   }
 
@@ -2955,14 +3597,84 @@ HF.UI = (function () {
     const hint = $('mode-hint');
     if (view.mode.kind === 'none') { hint.className = ''; hint.innerHTML = ''; return; }
     let text;
-    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' - drag over the map';
-    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label;
-    else text = 'Cancel - drag over orders to remove';
+    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' — drag over the map';
+    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label +
+                                                ' — tap a tile';
+    else text = 'Cancel — drag over what to remove';
     hint.innerHTML = text + '<span class="clear">&times;</span>';
     hint.className = 'show';
   }
 
+  function costText(cost) {
+    const parts = [];
+    for (const r in cost) parts.push(cost[r] + ' ' + HF.RESOURCES[r].label);
+    return parts.join(' + ');
+  }
+
+  function affordable(cost) {
+    for (const r in cost) if (game.res[r] < cost[r]) return false;
+    return true;
+  }
+
+  function shortfall(cost) {
+    const parts = [];
+    for (const r in cost) {
+      const missing = Math.ceil(cost[r] - game.res[r]);
+      if (missing > 0) parts.push(missing + ' more ' + HF.RESOURCES[r].label.toLowerCase());
+    }
+    return parts.join(', ');
+  }
+
+  /* The picker lists every tool with its cost and purpose. This exists because
+     a scrolling strip of buttons hid the whole build menu off the side of a
+     phone screen, which made building undiscoverable. */
+  function openPicker(kind) {
+    el.pickerTitle.textContent = kind === 'order' ? 'Work Orders' : 'Build';
+    let html = '';
+
+    if (kind === 'order') {
+      for (const id in HF.ORDERS) {
+        const o = HF.ORDERS[id];
+        if (!o.key) continue;
+        html += '<button class="pick" data-kind="order" data-id="' + id + '">' +
+                '<span class="pick-mark" style="background:' + o.color + '"></span>' +
+                '<span class="pick-text"><span class="pick-name">' + o.label + '</span>' +
+                '<span class="pick-desc">' + o.hint + '</span></span>' +
+                '<span class="pick-cost free">free</span></button>';
+      }
+    } else {
+      for (const id in HF.BUILDINGS) {
+        const b = HF.BUILDINGS[id];
+        const ok = affordable(b.cost);
+        html += '<button class="pick' + (ok ? '' : ' unaffordable') + '" data-kind="build" data-id="' +
+                id + '"' + (ok ? '' : ' disabled') + '>' +
+                '<span class="pick-mark build ' + id + '"></span>' +
+                '<span class="pick-text"><span class="pick-name">' + b.label +
+                (b.sub ? ' <em>' + b.sub + '</em>' : '') + '</span>' +
+                '<span class="pick-desc">' + b.desc + '</span></span>' +
+                '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
+                (ok ? costText(b.cost) : shortfall(b.cost)) + '</span></button>';
+      }
+    }
+
+    el.pickerList.innerHTML = html;
+    for (const btn of el.pickerList.querySelectorAll('.pick')) {
+      btn.addEventListener('click', function () {
+        setMode(btn.dataset.kind, btn.dataset.id);
+        closePicker();
+      });
+    }
+    el.picker.classList.add('open');
+  }
+
+  function closePicker() { el.picker.classList.remove('open'); }
+
   /* ---------- pointer input ---------- */
+
+  function tileAt(clientX, clientY) {
+    const p = HF.Camera.toCanvas(clientX, clientY);
+    return HF.Iso.toTile(game, p.x, p.y);
+  }
 
   function bindPointer() {
     const pointers = new Map();
@@ -2974,10 +3686,8 @@ HF.UI = (function () {
 
     stage.addEventListener('pointerdown', function (e) {
       if (e.target.closest('#map-controls') || e.target.closest('#help') ||
-          e.target.closest('#mode-hint')) return;
+          e.target.closest('#ending') || e.target.closest('#mode-hint')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      // Capture keeps a drag alive if the finger leaves the map, but it is not
-      // worth losing all input over if the browser refuses it.
       try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: 0 });
 
@@ -2987,14 +3697,16 @@ HF.UI = (function () {
         gesture = 'pinch';
         const p = Array.from(pointers.values());
         pinch = { d: spread(p[0], p[1]), mx: (p[0].x + p[1].x) / 2, my: (p[0].y + p[1].y) / 2 };
+        HF.Render.invalidate();
         return;
       }
       if (pointers.size > 2) return;
 
-      const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+      const t = tileAt(e.clientX, e.clientY);
       if (view.mode.kind !== 'none' && t) {
         gesture = 'paint';
         view.drag = { x0: t.x, y0: t.y, x1: t.x, y1: t.y };
+        HF.Render.invalidate();
       } else {
         gesture = 'tap';                    // becomes a pan once it moves far enough
         leadPointer = e.pointerId;
@@ -3018,8 +3730,11 @@ HF.UI = (function () {
           return;
         }
         if (gesture === 'paint' && view.drag) {
-          const t = HF.Camera.screenToTile(e.clientX, e.clientY);
-          if (t) { view.drag.x1 = t.x; view.drag.y1 = t.y; }
+          const t = tileAt(e.clientX, e.clientY);
+          if (t && (t.x !== view.drag.x1 || t.y !== view.drag.y1)) {
+            view.drag.x1 = t.x; view.drag.y1 = t.y;
+            HF.Render.invalidate();
+          }
         } else if (e.pointerId === leadPointer && (gesture === 'tap' || gesture === 'pan')) {
           if (gesture === 'tap' && p.moved > 10) gesture = 'pan';
           if (gesture === 'pan') HF.Camera.panBy(dx, dy);
@@ -3027,8 +3742,11 @@ HF.UI = (function () {
       }
 
       if (e.pointerType === 'mouse') {
-        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        const t = tileAt(e.clientX, e.clientY);
+        const changed = (!!t !== !!view.hover) ||
+                        (t && view.hover && (t.x !== view.hover.x || t.y !== view.hover.y));
         view.hover = t;
+        if (changed) HF.Render.invalidate();
         showTileInfo(t, e.clientX, e.clientY, false);
       }
     });
@@ -3042,7 +3760,7 @@ HF.UI = (function () {
         if (view.drag) { applyToRect(view.drag); view.drag = null; refresh(); }
         gesture = null;
       } else if (gesture === 'tap' && e.pointerId === leadPointer) {
-        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        const t = tileAt(e.clientX, e.clientY);
         if (t) handleTap(t, e);
         gesture = null; leadPointer = null;
       } else if (pointers.size < 2) {
@@ -3050,7 +3768,10 @@ HF.UI = (function () {
         gesture = null; pinch = null; leadPointer = null;
       }
 
-      if (pointers.size === 0) { gesture = null; pinch = null; leadPointer = null; view.drag = null; }
+      if (pointers.size === 0) {
+        gesture = null; pinch = null; leadPointer = null; view.drag = null;
+        HF.Render.invalidate();
+      }
     }
 
     stage.addEventListener('pointerup', release);
@@ -3065,6 +3786,7 @@ HF.UI = (function () {
       if (e.pointerType !== 'mouse') return;
       view.hover = null;
       el.tooltip.style.display = 'none';
+      HF.Render.invalidate();
     });
 
     stage.addEventListener('contextmenu', function (e) {
@@ -3078,10 +3800,12 @@ HF.UI = (function () {
     if (c) {
       view.selectedId = c.id;
       renderColonists();
+      HF.Render.invalidate();
       return;
     }
     view.selectedId = null;
     renderColonists();
+    HF.Render.invalidate();
     // Touch has no hover, so a tap on empty ground is how you inspect a tile.
     if (e.pointerType !== 'mouse') showTileInfo(t, e.clientX, e.clientY, true);
   }
@@ -3107,7 +3831,10 @@ HF.UI = (function () {
     }
 
     if (placed === 0 && failReason) toast(failReason);
-    if (placed > 0) game.dirtyTerrain = true;
+    else if (placed === 0 && view.mode.kind === 'order') {
+      toast('Nothing there to ' + HF.ORDERS[view.mode.id].label.toLowerCase() + '.');
+    }
+    HF.Render.invalidate();
   }
 
   let toastTimer = null;
@@ -3115,28 +3842,28 @@ HF.UI = (function () {
     el.banner.textContent = message;
     el.banner.className = 'show warn';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2600);
+    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2800);
   }
 
   let tipTimer = null;
   function showTileInfo(t, clientX, clientY, sticky) {
     if (!t) { el.tooltip.style.display = 'none'; return; }
     const tile = HF.Map.at(game, t.x, t.y);
-    const lines = [HF.TERRAIN[tile.terrain].name];
-    if (tile.feature === 'berries') lines.push('Berry bushes');
+    const lines = ['<b>' + HF.TERRAIN[tile.terrain].name + '</b>'];
+    if (tile.feature === 'chestnut') lines.push('Chestnut trees');
 
     const b = game.buildingAt(t.x, t.y);
     if (b) {
       const def = HF.BUILDINGS[b.type];
       if (b.built) {
-        lines.push(def.label);
+        lines.push('<b>' + def.label + '</b>');
         if (def.farm) {
           const pct = Math.round(HF.U.clamp(b.growth / HF.FARM.RIPE_AT, 0, 1) * 100);
-          lines.push(pct >= 100 ? 'Ripe - awaiting harvest' : 'Growth ' + pct + '%');
+          lines.push(pct >= 100 ? 'Ripe — awaiting harvest' : 'Ripening ' + pct + '%');
         }
-        if (def.hp) lines.push('Integrity ' + Math.round(b.hp) + '/' + def.hp);
+        if (def.hp) lines.push('Intact ' + Math.round(b.hp) + '/' + def.hp);
       } else {
-        lines.push(def.label + ' (blueprint)');
+        lines.push('<b>' + def.label + '</b> (planned)');
         lines.push('Built ' + Math.round(b.workDone / def.work * 100) + '%');
       }
     }
@@ -3148,10 +3875,10 @@ HF.UI = (function () {
     }
 
     const c = game.colonistAt(t.x, t.y);
-    if (c) lines.push(c.name + ' - ' + c.activity);
+    if (c) lines.push('<b>' + c.name + '</b><br>' + c.activity);
 
     const r = game.raiders.find(function (rr) { return !rr.dead && rr.x === t.x && rr.y === t.y; });
-    if (r) lines.push('Raider (' + r.hp + ' hp)');
+    if (r) lines.push('<b>Bandit</b> (' + r.hp + ' hp)');
 
     el.tooltip.innerHTML = lines.join('<br>');
     el.tooltip.style.display = 'block';
@@ -3166,12 +3893,11 @@ HF.UI = (function () {
     el.tooltip.style.top = Math.max(6, top) + 'px';
 
     clearTimeout(tipTimer);
-    if (sticky) tipTimer = setTimeout(function () { el.tooltip.style.display = 'none'; }, 2800);
+    if (sticky) tipTimer = setTimeout(function () { el.tooltip.style.display = 'none'; }, 3000);
   }
 
   /* ---------- buttons and keys ---------- */
 
-  function openSheet() { el.sidebar.classList.add('open'); }
   function closeSheet() { el.sidebar.classList.remove('open'); }
 
   function bindButtons() {
@@ -3179,6 +3905,12 @@ HF.UI = (function () {
     $('mode-hint').addEventListener('click', function () { setMode('none', null); });
     $('btn-panel').addEventListener('click', function () { el.sidebar.classList.toggle('open'); });
     $('sheet-close').addEventListener('click', closeSheet);
+
+    $('pick-order').addEventListener('click', function () { openPicker('order'); });
+    $('pick-build').addEventListener('click', function () { openPicker('build'); });
+    $('picker-close').addEventListener('click', closePicker);
+    el.picker.addEventListener('click', function (e) { if (e.target === el.picker) closePicker(); });
+    $('tool-cancel').addEventListener('click', function () { setMode('cancel', null); });
 
     $('zoom-in').addEventListener('click', function () { HF.Camera.zoomBy(1.35); });
     $('zoom-out').addEventListener('click', function () { HF.Camera.zoomBy(1 / 1.35); });
@@ -3188,31 +3920,40 @@ HF.UI = (function () {
       HF.Camera.centerOn(target.x, target.y);
     });
 
-    $('btn-new').addEventListener('click', function () {
-      if (!confirm('Abandon this colony and generate a new map?')) return;
-      setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
+    $('btn-new').addEventListener('click', newGame);
+    $('ending-new').addEventListener('click', function () { $('ending').classList.remove('open'); newGame(); });
+    $('ending-continue').addEventListener('click', function () {
+      $('ending').classList.remove('open');
+      if (game.gameOver === 'won') game.continuePlaying();
+      endingDismissedFor = game.gameOver;
+      refresh();
     });
+
     $('btn-save').addEventListener('click', function () {
       try {
-        localStorage.setItem('hearthfall.save', game.serialize());
-        toast('Colony saved.');
+        localStorage.setItem('hyakusho.save', game.serialize());
+        toast('Village recorded.');
       } catch (err) {
         toast('Could not save: ' + err.message);
       }
     });
     $('btn-load').addEventListener('click', function () {
       let data = null;
-      try { data = localStorage.getItem('hearthfall.save'); } catch (err) { data = null; }
-      if (!data) { toast('No saved colony found.'); return; }
+      try { data = localStorage.getItem('hyakusho.save'); } catch (err) { data = null; }
+      if (!data) { toast('No recorded village found.'); return; }
       try {
         setGame(HF.Game.load(data));
-        toast('Colony restored.');
+        toast('Village restored.');
       } catch (err) {
-        toast('Save file could not be read.');
+        toast('That record could not be read.');
       }
     });
     $('btn-help').addEventListener('click', function () { $('help').classList.toggle('open'); });
     $('help-close').addEventListener('click', function () { $('help').classList.remove('open'); });
+  }
+
+  function newGame() {
+    setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
   }
 
   function bindKeys() {
@@ -3221,9 +3962,15 @@ HF.UI = (function () {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       if (k === ' ' || k === 'enter') { e.preventDefault(); endTurn(); return; }
-      if (k === 'escape') { setMode('none', null); $('help').classList.remove('open'); return; }
+      if (k === 'escape') {
+        setMode('none', null);
+        $('help').classList.remove('open');
+        closePicker();
+        return;
+      }
       if (k === 'x') { setMode('cancel', null); return; }
       if (k === 'h') { $('help').classList.toggle('open'); return; }
+      if (k === 'b') { openPicker('build'); return; }
       for (const id in HF.ORDERS) {
         if (HF.ORDERS[id].key && HF.ORDERS[id].key.toLowerCase() === k) { setMode('order', id); return; }
       }
@@ -3244,24 +3991,34 @@ HF.UI = (function () {
     renderStats();
     renderColonists();
     renderLog();
-    renderBanner();
+    renderEnding();
+    updateToolButtons();
+    HF.Render.invalidate();
   }
 
   function renderStats() {
     const cap = HF.Build.storageCap(game);
-    const alive = game.aliveColonists().length;
-    const beds = HF.Build.bedCount(game);
     el.stats.innerHTML =
-      stat('Food', Math.floor(game.res.food) + ' / ' + cap, 'food') +
-      stat('Wood', Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
-      stat('Stone', Math.floor(game.res.stone) + ' / ' + cap, 'stone') +
-      stat('Colonists', alive + '', 'pop') +
-      stat('Beds', beds + '', 'bed');
+      stat(HF.RESOURCES.food.label, Math.floor(game.res.food) + ' / ' + cap, 'food') +
+      stat(HF.RESOURCES.wood.label, Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
+      stat(HF.RESOURCES.stone.label, Math.floor(game.res.stone) + ' / ' + cap, 'stone');
+
     el.calendar.innerHTML =
       '<div class="season ' + game.season().toLowerCase() + '">' + game.season() + '</div>' +
-      '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() +
-      ' &middot; Turn ' + game.turn + '</div>';
-    $('btn-panel').innerHTML = 'Colony <span class="badge">' + alive + '</span>';
+      '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() + '</div>';
+
+    // The levy is the clock the whole village runs on, so it gets its own slot.
+    const due = game.turnsToLevy();
+    const demand = game.levyDemand(game.levyIndex);
+    const short = game.res.food < demand;
+    el.levy.className = due <= 4 ? (short ? 'urgent' : 'due') : (short ? 'warn' : '');
+    el.levy.innerHTML =
+      '<div class="levy-label">Next levy</div>' +
+      '<div class="levy-value">' + demand + ' koku &middot; ' +
+      (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' turn' : ' turns')) + '</div>';
+
+    $('btn-panel').innerHTML = 'Village <span class="badge">' +
+      game.aliveColonists().length + '</span>';
   }
 
   function stat(label, value, cls) {
@@ -3279,9 +4036,7 @@ HF.UI = (function () {
   function renderColonists() {
     const alive = game.aliveColonists();
     const beds = HF.Build.bedCount(game);
-    // Beds sit next to the roster because "who has nowhere to sleep" is the
-    // question the roster is being read to answer.
-    let html = '<h2>Colonists <span class="count">' + alive.length + '</span>' +
+    let html = '<h2>Villagers <span class="count">' + alive.length + '</span>' +
                ' &middot; Beds <span class="count' + (beds < alive.length ? ' short' : '') + '">' +
                beds + '</span></h2>';
 
@@ -3295,8 +4050,8 @@ HF.UI = (function () {
       html += '<div class="bars">' +
               bar('Food', c.needs.food, 100, 'food') +
               bar('Rest', c.needs.rest, 100, 'rest') +
-              bar('Mood', c.mood, 100, 'mood') +
-              bar('HP', c.hp, c.maxHp, 'hp') +
+              bar('Spirit', c.mood, 100, 'mood') +
+              bar('Health', c.hp, c.maxHp, 'hp') +
               '</div>';
 
       html += '<div class="works">';
@@ -3304,7 +4059,7 @@ HF.UI = (function () {
         const lvl = HF.Colonists.skillLevel(c, wt.skill);
         html += '<button class="work' + (c.work[wt.id] ? ' on' : '') +
                 '" data-colonist="' + c.id + '" data-work="' + wt.id + '" title="' +
-                wt.label + ' - skill ' + lvl + '. Tap to toggle.">' +
+                wt.label + ' — skill ' + lvl + '. Tap to turn this work on or off.">' +
                 wt.short + '<span class="lvl">' + lvl + '</span></button>';
       }
       html += '</div></div>';
@@ -3319,7 +4074,8 @@ HF.UI = (function () {
         const c = game.colonistById(view.selectedId);
         if (c) HF.Camera.centerOn(c.x, c.y);
         renderColonists();
-        if (isNarrow()) closeSheet();      // get out of the way so you can see them
+        HF.Render.invalidate();
+        if (isNarrow()) closeSheet();
       });
     }
     for (const btn of el.colonists.querySelectorAll('.work')) {
@@ -3327,7 +4083,7 @@ HF.UI = (function () {
         const c = game.colonistById(parseInt(btn.dataset.colonist, 10));
         if (!c) return;
         c.work[btn.dataset.work] = !c.work[btn.dataset.work];
-        // Drop a job the colonist is no longer willing to do.
+        // Drop a job the villager is no longer willing to do.
         if (c.task && c.task.kind === 'work') {
           const wt = HF.Jobs.workTypeOf(game, c.task);
           if (wt && !c.work[wt]) { game.releaseClaims(c.id); c.task = null; }
@@ -3344,16 +4100,55 @@ HF.UI = (function () {
     }).join('');
   }
 
-  function renderBanner() {
-    if (game.gameOver === 'lost') {
-      el.banner.textContent = 'The colony has failed. Turn ' + game.turn + '. Press New to try again.';
-      el.banner.className = 'show bad';
-    } else if (game.milestoneShown && game.turn === HF.CFG.MILESTONE_TURN) {
-      el.banner.textContent = 'Three years endured.';
-      el.banner.className = 'show good';
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(function () { el.banner.className = ''; }, 5000);
+  /* ---------- the ending ---------- */
+
+  const ENDINGS = {
+    won: {
+      title: 'The village endures',
+      sub: 'Three harvests brought in, three levies paid, and the valley is still yours.',
+      mark: '村',
+    },
+    dissolved: {
+      title: 'The village is broken up',
+      sub: 'Twice the collectors went away short. The castle has no further use for this valley.',
+      mark: '散',
+    },
+    lost: {
+      title: 'Nothing remains',
+      sub: 'The last of the villagers is gone, and the paddies go back to grass.',
+      mark: '無',
+    },
+  };
+
+  function renderEnding() {
+    const node = $('ending');
+    if (!game.gameOver || endingDismissedFor === game.gameOver) {
+      node.classList.remove('open');
+      return;
     }
+    const e = ENDINGS[game.gameOver];
+    const s = game.summary();
+    $('ending-mark').textContent = e.mark;
+    $('ending-title').textContent = e.title;
+    $('ending-sub').textContent = e.sub;
+
+    const rows = [
+      ['Years held', s.years],
+      ['Villagers living', s.alive],
+      ['Levies paid', s.leviesPaid + (s.leviesMissed ? ' (' + s.leviesMissed + ' missed)' : '')],
+      ['Rice in the kura', s.rice + ' koku'],
+      ['Buildings raised', s.built],
+      ['Bandits cut down', s.bandits],
+    ];
+    if (s.lost) rows.push(['Died', s.lost]);
+    if (s.departed) rows.push(['Walked out', s.departed]);
+
+    $('ending-stats').innerHTML = rows.map(function (r) {
+      return '<li><span>' + r[0] + '</span><b>' + r[1] + '</b></li>';
+    }).join('');
+
+    $('ending-continue').textContent = game.gameOver === 'won' ? 'Carry on' : 'Look around';
+    node.classList.add('open');
   }
 
   return { init: init, setGame: setGame };
@@ -3384,5 +4179,3 @@ window.HF = window.HF || {};
 })();
 
 </script>
-</body>
-</html>

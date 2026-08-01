@@ -26,7 +26,12 @@ HF.Game = function (seed) {
   this.nextRaidTurn = HF.CFG.RAID_START_TURN;
   this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
   this.gameOver = null;
-  this.milestoneShown = false;
+  this.endless = false;
+  this.levyIndex = 0;          // how many levies have been collected
+  this.levyFailures = 0;
+  this.levyStrikes = 0;
+  this.levyHistory = [];
+  this.banditsKilled = 0;
   this.dirtyTerrain = true;
   this.spoiledThisTurn = false;
 
@@ -40,7 +45,9 @@ HF.Game = function (seed) {
     this.colonists.push(HF.Colonists.create(this, s.x, s.y));
   }
 
-  this.log('Your party makes camp. Endure three years here.', 'season');
+  this.log('Four peasants settle this valley. Three harvests, three levies - hold the village together.',
+           'season');
+  this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
   HF.Events.announceSeason(this);
 };
 
@@ -59,6 +66,93 @@ HF.Game.prototype = {
   },
   dayOfSeason: function () {
     return ((this.turn - 1) % HF.CFG.TURNS_PER_SEASON) + 1;
+  },
+
+  /* ---------- the levy ----------
+     The daimyo's collectors come after each harvest. Rice is not just food:
+     it is what the village owes, and a granary that looks comfortable in
+     autumn can leave you starving through winter once they have been. */
+
+  levyDemand: function (index) {
+    const L = HF.CFG.LEVY;
+    if (index < L.demands.length) return L.demands[index];
+    return L.demands[L.demands.length - 1] + (index - L.demands.length + 1) * L.laterIncrease;
+  },
+
+  nextLevyTurn: function () {
+    const L = HF.CFG.LEVY;
+    if (this.levyIndex < L.turns.length) return L.turns[this.levyIndex];
+    const beyond = this.levyIndex - L.turns.length + 1;
+    return L.turns[L.turns.length - 1] + beyond * HF.CFG.TURNS_PER_SEASON * 4;
+  },
+
+  turnsToLevy: function () { return this.nextLevyTurn() - this.turn; },
+
+  checkLevy: function () {
+    const due = this.nextLevyTurn();
+    const demand = this.levyDemand(this.levyIndex);
+
+    if (this.turn === due - HF.CFG.LEVY.warnAhead) {
+      this.log('Word from the castle: the collectors come in ' + HF.CFG.LEVY.warnAhead +
+               ' turns for ' + demand + ' koku of rice.', 'levy');
+    }
+    if (this.turn < due) return;
+
+    const have = Math.floor(this.res.food);
+
+    if (have >= demand) {
+      this.res.food -= demand;
+      this.levyHistory.push({ year: this.year(), demand: demand, paid: true });
+      this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle.', 'levy');
+      this.grief = Math.max(0, this.grief - 4);
+      for (const c of this.aliveColonists()) c.mood = HF.U.clamp(c.mood + 7, 0, 100);
+    } else {
+      const short = demand - have;
+      this.res.food = 0;
+
+      // A near miss is a warning, not a strike. Without this band one bad
+      // harvest zeroes the granary and takes a villager, and the village can
+      // never climb back - the game would be decided turns before it ended.
+      const tolerated = have >= demand * HF.CFG.LEVY.tolerance;
+      this.levyHistory.push({
+        year: this.year(), demand: demand, paid: false, short: short, tolerated: tolerated,
+      });
+
+      this.levyFailures++;
+      const L = HF.CFG.LEVY;
+      const left = L.strikesAllowed + 1 - this.levyStrikes;
+
+      if (tolerated) {
+        this.levyStrikes += L.strikeNear;
+        this.grief += 5;
+        this.log('The levy falls ' + short + ' koku short. The collectors take everything and ' +
+                 'note the shortfall against the village.', 'bad');
+      } else {
+        this.levyStrikes += L.strikeBad;
+        this.grief += 10;
+        this.log('The levy falls ' + short + ' koku short - far short. The collectors strip the ' +
+                 'granary bare.', 'bad');
+        const alive = this.aliveColonists();
+        if (alive.length > 1 && this.levyStrikes <= L.strikesAllowed) {
+          const gone = this.rng.pick(alive);
+          gone.dead = true;
+          gone.departed = true;
+          this.releaseClaims(gone.id);
+          this.log(gone.name + ' has walked out rather than starve for the castle.', 'bad');
+        }
+      }
+      if (this.levyStrikes <= L.strikesAllowed && left > 0) {
+        this.log('The village stands, but only just. Another year like this ends it.', 'levy');
+      }
+    }
+
+    this.levyIndex++;
+
+    if (this.levyStrikes > HF.CFG.LEVY.strikesAllowed) {
+      this.gameOver = 'dissolved';
+      this.log('The castle has run out of patience. The village is broken up and its people ' +
+               'scattered across the province.', 'bad');
+    }
   },
 
   /* ---------- lookups ---------- */
@@ -216,13 +310,45 @@ HF.Game.prototype = {
 
     this.grief = Math.max(0, this.grief - 0.5);
 
+    this.checkLevy();
+
     if (this.aliveColonists().length === 0) {
       this.gameOver = 'lost';
-      this.log('The last of your colonists is gone. The camp falls silent.', 'bad');
-    } else if (!this.milestoneShown && this.turn >= HF.CFG.MILESTONE_TURN) {
-      this.milestoneShown = true;
-      this.log('Three years endured. The colony is here to stay - keep going as long as you can.', 'good');
+      this.log('The last of the villagers is gone. The valley falls silent.', 'bad');
+    } else if (!this.gameOver && !this.endless &&
+               this.turn >= HF.CFG.VICTORY_TURN && this.levyIndex >= HF.CFG.LEVY.turns.length) {
+      this.gameOver = 'won';
+      this.log('Three years, three levies, and the village still stands.', 'good');
     }
+  },
+
+  /* Dismisses the victory screen and lets the village keep going, with the
+     levies continuing to climb once a year. */
+  continuePlaying: function () {
+    if (this.gameOver !== 'won') return;
+    this.gameOver = null;
+    this.endless = true;
+    this.log('The village carries on. The castle will send for rice again next autumn.', 'levy');
+  },
+
+  /* Numbers for the ending screen. */
+  summary: function () {
+    const built = this.buildings.filter(function (b) { return b && b.built; });
+    const counts = {};
+    for (const b of built) counts[b.type] = (counts[b.type] || 0) + 1;
+    return {
+      turn: this.turn,
+      years: this.year(),
+      alive: this.aliveColonists().length,
+      lost: this.colonists.filter(function (c) { return c.dead && !c.departed; }).length,
+      departed: this.colonists.filter(function (c) { return c.departed; }).length,
+      rice: Math.floor(this.res.food),
+      leviesPaid: this.levyHistory.filter(function (l) { return l.paid; }).length,
+      leviesMissed: this.levyFailures,
+      bandits: this.banditsKilled,
+      buildings: counts,
+      built: built.length,
+    };
   },
 
   /* ---------- persistence ---------- */
@@ -237,7 +363,10 @@ HF.Game.prototype = {
       designations: this.designations, res: this.res, entries: this.entries,
       grief: this.grief, nextRaidTurn: this.nextRaidTurn,
       nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
-      milestoneShown: this.milestoneShown, startSite: this.startSite,
+      endless: this.endless, levyIndex: this.levyIndex,
+      levyFailures: this.levyFailures, levyStrikes: this.levyStrikes,
+      levyHistory: this.levyHistory,
+      banditsKilled: this.banditsKilled, startSite: this.startSite,
     });
   },
 };

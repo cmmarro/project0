@@ -1,15 +1,14 @@
 /* Map viewport: pan and zoom.
 
-   The canvas stays a fixed-size bitmap and the camera moves it with a CSS
-   transform, so nothing in the renderer has to know about scrolling. Screen
-   coordinates are converted back to tiles here rather than measured off the
-   element, which keeps the maths exact under any transform. */
+   The canvas stays a fixed-size bitmap of the whole isometric map and the
+   camera moves it with a CSS transform, so the renderer never has to think
+   about scrolling. Screen coordinates are converted back to canvas space here;
+   turning canvas space into a tile is the projection's job, not the camera's. */
 window.HF = window.HF || {};
 
 HF.Camera = (function () {
-  const T = HF.CFG.TILE;
-  const MIN_SCALE = 0.3;
-  const MAX_SCALE = 3.2;
+  const MIN_SCALE = 0.22;
+  const MAX_SCALE = 2.4;
 
   let canvas = null;
   let stage = null;
@@ -25,6 +24,7 @@ HF.Camera = (function () {
   function apply() {
     canvas.style.transform =
       'translate(' + cam.x.toFixed(2) + 'px,' + cam.y.toFixed(2) + 'px) scale(' + cam.scale + ')';
+    if (HF.Render) HF.Render.invalidate();
   }
 
   /* Keeps the map inside the viewport, centring whichever axis is smaller than
@@ -80,27 +80,40 @@ HF.Camera = (function () {
     centerOn: function (tx, ty, scale) {
       const r = box();
       if (scale) cam.scale = HF.U.clamp(scale, MIN_SCALE, MAX_SCALE);
-      cam.x = r.width / 2 - (tx + 0.5) * T * cam.scale;
-      cam.y = r.height / 2 - (ty + 0.5) * T * cam.scale;
+      const p = HF.Iso.toScreen(tx, ty, 0);
+      cam.x = r.width / 2 - p.sx * cam.scale;
+      cam.y = r.height / 2 - p.sy * cam.scale;
       clampView();
       apply();
     },
 
-    /* Scale that fits roughly `tiles` tiles across the viewport - used to open
-       a phone at a tappable zoom instead of a 9-pixel-per-tile postage stamp. */
+    /* Scale that fits roughly `tiles` tiles across, used to open a phone at a
+       tappable zoom instead of showing the whole valley at once. */
     scaleForTilesAcross: function (tiles) {
-      return HF.U.clamp(box().width / (tiles * T), MIN_SCALE, MAX_SCALE);
+      return HF.U.clamp(box().width / (tiles * HF.Iso.TW), MIN_SCALE, MAX_SCALE);
     },
 
-    screenToTile: function (clientX, clientY) {
+    /* Screen point -> canvas pixel. */
+    toCanvas: function (clientX, clientY) {
       const r = box();
-      const x = Math.floor((clientX - r.left - cam.x) / cam.scale / T);
-      const y = Math.floor((clientY - r.top - cam.y) / cam.scale / T);
-      if (x < 0 || y < 0 || x >= HF.CFG.MAP_W || y >= HF.CFG.MAP_H) return null;
-      return { x: x, y: y };
+      return {
+        x: (clientX - r.left - cam.x) / cam.scale,
+        y: (clientY - r.top - cam.y) / cam.scale,
+      };
     },
 
-    /* Re-clamp after a resize or orientation change. */
+    /* The slice of the canvas currently on screen, so the renderer can skip
+       everything else. */
+    visibleRect: function () {
+      const r = box();
+      return {
+        x0: -cam.x / cam.scale,
+        y0: -cam.y / cam.scale,
+        x1: (r.width - cam.x) / cam.scale,
+        y1: (r.height - cam.y) / cam.scale,
+      };
+    },
+
     refresh: function () { clampView(); apply(); },
   };
 })();

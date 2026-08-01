@@ -28,7 +28,7 @@ HF.Map = {
         else if (m > 0.56) terrain = 'forest';
         else terrain = 'grass';
 
-        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'berries';
+        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'chestnut';
 
         tiles[i] = {
           terrain: terrain,

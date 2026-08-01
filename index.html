@@ -4,8 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Hearthfall &mdash; a turn-based colony</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312141a'/><path d='M8 3l5 5H3z' fill='%23e0b64a'/><rect x='5' y='8' width='6' height='5' fill='%238a6a45'/></svg>">
+  <title>Hyakushō &mdash; a village in the Sengoku</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23141a20'/><path d='M2 9l6-5 6 5z' fill='%23c4462f'/><rect x='4' y='9' width='8' height='4' fill='%23b59660'/></svg>">
   <link rel="stylesheet" href="styles/style.css">
 </head>
 
@@ -13,18 +13,19 @@
   <div id="app">
 
     <header id="topbar">
-      <div class="brand">Hearthfall</div>
+      <div class="brand"><span class="mark">百姓</span><span class="name">Hyakushō</span></div>
       <div id="stats"></div>
+      <div id="levy"></div>
       <div id="calendar"></div>
     </header>
 
     <main id="stage">
-      <canvas id="board" width="1056" height="672"></canvas>
+      <canvas id="board"></canvas>
 
       <div id="map-controls">
-        <button id="zoom-in" title="Zoom in">+</button>
-        <button id="zoom-out" title="Zoom out">&minus;</button>
-        <button id="recenter" title="Centre on the colony">&#9678;</button>
+        <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
+        <button id="recenter" title="Centre on the village" aria-label="Centre on the village">&#9678;</button>
       </div>
 
       <div id="mode-hint"></div>
@@ -33,50 +34,73 @@
 
       <div id="help">
         <div class="sheet">
-          <h2>How Hearthfall works</h2>
-          <p>Four settlers, one valley, and three years to survive. Nothing happens
-             until you end the turn &mdash; you have all the time you want to plan.</p>
-          <ul>
-            <li><strong>Give orders, not commands.</strong> Pick a tool from the bar at the
-                bottom, then drag across the map to mark work or drop blueprints.
-                Colonists pick up the nearest job they are willing to do.</li>
-            <li><strong>Everyone has a mind of their own.</strong> Each colonist has skills,
-                hunger, tiredness and a mood. Open <strong>Colony</strong> to see them and to
-                choose which kinds of work each one will accept.</li>
-            <li><strong>Eat, sleep, repeat.</strong> Food is a shared stockpile. Rest needs a
-                bed, and a bed needs a house &mdash; sleeping rough wrecks morale.</li>
-            <li><strong>Winter is the test.</strong> Crops stop growing and anyone more than
-                five tiles from a campfire loses health. Stockpile in autumn.</li>
-            <li><strong>Raiders come from year two.</strong> Colonists fight automatically
-                when raiders get close. Stone walls buy you time.</li>
-          </ul>
-          <p class="keys"><strong>Moving the map:</strong> drag with no tool selected to pan,
-             pinch or scroll to zoom, tap a tile to inspect it, tap a colonist to select them.</p>
-          <p class="keys"><strong>Keyboard:</strong> <kbd>Space</kbd> end turn &middot;
-             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> orders &middot;
-             <kbd>1</kbd>&ndash;<kbd>5</kbd> buildings &middot; <kbd>X</kbd> cancel tool &middot;
-             <kbd>Esc</kbd> deselect &middot; <kbd>H</kbd> this sheet</p>
-          <button id="help-close">Got it</button>
+          <h2>How to hold a village together</h2>
+          <p class="lede">Four peasants, one valley, and three years. Nothing happens until you
+             end the turn, so there is no hurry &mdash; only consequences.</p>
+          <ol class="steps">
+            <li><b>The levy is the whole game.</b> After each harvest the daimyō's collectors
+                come for rice: 40 koku, then 75, then 115. Miss two and the village is broken up.
+                The countdown is in the bar at the top.</li>
+            <li><b>Rice comes from paddies, and only from paddies.</b> Foraging and hunting will
+                not cover a levy. Tap <b>Build &rarr; Rice Paddy</b> early and often.</li>
+            <li><b>Build shelter before winter.</b> A <b>Minka</b> sleeps two; villagers without a
+                bed lose heart. A <b>Hearth Fire</b> keeps anyone within five tiles alive through
+                the cold. A <b>Kura</b> raises how much you can store &mdash; everything over the
+                cap rots.</li>
+            <li><b>You give orders, not commands.</b> Choose a work order or a building, then drag
+                across the map. Villagers pick up the nearest job they are willing to do; the
+                toggles under each name in <b>Village</b> decide what that is.</li>
+            <li><b>Bandits come from year two.</b> Villagers fight automatically when one gets
+                close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
+                waste turns breaking through.</li>
+          </ol>
+          <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
+             to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
+             chosen, dragging paints instead &mdash; tap the chip at the bottom of the map to put
+             it down.</p>
+          <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> end turn &middot; <kbd>B</kbd> build
+             menu &middot; <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot;
+             <kbd>X</kbd> cancel tool &middot; <kbd>Esc</kbd> put the tool down &middot;
+             <kbd>H</kbd> this page</p>
+          <button id="help-close">Begin</button>
+        </div>
+      </div>
+
+      <div id="ending">
+        <div class="sheet">
+          <div id="ending-mark" class="mark"></div>
+          <h2 id="ending-title"></h2>
+          <p id="ending-sub"></p>
+          <ul id="ending-stats"></ul>
+          <div class="actions">
+            <button id="ending-continue" class="primary">Carry on</button>
+            <button id="ending-new">New village</button>
+          </div>
         </div>
       </div>
     </main>
 
     <aside id="sidebar">
       <div class="sheet-grip">
-        <span>Colony</span>
+        <span>The Village</span>
         <button id="sheet-close" aria-label="Close">&times;</button>
       </div>
       <section id="colonist-panel"></section>
       <section id="log-panel">
-        <h2>Chronicle</h2>
+        <h2>Record</h2>
         <ul id="log"></ul>
       </section>
     </aside>
 
     <footer id="toolbar">
-      <div class="toolbar-scroll">
-        <div class="tool-group" id="orders"></div>
-        <div class="tool-group" id="builds"></div>
+      <div class="tool-row">
+        <button id="pick-order" class="tool picker-btn">
+          <span class="lbl">Work</span><span class="sel">Choose…</span>
+        </button>
+        <button id="pick-build" class="tool picker-btn">
+          <span class="lbl">Build</span><span class="sel">Choose…</span>
+        </button>
+        <button id="tool-cancel" class="tool danger">Cancel</button>
         <div class="tool-group meta">
           <button id="btn-help" class="plain">Help</button>
           <button id="btn-save" class="plain">Save</button>
@@ -84,16 +108,27 @@
           <button id="btn-new" class="plain">New</button>
         </div>
       </div>
-      <div class="tool-group pinned">
-        <button id="btn-panel" class="plain">Colony</button>
+      <div class="tool-row pinned">
+        <button id="btn-panel" class="plain">Village</button>
         <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
       </div>
     </footer>
+
+    <div id="picker">
+      <div class="picker-sheet">
+        <div class="sheet-grip">
+          <span id="picker-title"></span>
+          <button id="picker-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="picker-list"></div>
+      </div>
+    </div>
 
   </div>
 
   <script src="js/config.js"></script>
   <script src="js/util.js"></script>
+  <script src="js/iso.js"></script>
   <script src="js/map.js"></script>
   <script src="js/path.js"></script>
   <script src="js/colonists.js"></script>

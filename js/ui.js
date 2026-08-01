@@ -1,9 +1,9 @@
 /* DOM panels and input handling.
 
    Everything the player can do goes through a single "mode" (none / order /
-   build / cancel) applied to a tile or a dragged rectangle of tiles. Input is
-   pointer-based so mouse and touch share one path: with a tool selected a drag
-   paints, with no tool a drag pans, and two fingers always pinch-zoom. */
+   build / cancel) applied to a tile or a dragged rectangle of tiles. Tools are
+   chosen from a picker sheet that lists every option with its cost and what it
+   is for, rather than a strip of buttons that can scroll out of reach. */
 window.HF = window.HF || {};
 
 HF.UI = (function () {
@@ -12,6 +12,7 @@ HF.UI = (function () {
   let stage = null;
   const view = { hover: null, selectedId: null, mode: { kind: 'none', id: null }, drag: null };
 
+  let endingDismissedFor = null;   // which gameOver state the player has closed
   const el = {};
   function $(id) { return document.getElementById(id); }
   function isNarrow() { return window.innerWidth < 900; }
@@ -27,15 +28,16 @@ HF.UI = (function () {
 
     el.stats = $('stats');
     el.calendar = $('calendar');
+    el.levy = $('levy');
     el.colonists = $('colonist-panel');
     el.log = $('log');
     el.tooltip = $('tooltip');
     el.banner = $('banner');
-    el.orders = $('orders');
-    el.builds = $('builds');
     el.sidebar = $('sidebar');
+    el.picker = $('picker');
+    el.pickerList = $('picker-list');
+    el.pickerTitle = $('picker-title');
 
-    buildToolbar();
     bindPointer();
     bindButtons();
     bindKeys();
@@ -49,72 +51,27 @@ HF.UI = (function () {
 
   function resetCamera() {
     const c = game.colonyCentre();
-    if (isNarrow()) HF.Camera.centerOn(c.x, c.y, HF.Camera.scaleForTilesAcross(15));
-    else HF.Camera.fit();
+    if (isNarrow()) HF.Camera.centerOn(c.x, c.y, HF.Camera.scaleForTilesAcross(11));
+    else HF.Camera.centerOn(c.x, c.y, 0.85);
   }
 
   function setGame(g) {
     game = g;
     view.selectedId = null;
     view.drag = null;
+    endingDismissedFor = null;
     setMode('none', null);
-    game.dirtyTerrain = true;
     resetCamera();
     refresh();
   }
 
+  /* The game is turn-based, so a frame is only painted when something moved. */
   function frame() {
     HF.Render.draw(game, view);
     requestAnimationFrame(frame);
   }
 
-  /* ---------- toolbar ---------- */
-
-  function buildToolbar() {
-    el.orders.innerHTML = '<span class="group-label">Orders</span>';
-    for (const id in HF.ORDERS) {
-      const o = HF.ORDERS[id];
-      if (!o.key) continue;                       // harvest is issued by the farm itself
-      const b = document.createElement('button');
-      b.className = 'tool';
-      b.dataset.mode = 'order';
-      b.dataset.id = id;
-      b.innerHTML = '<span class="swatch ' + id + '"></span>' + o.label + '<kbd>' + o.key + '</kbd>';
-      b.title = o.hint;
-      b.addEventListener('click', function () { setMode('order', id); });
-      el.orders.appendChild(b);
-    }
-    const cancel = document.createElement('button');
-    cancel.className = 'tool danger';
-    cancel.dataset.mode = 'cancel';
-    cancel.innerHTML = 'Cancel<kbd>X</kbd>';
-    cancel.title = 'Remove work orders and buildings. Finished buildings refund half.';
-    cancel.addEventListener('click', function () { setMode('cancel', null); });
-    el.orders.appendChild(cancel);
-
-    el.builds.innerHTML = '<span class="group-label">Build</span>';
-    let n = 1;
-    for (const id in HF.BUILDINGS) {
-      const def = HF.BUILDINGS[id];
-      const key = String(n++);
-      const b = document.createElement('button');
-      b.className = 'tool';
-      b.dataset.mode = 'build';
-      b.dataset.id = id;
-      b.innerHTML = def.label + '<span class="cost">' + costText(def) + '</span><kbd>' + key + '</kbd>';
-      b.title = def.desc;
-      b.addEventListener('click', function () { setMode('build', id); });
-      el.builds.appendChild(b);
-    }
-  }
-
-  const RES_ABBR = { wood: 'w', stone: 's', food: 'f' };
-
-  function costText(def) {
-    const parts = [];
-    for (const r in def.cost) parts.push(def.cost[r] + (RES_ABBR[r] || r.charAt(0)));
-    return parts.join(' ');
-  }
+  /* ---------- tool selection ---------- */
 
   function setMode(kind, id) {
     if (view.mode.kind === kind && view.mode.id === id) {
@@ -122,13 +79,21 @@ HF.UI = (function () {
     } else {
       view.mode = { kind: kind, id: id };
     }
-    for (const b of document.querySelectorAll('.tool')) {
-      b.classList.toggle('active',
-        b.dataset.mode === view.mode.kind && (b.dataset.id || null) === view.mode.id);
-    }
     stage.classList.toggle('painting', view.mode.kind !== 'none');
-    // A tool is useless behind the colony sheet, so close it when one is picked.
     if (view.mode.kind !== 'none') closeSheet();
+    updateToolButtons();
+    HF.Render.invalidate();
+  }
+
+  function updateToolButtons() {
+    const orderBtn = $('pick-order'), buildBtn = $('pick-build'), cancelBtn = $('tool-cancel');
+    orderBtn.querySelector('.sel').textContent =
+      view.mode.kind === 'order' ? HF.ORDERS[view.mode.id].label : 'Choose…';
+    buildBtn.querySelector('.sel').textContent =
+      view.mode.kind === 'build' ? HF.BUILDINGS[view.mode.id].label : 'Choose…';
+    orderBtn.classList.toggle('active', view.mode.kind === 'order');
+    buildBtn.classList.toggle('active', view.mode.kind === 'build');
+    cancelBtn.classList.toggle('active', view.mode.kind === 'cancel');
     updateHint();
   }
 
@@ -138,14 +103,84 @@ HF.UI = (function () {
     const hint = $('mode-hint');
     if (view.mode.kind === 'none') { hint.className = ''; hint.innerHTML = ''; return; }
     let text;
-    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' - drag over the map';
-    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label;
-    else text = 'Cancel - drag over orders to remove';
+    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' — drag over the map';
+    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label +
+                                                ' — tap a tile';
+    else text = 'Cancel — drag over what to remove';
     hint.innerHTML = text + '<span class="clear">&times;</span>';
     hint.className = 'show';
   }
 
+  function costText(cost) {
+    const parts = [];
+    for (const r in cost) parts.push(cost[r] + ' ' + HF.RESOURCES[r].label);
+    return parts.join(' + ');
+  }
+
+  function affordable(cost) {
+    for (const r in cost) if (game.res[r] < cost[r]) return false;
+    return true;
+  }
+
+  function shortfall(cost) {
+    const parts = [];
+    for (const r in cost) {
+      const missing = Math.ceil(cost[r] - game.res[r]);
+      if (missing > 0) parts.push(missing + ' more ' + HF.RESOURCES[r].label.toLowerCase());
+    }
+    return parts.join(', ');
+  }
+
+  /* The picker lists every tool with its cost and purpose. This exists because
+     a scrolling strip of buttons hid the whole build menu off the side of a
+     phone screen, which made building undiscoverable. */
+  function openPicker(kind) {
+    el.pickerTitle.textContent = kind === 'order' ? 'Work Orders' : 'Build';
+    let html = '';
+
+    if (kind === 'order') {
+      for (const id in HF.ORDERS) {
+        const o = HF.ORDERS[id];
+        if (!o.key) continue;
+        html += '<button class="pick" data-kind="order" data-id="' + id + '">' +
+                '<span class="pick-mark" style="background:' + o.color + '"></span>' +
+                '<span class="pick-text"><span class="pick-name">' + o.label + '</span>' +
+                '<span class="pick-desc">' + o.hint + '</span></span>' +
+                '<span class="pick-cost free">free</span></button>';
+      }
+    } else {
+      for (const id in HF.BUILDINGS) {
+        const b = HF.BUILDINGS[id];
+        const ok = affordable(b.cost);
+        html += '<button class="pick' + (ok ? '' : ' unaffordable') + '" data-kind="build" data-id="' +
+                id + '"' + (ok ? '' : ' disabled') + '>' +
+                '<span class="pick-mark build ' + id + '"></span>' +
+                '<span class="pick-text"><span class="pick-name">' + b.label +
+                (b.sub ? ' <em>' + b.sub + '</em>' : '') + '</span>' +
+                '<span class="pick-desc">' + b.desc + '</span></span>' +
+                '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
+                (ok ? costText(b.cost) : shortfall(b.cost)) + '</span></button>';
+      }
+    }
+
+    el.pickerList.innerHTML = html;
+    for (const btn of el.pickerList.querySelectorAll('.pick')) {
+      btn.addEventListener('click', function () {
+        setMode(btn.dataset.kind, btn.dataset.id);
+        closePicker();
+      });
+    }
+    el.picker.classList.add('open');
+  }
+
+  function closePicker() { el.picker.classList.remove('open'); }
+
   /* ---------- pointer input ---------- */
+
+  function tileAt(clientX, clientY) {
+    const p = HF.Camera.toCanvas(clientX, clientY);
+    return HF.Iso.toTile(game, p.x, p.y);
+  }
 
   function bindPointer() {
     const pointers = new Map();
@@ -157,10 +192,8 @@ HF.UI = (function () {
 
     stage.addEventListener('pointerdown', function (e) {
       if (e.target.closest('#map-controls') || e.target.closest('#help') ||
-          e.target.closest('#mode-hint')) return;
+          e.target.closest('#ending') || e.target.closest('#mode-hint')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      // Capture keeps a drag alive if the finger leaves the map, but it is not
-      // worth losing all input over if the browser refuses it.
       try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: 0 });
 
@@ -170,14 +203,16 @@ HF.UI = (function () {
         gesture = 'pinch';
         const p = Array.from(pointers.values());
         pinch = { d: spread(p[0], p[1]), mx: (p[0].x + p[1].x) / 2, my: (p[0].y + p[1].y) / 2 };
+        HF.Render.invalidate();
         return;
       }
       if (pointers.size > 2) return;
 
-      const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+      const t = tileAt(e.clientX, e.clientY);
       if (view.mode.kind !== 'none' && t) {
         gesture = 'paint';
         view.drag = { x0: t.x, y0: t.y, x1: t.x, y1: t.y };
+        HF.Render.invalidate();
       } else {
         gesture = 'tap';                    // becomes a pan once it moves far enough
         leadPointer = e.pointerId;
@@ -201,8 +236,11 @@ HF.UI = (function () {
           return;
         }
         if (gesture === 'paint' && view.drag) {
-          const t = HF.Camera.screenToTile(e.clientX, e.clientY);
-          if (t) { view.drag.x1 = t.x; view.drag.y1 = t.y; }
+          const t = tileAt(e.clientX, e.clientY);
+          if (t && (t.x !== view.drag.x1 || t.y !== view.drag.y1)) {
+            view.drag.x1 = t.x; view.drag.y1 = t.y;
+            HF.Render.invalidate();
+          }
         } else if (e.pointerId === leadPointer && (gesture === 'tap' || gesture === 'pan')) {
           if (gesture === 'tap' && p.moved > 10) gesture = 'pan';
           if (gesture === 'pan') HF.Camera.panBy(dx, dy);
@@ -210,8 +248,11 @@ HF.UI = (function () {
       }
 
       if (e.pointerType === 'mouse') {
-        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        const t = tileAt(e.clientX, e.clientY);
+        const changed = (!!t !== !!view.hover) ||
+                        (t && view.hover && (t.x !== view.hover.x || t.y !== view.hover.y));
         view.hover = t;
+        if (changed) HF.Render.invalidate();
         showTileInfo(t, e.clientX, e.clientY, false);
       }
     });
@@ -225,7 +266,7 @@ HF.UI = (function () {
         if (view.drag) { applyToRect(view.drag); view.drag = null; refresh(); }
         gesture = null;
       } else if (gesture === 'tap' && e.pointerId === leadPointer) {
-        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        const t = tileAt(e.clientX, e.clientY);
         if (t) handleTap(t, e);
         gesture = null; leadPointer = null;
       } else if (pointers.size < 2) {
@@ -233,7 +274,10 @@ HF.UI = (function () {
         gesture = null; pinch = null; leadPointer = null;
       }
 
-      if (pointers.size === 0) { gesture = null; pinch = null; leadPointer = null; view.drag = null; }
+      if (pointers.size === 0) {
+        gesture = null; pinch = null; leadPointer = null; view.drag = null;
+        HF.Render.invalidate();
+      }
     }
 
     stage.addEventListener('pointerup', release);
@@ -248,6 +292,7 @@ HF.UI = (function () {
       if (e.pointerType !== 'mouse') return;
       view.hover = null;
       el.tooltip.style.display = 'none';
+      HF.Render.invalidate();
     });
 
     stage.addEventListener('contextmenu', function (e) {
@@ -261,10 +306,12 @@ HF.UI = (function () {
     if (c) {
       view.selectedId = c.id;
       renderColonists();
+      HF.Render.invalidate();
       return;
     }
     view.selectedId = null;
     renderColonists();
+    HF.Render.invalidate();
     // Touch has no hover, so a tap on empty ground is how you inspect a tile.
     if (e.pointerType !== 'mouse') showTileInfo(t, e.clientX, e.clientY, true);
   }
@@ -290,7 +337,10 @@ HF.UI = (function () {
     }
 
     if (placed === 0 && failReason) toast(failReason);
-    if (placed > 0) game.dirtyTerrain = true;
+    else if (placed === 0 && view.mode.kind === 'order') {
+      toast('Nothing there to ' + HF.ORDERS[view.mode.id].label.toLowerCase() + '.');
+    }
+    HF.Render.invalidate();
   }
 
   let toastTimer = null;
@@ -298,28 +348,28 @@ HF.UI = (function () {
     el.banner.textContent = message;
     el.banner.className = 'show warn';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2600);
+    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2800);
   }
 
   let tipTimer = null;
   function showTileInfo(t, clientX, clientY, sticky) {
     if (!t) { el.tooltip.style.display = 'none'; return; }
     const tile = HF.Map.at(game, t.x, t.y);
-    const lines = [HF.TERRAIN[tile.terrain].name];
-    if (tile.feature === 'berries') lines.push('Berry bushes');
+    const lines = ['<b>' + HF.TERRAIN[tile.terrain].name + '</b>'];
+    if (tile.feature === 'chestnut') lines.push('Chestnut trees');
 
     const b = game.buildingAt(t.x, t.y);
     if (b) {
       const def = HF.BUILDINGS[b.type];
       if (b.built) {
-        lines.push(def.label);
+        lines.push('<b>' + def.label + '</b>');
         if (def.farm) {
           const pct = Math.round(HF.U.clamp(b.growth / HF.FARM.RIPE_AT, 0, 1) * 100);
-          lines.push(pct >= 100 ? 'Ripe - awaiting harvest' : 'Growth ' + pct + '%');
+          lines.push(pct >= 100 ? 'Ripe — awaiting harvest' : 'Ripening ' + pct + '%');
         }
-        if (def.hp) lines.push('Integrity ' + Math.round(b.hp) + '/' + def.hp);
+        if (def.hp) lines.push('Intact ' + Math.round(b.hp) + '/' + def.hp);
       } else {
-        lines.push(def.label + ' (blueprint)');
+        lines.push('<b>' + def.label + '</b> (planned)');
         lines.push('Built ' + Math.round(b.workDone / def.work * 100) + '%');
       }
     }
@@ -331,10 +381,10 @@ HF.UI = (function () {
     }
 
     const c = game.colonistAt(t.x, t.y);
-    if (c) lines.push(c.name + ' - ' + c.activity);
+    if (c) lines.push('<b>' + c.name + '</b><br>' + c.activity);
 
     const r = game.raiders.find(function (rr) { return !rr.dead && rr.x === t.x && rr.y === t.y; });
-    if (r) lines.push('Raider (' + r.hp + ' hp)');
+    if (r) lines.push('<b>Bandit</b> (' + r.hp + ' hp)');
 
     el.tooltip.innerHTML = lines.join('<br>');
     el.tooltip.style.display = 'block';
@@ -349,12 +399,11 @@ HF.UI = (function () {
     el.tooltip.style.top = Math.max(6, top) + 'px';
 
     clearTimeout(tipTimer);
-    if (sticky) tipTimer = setTimeout(function () { el.tooltip.style.display = 'none'; }, 2800);
+    if (sticky) tipTimer = setTimeout(function () { el.tooltip.style.display = 'none'; }, 3000);
   }
 
   /* ---------- buttons and keys ---------- */
 
-  function openSheet() { el.sidebar.classList.add('open'); }
   function closeSheet() { el.sidebar.classList.remove('open'); }
 
   function bindButtons() {
@@ -362,6 +411,12 @@ HF.UI = (function () {
     $('mode-hint').addEventListener('click', function () { setMode('none', null); });
     $('btn-panel').addEventListener('click', function () { el.sidebar.classList.toggle('open'); });
     $('sheet-close').addEventListener('click', closeSheet);
+
+    $('pick-order').addEventListener('click', function () { openPicker('order'); });
+    $('pick-build').addEventListener('click', function () { openPicker('build'); });
+    $('picker-close').addEventListener('click', closePicker);
+    el.picker.addEventListener('click', function (e) { if (e.target === el.picker) closePicker(); });
+    $('tool-cancel').addEventListener('click', function () { setMode('cancel', null); });
 
     $('zoom-in').addEventListener('click', function () { HF.Camera.zoomBy(1.35); });
     $('zoom-out').addEventListener('click', function () { HF.Camera.zoomBy(1 / 1.35); });
@@ -371,31 +426,40 @@ HF.UI = (function () {
       HF.Camera.centerOn(target.x, target.y);
     });
 
-    $('btn-new').addEventListener('click', function () {
-      if (!confirm('Abandon this colony and generate a new map?')) return;
-      setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
+    $('btn-new').addEventListener('click', newGame);
+    $('ending-new').addEventListener('click', function () { $('ending').classList.remove('open'); newGame(); });
+    $('ending-continue').addEventListener('click', function () {
+      $('ending').classList.remove('open');
+      if (game.gameOver === 'won') game.continuePlaying();
+      endingDismissedFor = game.gameOver;
+      refresh();
     });
+
     $('btn-save').addEventListener('click', function () {
       try {
-        localStorage.setItem('hearthfall.save', game.serialize());
-        toast('Colony saved.');
+        localStorage.setItem('hyakusho.save', game.serialize());
+        toast('Village recorded.');
       } catch (err) {
         toast('Could not save: ' + err.message);
       }
     });
     $('btn-load').addEventListener('click', function () {
       let data = null;
-      try { data = localStorage.getItem('hearthfall.save'); } catch (err) { data = null; }
-      if (!data) { toast('No saved colony found.'); return; }
+      try { data = localStorage.getItem('hyakusho.save'); } catch (err) { data = null; }
+      if (!data) { toast('No recorded village found.'); return; }
       try {
         setGame(HF.Game.load(data));
-        toast('Colony restored.');
+        toast('Village restored.');
       } catch (err) {
-        toast('Save file could not be read.');
+        toast('That record could not be read.');
       }
     });
     $('btn-help').addEventListener('click', function () { $('help').classList.toggle('open'); });
     $('help-close').addEventListener('click', function () { $('help').classList.remove('open'); });
+  }
+
+  function newGame() {
+    setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
   }
 
   function bindKeys() {
@@ -404,9 +468,15 @@ HF.UI = (function () {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
       if (k === ' ' || k === 'enter') { e.preventDefault(); endTurn(); return; }
-      if (k === 'escape') { setMode('none', null); $('help').classList.remove('open'); return; }
+      if (k === 'escape') {
+        setMode('none', null);
+        $('help').classList.remove('open');
+        closePicker();
+        return;
+      }
       if (k === 'x') { setMode('cancel', null); return; }
       if (k === 'h') { $('help').classList.toggle('open'); return; }
+      if (k === 'b') { openPicker('build'); return; }
       for (const id in HF.ORDERS) {
         if (HF.ORDERS[id].key && HF.ORDERS[id].key.toLowerCase() === k) { setMode('order', id); return; }
       }
@@ -427,24 +497,34 @@ HF.UI = (function () {
     renderStats();
     renderColonists();
     renderLog();
-    renderBanner();
+    renderEnding();
+    updateToolButtons();
+    HF.Render.invalidate();
   }
 
   function renderStats() {
     const cap = HF.Build.storageCap(game);
-    const alive = game.aliveColonists().length;
-    const beds = HF.Build.bedCount(game);
     el.stats.innerHTML =
-      stat('Food', Math.floor(game.res.food) + ' / ' + cap, 'food') +
-      stat('Wood', Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
-      stat('Stone', Math.floor(game.res.stone) + ' / ' + cap, 'stone') +
-      stat('Colonists', alive + '', 'pop') +
-      stat('Beds', beds + '', 'bed');
+      stat(HF.RESOURCES.food.label, Math.floor(game.res.food) + ' / ' + cap, 'food') +
+      stat(HF.RESOURCES.wood.label, Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
+      stat(HF.RESOURCES.stone.label, Math.floor(game.res.stone) + ' / ' + cap, 'stone');
+
     el.calendar.innerHTML =
       '<div class="season ' + game.season().toLowerCase() + '">' + game.season() + '</div>' +
-      '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() +
-      ' &middot; Turn ' + game.turn + '</div>';
-    $('btn-panel').innerHTML = 'Colony <span class="badge">' + alive + '</span>';
+      '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() + '</div>';
+
+    // The levy is the clock the whole village runs on, so it gets its own slot.
+    const due = game.turnsToLevy();
+    const demand = game.levyDemand(game.levyIndex);
+    const short = game.res.food < demand;
+    el.levy.className = due <= 4 ? (short ? 'urgent' : 'due') : (short ? 'warn' : '');
+    el.levy.innerHTML =
+      '<div class="levy-label">Next levy</div>' +
+      '<div class="levy-value">' + demand + ' koku &middot; ' +
+      (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' turn' : ' turns')) + '</div>';
+
+    $('btn-panel').innerHTML = 'Village <span class="badge">' +
+      game.aliveColonists().length + '</span>';
   }
 
   function stat(label, value, cls) {
@@ -462,9 +542,7 @@ HF.UI = (function () {
   function renderColonists() {
     const alive = game.aliveColonists();
     const beds = HF.Build.bedCount(game);
-    // Beds sit next to the roster because "who has nowhere to sleep" is the
-    // question the roster is being read to answer.
-    let html = '<h2>Colonists <span class="count">' + alive.length + '</span>' +
+    let html = '<h2>Villagers <span class="count">' + alive.length + '</span>' +
                ' &middot; Beds <span class="count' + (beds < alive.length ? ' short' : '') + '">' +
                beds + '</span></h2>';
 
@@ -478,8 +556,8 @@ HF.UI = (function () {
       html += '<div class="bars">' +
               bar('Food', c.needs.food, 100, 'food') +
               bar('Rest', c.needs.rest, 100, 'rest') +
-              bar('Mood', c.mood, 100, 'mood') +
-              bar('HP', c.hp, c.maxHp, 'hp') +
+              bar('Spirit', c.mood, 100, 'mood') +
+              bar('Health', c.hp, c.maxHp, 'hp') +
               '</div>';
 
       html += '<div class="works">';
@@ -487,7 +565,7 @@ HF.UI = (function () {
         const lvl = HF.Colonists.skillLevel(c, wt.skill);
         html += '<button class="work' + (c.work[wt.id] ? ' on' : '') +
                 '" data-colonist="' + c.id + '" data-work="' + wt.id + '" title="' +
-                wt.label + ' - skill ' + lvl + '. Tap to toggle.">' +
+                wt.label + ' — skill ' + lvl + '. Tap to turn this work on or off.">' +
                 wt.short + '<span class="lvl">' + lvl + '</span></button>';
       }
       html += '</div></div>';
@@ -502,7 +580,8 @@ HF.UI = (function () {
         const c = game.colonistById(view.selectedId);
         if (c) HF.Camera.centerOn(c.x, c.y);
         renderColonists();
-        if (isNarrow()) closeSheet();      // get out of the way so you can see them
+        HF.Render.invalidate();
+        if (isNarrow()) closeSheet();
       });
     }
     for (const btn of el.colonists.querySelectorAll('.work')) {
@@ -510,7 +589,7 @@ HF.UI = (function () {
         const c = game.colonistById(parseInt(btn.dataset.colonist, 10));
         if (!c) return;
         c.work[btn.dataset.work] = !c.work[btn.dataset.work];
-        // Drop a job the colonist is no longer willing to do.
+        // Drop a job the villager is no longer willing to do.
         if (c.task && c.task.kind === 'work') {
           const wt = HF.Jobs.workTypeOf(game, c.task);
           if (wt && !c.work[wt]) { game.releaseClaims(c.id); c.task = null; }
@@ -527,16 +606,55 @@ HF.UI = (function () {
     }).join('');
   }
 
-  function renderBanner() {
-    if (game.gameOver === 'lost') {
-      el.banner.textContent = 'The colony has failed. Turn ' + game.turn + '. Press New to try again.';
-      el.banner.className = 'show bad';
-    } else if (game.milestoneShown && game.turn === HF.CFG.MILESTONE_TURN) {
-      el.banner.textContent = 'Three years endured.';
-      el.banner.className = 'show good';
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(function () { el.banner.className = ''; }, 5000);
+  /* ---------- the ending ---------- */
+
+  const ENDINGS = {
+    won: {
+      title: 'The village endures',
+      sub: 'Three harvests brought in, three levies paid, and the valley is still yours.',
+      mark: '村',
+    },
+    dissolved: {
+      title: 'The village is broken up',
+      sub: 'Twice the collectors went away short. The castle has no further use for this valley.',
+      mark: '散',
+    },
+    lost: {
+      title: 'Nothing remains',
+      sub: 'The last of the villagers is gone, and the paddies go back to grass.',
+      mark: '無',
+    },
+  };
+
+  function renderEnding() {
+    const node = $('ending');
+    if (!game.gameOver || endingDismissedFor === game.gameOver) {
+      node.classList.remove('open');
+      return;
     }
+    const e = ENDINGS[game.gameOver];
+    const s = game.summary();
+    $('ending-mark').textContent = e.mark;
+    $('ending-title').textContent = e.title;
+    $('ending-sub').textContent = e.sub;
+
+    const rows = [
+      ['Years held', s.years],
+      ['Villagers living', s.alive],
+      ['Levies paid', s.leviesPaid + (s.leviesMissed ? ' (' + s.leviesMissed + ' missed)' : '')],
+      ['Rice in the kura', s.rice + ' koku'],
+      ['Buildings raised', s.built],
+      ['Bandits cut down', s.bandits],
+    ];
+    if (s.lost) rows.push(['Died', s.lost]);
+    if (s.departed) rows.push(['Walked out', s.departed]);
+
+    $('ending-stats').innerHTML = rows.map(function (r) {
+      return '<li><span>' + r[0] + '</span><b>' + r[1] + '</b></li>';
+    }).join('');
+
+    $('ending-continue').textContent = game.gameOver === 'won' ? 'Carry on' : 'Look around';
+    node.classList.add('open');
   }
 
   return { init: init, setGame: setGame };
