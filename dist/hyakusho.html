@@ -447,6 +447,166 @@ kbd {
 .bar.mood .fill { background: #7a5c2c; }
 .bar.hp   .fill { background: #7a3a2f; }
 
+/* ---------- choosing how hard the world presses ---------- */
+
+.pick-head {
+  margin: 20px 0 9px;
+  font: 600 10px/1 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+#scenario-pick { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+
+.scen {
+  display: block;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #12171e;
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.scen:hover { border-color: #47536b; }
+.scen.on { border-color: var(--gold); background: #221d12; }
+.scen-name { display: block; font: 600 14px/1.3 var(--display); color: var(--ink); }
+.scen.on .scen-name { color: var(--gold); }
+.scen-note { display: block; margin-top: 3px; font-size: 12px; line-height: 1.5; }
+
+#levy.hidden { display: none; }
+
+/* ---------- the trader's chip on the map ---------- */
+
+/* Sits below the banner line, which is centred at the top and would otherwise
+   run straight into a long offer. */
+#offer-chip {
+  position: absolute;
+  left: 12px;
+  top: 56px;
+  padding: 7px 13px;
+  border: 1px solid var(--moss);
+  border-radius: 20px;
+  background: rgba(11, 14, 19, 0.94);
+  color: #b7cf99;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  display: none;
+  z-index: 6;
+}
+#offer-chip.show { display: block; }
+#offer-chip .offer-mark { color: var(--gold); margin-right: 4px; }
+
+/* ---------- the ledger and the trader's offer ---------- */
+
+.ledger { padding: 14px 15px 16px; }
+.ledger .who { margin: 0 0 9px; font-size: 13px; line-height: 1.55; color: var(--ink-dim); }
+.ledger .who b { color: var(--ink); }
+.ledger .who.good { color: var(--moss); }
+.ledger .who.lede { font: 15px/1.5 var(--display); color: var(--ink); margin-bottom: 12px; }
+.ledger h3 {
+  margin: 14px 0 6px;
+  font: 600 10px/1 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.standing-bar {
+  position: relative;
+  height: 26px;
+  margin-bottom: 12px;
+  border-radius: 5px;
+  background: #12171e;
+  overflow: hidden;
+}
+.standing-bar .fill {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #6d3a30, #7d6a2f 45%, #5f7a44);
+}
+.standing-bar span {
+  position: relative;
+  display: block;
+  padding-left: 9px;
+  font: 600 12px/26px var(--ui);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+/* The one place the player can choose to spend rice on goodwill. */
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #12171e;
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.toggle-row.on { border-color: var(--gold); background: #221d12; }
+.toggle-row .tick {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--gold);
+  font-size: 13px;
+  line-height: 19px;
+  text-align: center;
+}
+.toggle-row.on .tick { border-color: var(--gold); }
+.toggle-row .toggle-text { display: block; }
+.toggle-row b { display: block; color: var(--ink); font-size: 13px; }
+.toggle-row em { display: block; margin-top: 3px; font-style: normal; font-size: 12px; line-height: 1.5; }
+
+.trade {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 4px 0 12px;
+  padding: 13px 10px;
+  border-radius: 7px;
+  background: #12171e;
+}
+.trade .side { display: flex; flex-direction: column; align-items: center; font-size: 11px;
+               letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.trade .side b { font: 700 21px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+.trade .give b { color: var(--shu-soft); }
+.trade .get b { color: var(--moss); }
+.trade .arrow { color: var(--ink-dim); font-size: 19px; }
+
+.offer-actions { display: flex; gap: 9px; margin-top: 4px; }
+.offer-actions button {
+  flex: 1;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: 600 13px/1.2 var(--ui);
+  cursor: pointer;
+}
+.offer-actions .primary { border-color: var(--gold); background: #2a2416; color: var(--gold); }
+.offer-actions button[disabled] { opacity: 0.5; cursor: default; }
+
 /* ---------- who a villager is, and what is on their mind ---------- */
 
 .trait-line {
@@ -529,6 +689,10 @@ kbd {
 #log li.good   { color: var(--moss); }
 #log li.bad    { color: var(--shu-soft); }
 #log li.season { color: var(--gold); }
+#log li.levy   { color: var(--gold); }
+#log li.trade  { color: #9ec6c9; }
+/* The valley just being itself: present, but never louder than the news. */
+#log li.ambient { color: #6f7a86; font-style: italic; }
 #log li.levy   { color: #d9b26a; font-weight: 600; }
 
 .empty { color: var(--ink-dim); font-style: italic; }
@@ -834,6 +998,7 @@ kbd {
         <button id="recenter" title="Centre on the village" aria-label="Centre on the village">&#9678;</button>
       </div>
 
+      <div id="offer-chip"></div>
       <div id="mode-hint"></div>
       <div id="tooltip"></div>
       <div id="banner"></div>
@@ -841,14 +1006,22 @@ kbd {
       <div id="help">
         <div class="sheet">
           <h2>How to hold a village together</h2>
-          <p class="lede">Four peasants, one valley, and three years. Nothing happens until you
-             end the turn, so there is no hurry &mdash; only consequences.</p>
+          <p class="lede">Four peasants, one valley, four years. Nothing happens until you end
+             the turn, so there is no hurry &mdash; only consequences.</p>
           <ol class="steps">
-            <li><b>The levy is the whole game.</b> After each harvest the daimyō's collectors
-                come for rice: 40 koku, then 75, then 115. Miss two and the village is broken up.
-                The countdown is in the bar at the top.</li>
-            <li><b>Rice comes from paddies, and only from paddies.</b> Foraging and hunting will
-                not cover a levy. Tap <b>Build &rarr; Rice Paddy</b> early and often.</li>
+            <li><b>Your first year is nearly free.</b> Newly opened land is taxed lightly, so the
+                first levy asks only 18 koku. Use the year to learn the valley. The asking then
+                climbs: 55, then 100, then 155.</li>
+            <li><b>Standing, not strikes.</b> Falling short costs the castle's regard in
+                proportion to how far short you fall &mdash; a few koku is a note in a ledger,
+                half the demand is a mark against the village. Run it to nothing and the village
+                is broken up. Tap the levy chip to read the ledger.</li>
+            <li><b>There is more than one way to pay.</b> Traders come up the valley with a single
+                offer &mdash; timber for rice, rice for stone, take it or leave it. A village that
+                cuts bamboo or traps fish can buy its way to the levy without a paddy in sight.</li>
+            <li><b>The ground decides the harvest.</b> Paddies ripen half again as fast on
+                <b>reed marsh</b>, slowly on dry <b>moor</b>. <b>Bamboo</b> pays less than pine but
+                grows back inside the year. Read the valley before you plan it.</li>
             <li><b>Build shelter before winter.</b> A <b>Minka</b> sleeps two; villagers without a
                 bed lose heart. A <b>Hearth Fire</b> keeps anyone within five tiles alive through
                 the cold. A <b>Kura</b> raises how much you can store &mdash; everything over the
@@ -860,9 +1033,8 @@ kbd {
                 close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
                 waste turns breaking through.</li>
             <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is not a mood
-                dial &mdash; it is a list of reasons, each one named and counted. Sleeping on bare
-                earth, no hearth in the cold, the collectors came. Fix the reasons and the number
-                follows. Tap their name to call them something of your own.</li>
+                dial &mdash; it is a list of reasons, each one named and counted. Fix the reasons
+                and the number follows. Tap their name to call them something of your own.</li>
           </ol>
           <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
              to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
@@ -872,6 +1044,8 @@ kbd {
              menu &middot; <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot;
              <kbd>X</kbd> cancel tool &middot; <kbd>Esc</kbd> put the tool down &middot;
              <kbd>H</kbd> this page</p>
+          <h3 class="pick-head">How hard should the world press?</h3>
+          <div id="scenario-pick"></div>
           <button id="help-close">Begin</button>
         </div>
       </div>
@@ -980,26 +1154,73 @@ HF.CFG = {
   MIGRANT_GAP: 26,
 
   /* The spine of the game. The daimyo's collectors come after each harvest,
-     before winter, and they do not care whether you can spare it. */
+     before winter, and they do not care whether you can spare it.
+
+     Four years rather than three, and the first year is a remission year: newly
+     opened land was commonly taxed lightly, and it gives the player a full year
+     to learn what a levy even is before one can hurt them. The demand then
+     roughly doubles each autumn, so the difficulty arrives as a ramp instead of
+     a wall. */
   LEVY: {
-    turns: [30, 70, 110],
-    demands: [40, 75, 115],
-    laterIncrease: 45,      // per year beyond the third
-    warnAhead: 8,
-    /* Missing a levy earns strikes rather than ending things outright: a near
-       miss costs one, a bad miss costs two, and three break up the village.
-       So you can survive one bad year, or two tight ones, but not both. */
-    tolerance: 0.65,        // paying at least this share of the demand is a near miss
-    strikeNear: 1,
-    strikeBad: 2,
-    strikesAllowed: 2,
+    turns: [40, 80, 120, 160],
+    demands: [18, 55, 100, 155],
+    laterIncrease: 60,      // per year beyond the fourth
+    warnAhead: 10,
   },
 
-  VICTORY_TURN: 120,        // end of the third year
+  /* Standing is what the castle thinks of the village, and it replaced a
+     three-strikes counter. Strikes made every levy a pass/fail gate: 5 koku
+     short and 50 short cost exactly the same, so there was one correct plan and
+     no reason to ever grow more rice than the number. Standing is continuous -
+     a small shortfall is a small wound, a large one nearly fatal - and paying
+     over the demand buys credit you can spend on a bad year later. */
+  STANDING: {
+    start: 60,
+    max: 100,
+    payBonus: 12,           // for meeting the demand at all
+    overPer: 6,             // +1 standing per this much rice paid above the demand
+    overCap: 12,
+    shortPenalty: 62,       // scaled by the share of the demand you failed to pay
+    recover: 0.25,          // per turn, the castle slowly forgets
+    favourAt: 82,           // above this, next year's demand is eased
+    favourRelief: 0.85,
+    walkOutBelow: 22,       // desperate villages start losing people
+  },
+
+  VICTORY_TURN: 160,        // end of the fourth year
+
+  /* Merchants come up the valley with a single offer, take it or leave it.
+     This is the freedom valve: it is what makes a timber village or a fishing
+     village viable when the castle only ever asks for rice. */
+  MERCHANT: { firstTurn: 14, gap: [10, 16], standFor: 4 },
 
   SKILL_MAX: 10,
   XP_PER_LEVEL: 14,
 };
+
+/* ---------- how hard the world presses ----------
+   The levy and the bandits were built first and grew to fill the game, which
+   left no room to just keep a village. These let the player say how much of
+   that they want. Open Valley is the real answer to "let it breathe": the
+   seasons, the ground and the people, and nothing coming over the hill. */
+HF.SCENARIOS = {
+  open: {
+    id: 'open', label: 'Open Valley',
+    note: 'No collectors and no bandits. Seasons, ground, and people. It does not end.',
+    levy: false, raids: false,
+  },
+  quiet: {
+    id: 'quiet', label: 'A Quiet Province',
+    note: 'The castle asks, but lightly, and trouble is a long way off. Room to make mistakes.',
+    levy: true, levyScale: 0.6, raids: true, raidDelay: 55, raidGapScale: 1.5,
+  },
+  full: {
+    id: 'full', label: 'Under the Daimyō',
+    note: 'The levy as written, and bandits from the second year. The village can be broken up.',
+    levy: true, levyScale: 1, raids: true, raidDelay: 0, raidGapScale: 1,
+  },
+};
+HF.DEFAULT_SCENARIO = 'quiet';
 
 /* What the player calls each resource. */
 HF.RESOURCES = {
@@ -1009,12 +1230,20 @@ HF.RESOURCES = {
 };
 
 /* ---------- terrain ----------
-   `elev` is in whole tile-heights and drives the isometric relief. */
+   `elev` is in whole tile-heights and drives the isometric relief.
+
+   Every kind here has to be worth telling apart, or it is just noise on the
+   map. Marsh is where rice does best and nothing else will stand; bamboo is
+   timber that comes back within the year; moor is open ground you can build on
+   that grows nothing on its own. Between them, two valleys play differently. */
 HF.TERRAIN = {
   water:    { id: 'water',    name: 'River',        passable: false, cost: 99, build: false, elev: 0 },
   sand:     { id: 'sand',     name: 'Riverbank',    passable: true,  cost: 1,  build: true,  elev: 0 },
   grass:    { id: 'grass',    name: 'Meadow',       passable: true,  cost: 1,  build: true,  elev: 0 },
+  marsh:    { id: 'marsh',    name: 'Reed Marsh',   passable: true,  cost: 2,  build: false, elev: 0, wet: true },
+  moor:     { id: 'moor',     name: 'Susuki Moor',  passable: true,  cost: 1,  build: true,  elev: 0 },
   forest:   { id: 'forest',   name: 'Pine Grove',   passable: true,  cost: 2,  build: false, elev: 0 },
+  bamboo:   { id: 'bamboo',   name: 'Bamboo Grove', passable: true,  cost: 2,  build: false, elev: 0 },
   hill:     { id: 'hill',     name: 'Rocky Slope',  passable: true,  cost: 2,  build: true,  elev: 1 },
   mountain: { id: 'mountain', name: 'Mountain',     passable: false, cost: 99, build: false, elev: 2 },
 };
@@ -1038,8 +1267,8 @@ HF.ORDERS = {
   chop: {
     id: 'chop', label: 'Fell Timber', verb: 'Felling', key: 'C', work: 10, workType: 'woodcut',
     color: '#d9a441',
-    valid: function (t) { return t.terrain === 'forest'; },
-    hint: 'Fell pine for timber. The grove grows back in time.',
+    valid: function (t) { return t.terrain === 'forest' || t.terrain === 'bamboo'; },
+    hint: 'Fell pine or cut bamboo. Pine pays better; bamboo is back within the year.',
   },
   mine: {
     id: 'mine', label: 'Quarry Stone', verb: 'Quarrying', key: 'M', work: 15, workType: 'mine',
@@ -1052,6 +1281,13 @@ HF.ORDERS = {
     color: '#c9738a',
     valid: function (t) { return t.feature === 'chestnut'; },
     hint: 'Gather chestnuts for the stores. They ripen again, but never in winter.',
+  },
+  fish: {
+    id: 'fish', label: 'Set Fish Traps', verb: 'Fishing', key: 'T', work: 13, workType: 'farm',
+    color: '#6fb3c9',
+    valid: function (t) { return t.feature === 'fish'; },
+    hint: 'Trap fish from the bank. Steady food that owes nothing to the paddies - ' +
+          'a river valley can eat while the rice goes to the castle.',
   },
   harvest: {                                   // raised automatically by ripe paddies
     id: 'harvest', label: 'Harvest', verb: 'Harvesting', key: null, work: 8, workType: 'farm',
@@ -1078,8 +1314,9 @@ HF.BUILDINGS = {
   farm: {
     id: 'farm', label: 'Rice Paddy', sub: '',
     cost: { wood: 5 }, work: 12, farm: true,
-    on: ['grass'],
-    desc: 'Floods, ripens, and asks to be harvested. Your only real source of rice. Dormant all winter.',
+    on: ['grass', 'marsh', 'moor'],
+    desc: 'Floods, ripens, and asks to be harvested. Ripens half again as fast on reed marsh, ' +
+          'and slowly on dry moor - where you put it matters more than how many you have.',
   },
   campfire: {
     id: 'campfire', label: 'Hearth Fire', sub: '',
@@ -1102,13 +1339,30 @@ HF.BUILDINGS = {
   },
 };
 
-HF.FARM = { RIPE_AT: 20, YIELD: 13, GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 } };
+HF.FARM = {
+  RIPE_AT: 20,
+  YIELD: 13,
+  GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 },
+  /* Where a paddy sits is a real decision: wet ground is worth walking to. */
+  SOIL: { marsh: 1.5, grass: 1.0, moor: 0.6 },
+};
 
 HF.YIELDS = {
   chop:    { wood: 12 },
   mine:    { stone: 10 },
   forage:  { food: 8 },
+  fish:    { food: 7 },
   harvest: { food: HF.FARM.YIELD },
+};
+
+/* How long a stripped tile takes to come back, and as what. Bamboo is the
+   point of the pair: it yields less per cut than pine but returns inside a
+   year, so a bamboo valley can be logged over and over. */
+HF.REGROW = {
+  forest: { turns: [55, 85], yieldScale: 1 },
+  bamboo: { turns: [16, 26], yieldScale: 0.6 },
+  chestnut: { turns: [22, 34] },
+  fish: { turns: [20, 32] },
 };
 
 /* ---------- character ----------
@@ -1380,29 +1634,41 @@ HF.Map = {
   generate: function (rng, w, h) {
     const elev = HF.U.noiseField(rng, w, h, 11, 4, 0.5);
     const moist = HF.U.noiseField(rng, w, h, 8, 3, 0.55);
+    // A third, coarser field decides which *kind* of wet and which kind of
+    // wood, so groves and marshes come in patches rather than salting the map
+    // evenly. Two valleys should not feel like the same valley.
+    const grain = HF.U.noiseField(rng, w, h, 17, 2, 0.6);
     const tiles = new Array(w * h);
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
 
-        // Island falloff: push elevation down towards the border so the colony
+        // Island falloff: push elevation down towards the border so the village
         // sits on a landmass with a coast rather than running off the screen.
+        // Softened from what it was - the old curve drowned well over half the
+        // map, which left too little ground for the terrain kinds to tell any
+        // story on.
         const nx = (x / (w - 1)) * 2 - 1;
         const ny = (y / (h - 1)) * 2 - 1;
         const edge = Math.max(Math.abs(nx), Math.abs(ny));
-        const e = elev[i] - Math.pow(edge, 3.2) * 0.55;
+        const e = elev[i] - Math.pow(edge, 4.2) * 0.42;
         const m = moist[i];
+        const g = grain[i];
 
         let terrain, feature = null;
-        if (e < 0.30) terrain = 'water';
-        else if (e < 0.34) terrain = 'sand';
+        if (e < 0.29) terrain = 'water';
+        else if (e < 0.33) terrain = 'sand';
         else if (e > 0.70) terrain = 'mountain';
         else if (e > 0.60) terrain = 'hill';
-        else if (m > 0.56) terrain = 'forest';
+        else if (e < 0.40 && m > 0.40) terrain = 'marsh';        // low and damp
+        else if (m > 0.52) terrain = g > 0.50 ? 'bamboo' : 'forest';
+        else if (m < 0.40 && g < 0.50) terrain = 'moor';         // high and dry
         else terrain = 'grass';
 
-        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'chestnut';
+        if ((terrain === 'grass' || terrain === 'moor') && m > 0.4 && rng.chance(0.07)) {
+          feature = 'chestnut';
+        }
 
         tiles[i] = {
           terrain: terrain,
@@ -1410,11 +1676,40 @@ HF.Map = {
           variant: rng.next(),      // per-tile jitter so the art isn't a flat grid
           building: null,           // building id occupying this tile
           regrow: 0,                // turn at which a stripped tile comes back
+          regrowTo: null,           // and what comes back - see HF.REGROW
         };
       }
     }
 
-    return { w: w, h: h, tiles: tiles };
+    const g = { w: w, h: h, tiles: tiles };
+
+    // Fish sit in water within reach of a bank, because a trap nobody can walk
+    // to is a promise the map cannot keep.
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const t = tiles[y * w + x];
+        if (t.terrain !== 'water') continue;
+        let bank = false;
+        for (const d of HF.U.NEIGHBORS) {
+          const n = HF.Map.at(g, x + d[0], y + d[1]);
+          if (n && HF.TERRAIN[n.terrain].passable) { bank = true; break; }
+        }
+        if (bank && rng.chance(0.09)) t.feature = 'fish';
+      }
+    }
+
+    // One or two roadside shrines. They do nothing but stand there and lift
+    // the spirits of anyone who lives near one.
+    let shrines = 0;
+    for (let tries = 0; tries < 400 && shrines < rng.int(1, 3); tries++) {
+      const x = rng.int(3, w - 4), y = rng.int(3, h - 4);
+      const t = tiles[y * w + x];
+      if (t.feature || (t.terrain !== 'grass' && t.terrain !== 'moor')) continue;
+      t.feature = 'shrine';
+      shrines++;
+    }
+
+    return g;
   },
 
   inBounds: function (g, x, y) {
@@ -1468,20 +1763,25 @@ HF.Map = {
     for (let y = 3; y < g.h - 3; y++) {
       for (let x = 3; x < g.w - 3; x++) {
         if (!HF.Map.passable(g, x, y)) continue;
-        let open = 0, wood = 0, rock = 0;
-        for (let dy = -3; dy <= 3; dy++) {
-          for (let dx = -3; dx <= 3; dx++) {
+        let open = 0, wood = 0, rock = 0, wet = 0;
+        for (let dy = -4; dy <= 4; dy++) {
+          for (let dx = -4; dx <= 4; dx++) {
             const t = HF.Map.at(g, x + dx, y + dy);
             if (!t) continue;
-            if (t.terrain === 'grass') open++;
-            if (t.terrain === 'forest') wood++;
+            if (t.terrain === 'grass' || t.terrain === 'moor') open++;
+            if (t.terrain === 'forest' || t.terrain === 'bamboo') wood++;
             if (t.terrain === 'hill' || t.terrain === 'mountain') rock++;
+            if (t.terrain === 'marsh') wet++;
           }
         }
-        // Want room to build, trees nearby, some stone, and roughly central.
+        /* Wet ground is weighted hard. People settled where the rice would
+           grow, and without this the site picker put every village on dry
+           meadow - marsh is a tenth of the map, but barely one paddy in a
+           hundred was ever built on it, so the best ground in the game was
+           something the player never actually met. */
         const centrality = 1 - HF.U.dist(x, y, g.w / 2, g.h / 2) / (g.w / 2);
-        const score = open * 1.0 + Math.min(wood, 14) * 0.8 + Math.min(rock, 10) * 0.6
-                    + centrality * 12 + rng.next();
+        const score = open * 0.7 + Math.min(wet, 16) * 1.6 + Math.min(wood, 16) * 0.8
+                    + Math.min(rock, 10) * 0.5 + centrality * 12 + rng.next();
         if (score > bestScore) { bestScore = score; best = { x: x, y: y }; }
       }
     }
@@ -1696,7 +1996,7 @@ HF.Colonists = {
       id: game.nextId++,
       // Peasants of the period rarely had surnames; they were known by name
       // and by where they came from.
-      name: rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place),
+      name: HF.Colonists.pickName(game, rng),
       renamed: false,
       origin: rng.pick(HF.ORIGINS),
       mark: rng.pick(HF.MARKS),
@@ -1721,6 +2021,24 @@ HF.Colonists = {
       departed: false,
     };
     return c;
+  },
+
+  /* Names have to be unique. Four villagers out of 26 given names and 16
+     places collide more often than you would guess, and two people called
+     Kiyo of Nomura is not a coincidence the player reads as flavour - it reads
+     as the game being broken, and it makes the death of one of them
+     meaningless. Falls back to a distinguishing epithet if the pool is
+     genuinely exhausted. */
+  pickName: function (game, rng) {
+    const taken = new Set(game.colonists.map(function (c) { return c.name; }));
+    for (let i = 0; i < 40; i++) {
+      const n = rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place);
+      if (!taken.has(n)) return n;
+    }
+    let n = rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place);
+    let suffix = 2;
+    while (taken.has(n)) n = n + ' the ' + (suffix++ === 2 ? 'younger' : 'elder');
+    return n;
   },
 
   /* Ties one villager to another. Called once when the village is founded and
@@ -1793,6 +2111,19 @@ HF.Colonists = {
     return false;
   },
 
+  /* Roadside shrines are scenery with one small hook: living in sight of one
+     is a comfort, and more of one to somebody devout. It is a reason to settle
+     in one part of the valley rather than another. */
+  nearShrine: function (game, c) {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const t = HF.Map.at(game, c.x + dx, c.y + dy);
+        if (t && t.feature === 'shrine') return true;
+      }
+    }
+    return false;
+  },
+
   freeBed: function (game, c) {
     let best = null, bestD = Infinity;
     for (const b of game.buildings) {
@@ -1857,6 +2188,8 @@ HF.Colonists = {
     // thought for them. This is the rest of the village being subdued, and it
     // must not be the thing that finishes them off.
     if (game.grief > 0.5) add('Mourning', -Math.min(game.grief, HF.CFG.GRIEF_CAP));
+
+    if (HF.Colonists.nearShrine(game, c)) add('A shrine close by', c.trait === 'devout' ? 7 : 4);
 
     if (c.trait === 'devout') add('Devout', HF.TRAIT_TUNING.devoutMood);
     if (c.trait === 'homesick') {
@@ -2158,7 +2491,7 @@ HF.Jobs = {
     if (!c.task) {
       c.task = HF.Jobs.findWork(game, c);
       if (!c.task) {
-        c.activity = 'Idle';
+        c.activity = HF.Jobs.idling(game, c);
         HF.Jobs.wander(game, c);
         HF.Colonists.applyHealth(game, c);
         return;
@@ -2278,24 +2611,65 @@ HF.Jobs = {
     }
   },
 
+  /* What somebody with nothing to do is doing.
+
+     Pure flavour - it changes nothing and is not simulated anywhere. But a
+     roster of four people all reading "Idle" is four blanks, and the same four
+     reading "sitting at the shrine" and "watching the river" is a village.
+     Keyed off what is actually around them so it never contradicts the map. */
+  idling: function (game, c) {
+    const near = function (pred, r) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const t = HF.Map.at(game, c.x + dx, c.y + dy);
+          if (t && pred(t)) return true;
+        }
+      }
+      return false;
+    };
+
+    const options = ['Sitting a while', 'Mending something', 'Talking'];
+    if (near(function (t) { return t.feature === 'shrine'; }, 3)) options.push('At the shrine');
+    if (near(function (t) { return t.terrain === 'water'; }, 2)) options.push('Watching the river');
+    if (near(function (t) { return t.building != null; }, 2)) options.push('Round the houses');
+    if (game.season() === 'Winter') options.push('Keeping out of the cold', 'Close to the fire');
+    if (game.season() === 'Spring') options.push('Looking over the paddies');
+    if (game.season() === 'Summer') options.push('Out of the sun');
+    if (game.season() === 'Autumn') options.push('Counting what is in the kura');
+    if (c.trait === 'devout') options.push('Saying something under their breath');
+    if (c.trait === 'diligent') options.push('Looking for something to do');
+
+    // Stable per villager per turn rather than flickering every repaint.
+    return options[(c.id * 7 + game.turn * 3) % options.length];
+  },
+
   completeDesignation: function (game, c, d) {
     const tile = HF.Map.at(game, d.x, d.y);
     const yields = HF.YIELDS[d.type] || {};
+    let scale = 1;
 
     if (d.type === 'chop') {
+      // Remember what stood here, so bamboo grows back as bamboo and on its own
+      // much shorter clock. That difference is the whole reason both exist.
+      const was = tile.terrain;
+      const spec = HF.REGROW[was] || HF.REGROW.forest;
+      scale = spec.yieldScale;
       tile.terrain = 'grass';
-      tile.regrow = game.turn + game.rng.int(55, 85);   // saplings come back
+      tile.regrowTo = was;
+      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
     } else if (d.type === 'mine') {
       tile.terrain = tile.terrain === 'mountain' ? 'hill' : 'grass';
-    } else if (d.type === 'forage') {
+    } else if (d.type === 'forage' || d.type === 'fish') {
+      const spec = HF.REGROW[d.type === 'fish' ? 'fish' : 'chestnut'];
       tile.feature = null;
-      tile.regrow = game.turn + game.rng.int(22, 34);
+      tile.regrowTo = d.type === 'fish' ? 'fish' : 'chestnut';
+      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
     } else if (d.type === 'harvest') {
       const farm = game.buildingAt(d.x, d.y);
       if (farm) farm.growth = 0;
     }
 
-    for (const r in yields) game.addResource(r, yields[r]);
+    for (const r in yields) game.addResource(r, Math.round(yields[r] * scale));
     game.dirtyTerrain = true;
     delete game.designations[HF.U.key(d.x, d.y)];
     c.task = null;
@@ -2379,9 +2753,18 @@ HF.Build = {
     return true;
   },
 
+  /* What a paddy on this tile is worth per turn: the season, times the ground
+     it was dug into. Marsh is half again as fast as meadow, moor barely
+     works - so choosing where to build is a real decision rather than a
+     formality. */
+  growthRate: function (game, b) {
+    const tile = HF.Map.at(game, b.x, b.y);
+    const soil = (tile && HF.FARM.SOIL[tile.terrain]) || 1;
+    return HF.FARM.GROWTH[game.season()] * soil;
+  },
+
   /* Crops ripen with the season, then post their own harvest order. */
   tickFarms: function (game) {
-    const rate = HF.FARM.GROWTH[game.season()];
     for (const b of game.buildings) {
       if (!b || !b.built || !HF.BUILDINGS[b.type].farm) continue;
       if (b.growth >= HF.FARM.RIPE_AT) {
@@ -2393,7 +2776,7 @@ HF.Build = {
         }
         continue;
       }
-      b.growth += rate;
+      b.growth += HF.Build.growthRate(game, b);
       if (b.growth >= HF.FARM.RIPE_AT) {
         b.growth = HF.FARM.RIPE_AT;
         game.dirtyTerrain = true;
@@ -2412,11 +2795,15 @@ HF.Build = {
       const x = i % game.w, y = (i / game.w) | 0;
       if (game.designations[HF.U.key(x, y)]) continue;
 
-      if (t.terrain === 'grass' && !t.feature) {
-        // Whichever was stripped here grows back: trees, or the bush.
-        if (game.rng.chance(0.6)) t.terrain = 'forest';
-        else t.feature = 'chestnut';
-        game.dirtyTerrain = true;
+      // Whatever was taken from this tile is what comes back to it.
+      const what = t.regrowTo;
+      t.regrowTo = null;
+      if (what === 'fish') {
+        if (t.terrain === 'water' && !t.feature) { t.feature = 'fish'; game.dirtyTerrain = true; }
+      } else if (what === 'chestnut') {
+        if (!t.feature) { t.feature = 'chestnut'; game.dirtyTerrain = true; }
+      } else if (what && HF.TERRAIN[what]) {
+        if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
     }
   },
@@ -2488,7 +2875,54 @@ HF.Events = {
     }
     game.log(count + ' bandit' + (count > 1 ? 's' : '') + ' sighted to the ' +
              HF.Events.compass(spawn, centre) + '.', 'bad');
-    game.nextRaidTurn = game.turn + game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP);
+    const gap = game.scenario().raidGapScale || 1;
+    game.nextRaidTurn = game.turn +
+      Math.round(game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP) * gap);
+  },
+
+  /* ---------- the year passing ----------
+     Things that happen and mean nothing. Almost every line in the record used
+     to be a threat or a transaction, which made the valley read as a problem
+     rather than a place - and a village worth keeping has to be somewhere the
+     player would want to look at even when nothing is going wrong. */
+  AMBIENT: {
+    Spring: [
+      'The mountain cherry is out along the ridge.',
+      'Frogs started up in the paddies last night and did not stop.',
+      'A heron has taken to standing in the shallows at dawn.',
+      'Someone has hung paper at the shrine for the year.',
+      'The first swallows are back under the eaves.',
+    ],
+    Summer: [
+      'Fireflies over the water after dark.',
+      'The cicadas have started, and will not be stopping.',
+      'Rain for three days. The paddies are as full as they will get.',
+      'Too hot to work through the middle of the day, so nobody does.',
+      'Someone has been sleeping outside on the good nights.',
+    ],
+    Autumn: [
+      'The maples have turned on the far slope.',
+      'Geese going over, heading somewhere else.',
+      'The first frost held off another week.',
+      'Chestnuts underfoot everywhere along the treeline.',
+      'The evenings are drawing in noticeably now.',
+    ],
+    Winter: [
+      'Snow on the mountain, and the smell of it in the air.',
+      'The river has ice at the edges.',
+      'Nothing to do but mend things and wait it out.',
+      'Someone keeps the hearth going all night now.',
+      'Tracks in the snow that nobody can agree about.',
+    ],
+  },
+
+  ambient: function (game) {
+    if (!game.rng.chance(0.16)) return;
+    const lines = HF.Events.AMBIENT[game.season()];
+    const line = game.rng.pick(lines);
+    // Do not repeat the same observation twice in a season's memory.
+    for (const e of game.entries.slice(-14)) if (e.message === line) return;
+    game.log(line, 'ambient');
   },
 
   compass: function (from, to) {
@@ -2569,8 +3003,20 @@ HF.Events = {
   tick: function (game) {
     const alive = game.aliveColonists();
 
-    if (game.turn >= HF.CFG.RAID_START_TURN && game.turn >= game.nextRaidTurn && alive.length > 0) {
+    if (game.scenario().raids && game.turn >= game.nextRaidTurn && alive.length > 0) {
       HF.Events.spawnRaid(game);
+    }
+
+    HF.Events.ambient(game);
+
+    // An offer left standing too long walks on down the valley.
+    if (game.offer && game.turn > game.offer.until) {
+      game.log((game.offer.tag || 'The trader') + ' has moved on.', 'info');
+      game.offer = null;
+    }
+    if (!game.offer && game.turn >= game.nextMerchantTurn && alive.length > 0) {
+      game.nextMerchantTurn = game.turn + game.rng.int(HF.CFG.MERCHANT.gap[0], HF.CFG.MERCHANT.gap[1]);
+      HF.Events.makeOffer(game);
     }
 
     if (game.turn >= game.nextMigrantTurn) {
@@ -2599,6 +3045,99 @@ HF.Events = {
     }
   },
 
+  /* ---------- merchants ----------
+     One person, one offer, take it or leave it. Deliberately not a trade
+     screen: an offer you can refuse is a decision with a face on it, where a
+     table of exchange rates would just be arithmetic. It is also the release
+     valve on the whole design - the castle only ever asks for rice, so without
+     some way to turn timber into rice there is exactly one way to play. */
+
+  MERCHANTS: [
+    { who: 'A rice broker up from the castle town', tag: 'The broker',
+      wants: 'wood',  gives: 'food' },
+    { who: 'A timber factor with an ox cart', tag: 'The timber factor',
+      wants: 'food',  gives: 'wood' },
+    { who: 'A mason\'s agent, buying for a keep', tag: 'The mason\'s agent',
+      wants: 'stone', gives: 'food' },
+    { who: 'A pedlar who has walked the whole province', tag: 'The pedlar',
+      wants: 'wood', gives: 'stone' },
+    { who: 'A monk collecting for a burnt temple', tag: 'The monk',
+      wants: 'food',  gives: 'stone' },
+    { who: 'A quartermaster with rice and no carts', tag: 'The quartermaster',
+      wants: 'stone', gives: 'food' },
+  ],
+
+  makeOffer: function (game) {
+    /* Weighted towards a trader who wants what the village has too much of and
+       carries what it has too little of. Purely random offers meant a timber
+       village could go sixty turns without anyone asking for timber, which made
+       trade too unreliable to actually plan around - and a path you cannot plan
+       around is not a path. Weighting keeps the uncertainty (you still cannot
+       summon a trader, and the rate still swings) while making the option real. */
+    const cap = HF.Build.storageCap(game);
+    const pressure = {};
+    for (const r in game.res) pressure[r] = game.res[r] / cap;
+    // Rice is never truly surplus while a levy is coming.
+    pressure.food = Math.max(0, pressure.food - game.levyDemand(game.levyIndex) / cap);
+
+    const weighted = [];
+    for (const m of HF.Events.MERCHANTS) {
+      // Wanting what we have plenty of, and bringing what we lack, is worth
+      // more. Everyone keeps a floor so any trader can still turn up.
+      const w = 1 + Math.max(0, pressure[m.wants] * 4) + Math.max(0, (1 - pressure[m.gives]) * 2);
+      weighted.push({ m: m, w: w });
+    }
+    let roll = game.rng.next() * weighted.length * 3;
+    let m = weighted[0].m;
+    for (const entry of weighted) {
+      roll -= entry.w;
+      if (roll <= 0) { m = entry.m; break; }
+    }
+
+    const have = Math.floor(game.res[m.wants]);
+    // Ask for something the village could plausibly part with, so the offer is
+    // a decision rather than a taunt.
+    const want = HF.U.clamp(Math.round(have * game.rng.int(40, 70) / 100), 10, 140);
+    if (want > have) return;
+
+    // Rates swing, so a patient village can wait for a better visitor.
+    const rate = m.gives === 'food' ? 0.62 : m.wants === 'food' ? 1.5 : 0.85;
+    const give = Math.max(6, Math.round(want * rate * (0.8 + game.rng.next() * 0.55)));
+
+    game.offer = {
+      who: m.who,
+      tag: m.tag,
+      wants: m.wants, wantAmount: want,
+      gives: m.gives, giveAmount: give,
+      until: game.turn + HF.CFG.MERCHANT.standFor,
+    };
+    const W = HF.RESOURCES[m.wants], G = HF.RESOURCES[m.gives];
+    game.log(m.who + ' will take ' + want + ' ' + W.label.toLowerCase() +
+             ' for ' + give + ' ' + G.label.toLowerCase() + '.', 'trade');
+  },
+
+  /* Returns a short reason when the deal cannot be struck, or null on success. */
+  acceptOffer: function (game) {
+    const o = game.offer;
+    if (!o) return 'Nobody is here to trade with.';
+    if (game.res[o.wants] < o.wantAmount) {
+      return 'Not enough ' + HF.RESOURCES[o.wants].label.toLowerCase() + ' left to make the trade.';
+    }
+    game.res[o.wants] -= o.wantAmount;
+    game.addResource(o.gives, o.giveAmount);
+    game.tradesMade++;
+    game.log('Traded ' + o.wantAmount + ' ' + HF.RESOURCES[o.wants].label.toLowerCase() +
+             ' for ' + o.giveAmount + ' ' + HF.RESOURCES[o.gives].label.toLowerCase() + '.', 'trade');
+    game.offer = null;
+    return null;
+  },
+
+  declineOffer: function (game) {
+    if (!game.offer) return;
+    game.offer = null;
+    game.log('The offer was let go.', 'info');
+  },
+
   addMigrant: function (game) {
     const centre = game.colonyCentre();
     const spots = HF.Map.openTilesNear(game, centre.x, centre.y, 6, new Set());
@@ -2619,7 +3158,10 @@ HF.Events = {
     const notes = {
       Spring: 'Spring. The paddies thaw and the rice begins to come on.',
       Summer: 'Summer. The rice swells fastest now.',
-      Autumn: 'Autumn. Growth slows, and the collectors are coming - fill the kura.',
+      // An open valley has no collectors, so it must not be told they are coming.
+      Autumn: game.scenario().levy
+        ? 'Autumn. Growth slows, and the collectors are coming - fill the kura.'
+        : 'Autumn. Growth slows. Bring in what there is.',
       Winter: 'Winter. Nothing grows, and the cold takes anyone far from a hearth.',
     };
     game.log(notes[s], 'season');
@@ -2634,9 +3176,10 @@ HF.Events = {
    object references) so a save is just JSON.stringify. */
 window.HF = window.HF || {};
 
-HF.Game = function (seed) {
+HF.Game = function (seed, scenarioId) {
   this.seed = seed >>> 0;
   this.rng = new HF.RNG(this.seed);
+  this.scenarioId = HF.SCENARIOS[scenarioId] ? scenarioId : HF.DEFAULT_SCENARIO;
 
   const map = HF.Map.generate(this.rng, HF.CFG.MAP_W, HF.CFG.MAP_H);
   this.w = map.w;
@@ -2652,14 +3195,19 @@ HF.Game = function (seed) {
   this.res = Object.assign({}, HF.CFG.START_RES);
   this.entries = [];
   this.grief = 0;
-  this.nextRaidTurn = HF.CFG.RAID_START_TURN;
+  this.nextRaidTurn = HF.CFG.RAID_START_TURN + (this.scenario().raidDelay || 0);
   this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
   this.gameOver = null;
   this.endless = false;
   this.levyIndex = 0;          // how many levies have been collected
   this.levyFailures = 0;
-  this.levyStrikes = 0;
+  this.standing = HF.CFG.STANDING.start;
+  this.levyGenerous = false;   // press surplus rice on the collectors for credit
   this.levyHistory = [];
+  this.offer = null;           // the merchant's standing offer, if one is up
+  this.nextMerchantTurn = HF.CFG.MERCHANT.firstTurn;
+  this.tradesMade = 0;
+  this.taughtTrade = false;   // the first offer is opened for the player, once
   this.banditsKilled = 0;
   this.dirtyTerrain = true;
   this.spoiledThisTurn = false;
@@ -2677,12 +3225,16 @@ HF.Game = function (seed) {
 
   for (const c of this.colonists) HF.Colonists.bind(this, c);
 
-  this.log('Four peasants settle this valley. Three harvests, three levies - hold the village together.',
-           'season');
+  this.log(this.scenario().levy
+    ? 'Four peasants settle this valley. Four harvests, four levies - hold the village together.'
+    : 'Four peasants settle this valley. Nobody is coming for the rice. Make of it what you like.',
+    'season');
   for (const c of this.colonists) {
     this.log(c.name + ' ' + c.origin + '.', 'info');
   }
-  this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
+  if (this.scenario().levy) {
+    this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
+  }
   HF.Events.announceSeason(this);
 };
 
@@ -2708,10 +3260,21 @@ HF.Game.prototype = {
      it is what the village owes, and a granary that looks comfortable in
      autumn can leave you starving through winter once they have been. */
 
+  scenario: function () {
+    return HF.SCENARIOS[this.scenarioId] || HF.SCENARIOS[HF.DEFAULT_SCENARIO];
+  },
+
   levyDemand: function (index) {
     const L = HF.CFG.LEVY;
-    if (index < L.demands.length) return L.demands[index];
-    return L.demands[L.demands.length - 1] + (index - L.demands.length + 1) * L.laterIncrease;
+    let base = index < L.demands.length
+      ? L.demands[index]
+      : L.demands[L.demands.length - 1] + (index - L.demands.length + 1) * L.laterIncrease;
+    // A village in favour is asked for less. Standing you built by overpaying
+    // in a good year comes back to you in a bad one.
+    if (this.standing >= HF.CFG.STANDING.favourAt) {
+      base = Math.round(base * HF.CFG.STANDING.favourRelief);
+    }
+    return Math.max(1, Math.round(base * (this.scenario().levyScale || 1)));
   },
 
   nextLevyTurn: function () {
@@ -2723,7 +3286,19 @@ HF.Game.prototype = {
 
   turnsToLevy: function () { return this.nextLevyTurn() - this.turn; },
 
+  /* How the castle describes the village, in words rather than a number. */
+  standingWord: function () {
+    const s = this.standing;
+    if (s >= HF.CFG.STANDING.favourAt) return 'in favour';
+    if (s >= 62) return 'in good order';
+    if (s >= 40) return 'noted';
+    if (s >= HF.CFG.STANDING.walkOutBelow) return 'in arrears';
+    return 'close to ruin';
+  },
+
   checkLevy: function () {
+    if (!this.scenario().levy) return;
+    const S = HF.CFG.STANDING;
     const due = this.nextLevyTurn();
     const demand = this.levyDemand(this.levyIndex);
 
@@ -2734,55 +3309,66 @@ HF.Game.prototype = {
     if (this.turn < due) return;
 
     const have = Math.floor(this.res.food);
+    const before = this.standing;
 
     if (have >= demand) {
-      this.res.food -= demand;
-      this.levyHistory.push({ year: this.year(), demand: demand, paid: true });
-      this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle.', 'levy');
+      /* Paying is not all-or-nothing any more. Handing over more than the
+         demand buys standing, which is the first reason the game has ever
+         given to grow rice beyond the number on the chip - and the credit
+         carries into a year when the harvest fails. */
+      const spare = have - demand;
+      const offered = Math.min(spare, S.overPer * S.overCap);
+      const generous = this.levyGenerous ? offered : 0;
+      this.res.food -= demand + generous;
+      const bonus = S.payBonus + Math.floor(generous / S.overPer);
+      this.standing = Math.min(S.max, this.standing + bonus);
+      this.levyHistory.push({ year: this.year(), demand: demand, paid: true, extra: generous });
+      this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle' +
+               (generous > 0 ? ', and ' + generous + ' more pressed on them for goodwill' : '') +
+               '.', 'levy');
       this.grief = Math.max(0, this.grief - 4);
       HF.Colonists.rememberAll(this, 'levyPaid');
     } else {
+      // The wound scales with how far short you fell, so 5 koku missing and 50
+      // missing are no longer the same event.
       const short = demand - have;
+      const shareMissed = short / demand;
       this.res.food = 0;
-
-      // A near miss is a warning, not a strike. Without this band one bad
-      // harvest zeroes the granary and takes a villager, and the village can
-      // never climb back - the game would be decided turns before it ended.
-      const tolerated = have >= demand * HF.CFG.LEVY.tolerance;
-      this.levyHistory.push({
-        year: this.year(), demand: demand, paid: false, short: short, tolerated: tolerated,
-      });
-
+      this.standing = Math.max(0, this.standing - shareMissed * S.shortPenalty);
       this.levyFailures++;
-      const L = HF.CFG.LEVY;
-      const left = L.strikesAllowed + 1 - this.levyStrikes;
+      this.levyHistory.push({ year: this.year(), demand: demand, paid: false, short: short });
 
-      if (tolerated) {
-        this.levyStrikes += L.strikeNear;
-        this.grief += 5;
-        this.log('The levy falls ' + short + ' koku short. The collectors take everything and ' +
-                 'note the shortfall against the village.', 'bad');
+      if (shareMissed < 0.25) {
+        this.log('The levy falls ' + short + ' koku short. The clerk writes the shortfall ' +
+                 'down without comment.', 'bad');
         HF.Colonists.rememberAll(this, 'levyShort');
       } else {
-        this.levyStrikes += L.strikeBad;
-        this.grief += 10;
-        this.log('The levy falls ' + short + ' koku short - far short. The collectors strip the ' +
-                 'granary bare.', 'bad');
+        this.log('The levy falls ' + short + ' koku short of ' + demand +
+                 '. The collectors strip the kura bare and take the name of the village.', 'bad');
         HF.Colonists.rememberAll(this, 'levyStripped');
+      }
+
+      // Only a village already in arrears starts losing people over it.
+      if (this.standing < S.walkOutBelow) {
         const alive = this.aliveColonists();
-        if (alive.length > 1 && this.levyStrikes <= L.strikesAllowed) {
+        if (alive.length > 1) {
           const gone = this.rng.pick(alive);
           HF.Colonists.die(this, gone, ' has walked out rather than starve for the castle.', true);
         }
       }
-      if (this.levyStrikes <= L.strikesAllowed && left > 0) {
-        this.log('The village stands, but only just. Another year like this ends it.', 'levy');
-      }
+    }
+
+    this.log('The village stands ' + this.standingWord() + ' with the castle.',
+             this.standing >= before ? 'levy' : 'bad');
+
+    if (this.standing >= S.favourAt) {
+      this.log('Word comes back that the village is well thought of. Next year\'s due is eased.',
+               'good');
     }
 
     this.levyIndex++;
 
-    if (this.levyStrikes > HF.CFG.LEVY.strikesAllowed) {
+    if (this.standing <= 0) {
       this.gameOver = 'dissolved';
       this.log('The castle has run out of patience. The village is broken up and its people ' +
                'scattered across the province.', 'bad');
@@ -2954,16 +3540,20 @@ HF.Game.prototype = {
     }
 
     this.grief = Math.max(0, this.grief - 0.5);
+    this.standing = Math.min(HF.CFG.STANDING.max, this.standing + HF.CFG.STANDING.recover);
 
     this.checkLevy();
 
     if (this.aliveColonists().length === 0) {
       this.gameOver = 'lost';
       this.log('The last of the villagers is gone. The valley falls silent.', 'bad');
-    } else if (!this.gameOver && !this.endless &&
+    } else if (!this.gameOver && !this.endless && this.scenario().levy &&
                this.turn >= HF.CFG.VICTORY_TURN && this.levyIndex >= HF.CFG.LEVY.turns.length) {
+      // A milestone, not a finish line. The village is the point, so this
+      // stops once to mark four years survived and then gets out of the way -
+      // there is nothing after it that the player has to be protected from.
       this.gameOver = 'won';
-      this.log('Three years, three levies, and the village still stands.', 'good');
+      this.log('Four years, four levies, and the village still stands.', 'good');
     }
   },
 
@@ -2990,6 +3580,9 @@ HF.Game.prototype = {
       rice: Math.floor(this.res.food),
       leviesPaid: this.levyHistory.filter(function (l) { return l.paid; }).length,
       leviesMissed: this.levyFailures,
+      standing: Math.round(this.standing),
+      standingWord: this.standingWord(),
+      trades: this.tradesMade,
       bandits: this.banditsKilled,
       buildings: counts,
       built: built.length,
@@ -3000,8 +3593,8 @@ HF.Game.prototype = {
 
   serialize: function () {
     return JSON.stringify({
-      v: 1,
-      seed: this.seed, rngState: this.rng.s,
+      v: 2,
+      seed: this.seed, scenarioId: this.scenarioId, rngState: this.rng.s,
       w: this.w, h: this.h, tiles: this.tiles,
       turn: this.turn, nextId: this.nextId,
       colonists: this.colonists, buildings: this.buildings, raiders: this.raiders,
@@ -3009,8 +3602,10 @@ HF.Game.prototype = {
       grief: this.grief, nextRaidTurn: this.nextRaidTurn,
       nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
       endless: this.endless, levyIndex: this.levyIndex,
-      levyFailures: this.levyFailures, levyStrikes: this.levyStrikes,
-      levyHistory: this.levyHistory,
+      levyFailures: this.levyFailures, standing: this.standing,
+      levyGenerous: this.levyGenerous, levyHistory: this.levyHistory,
+      offer: this.offer, nextMerchantTurn: this.nextMerchantTurn,
+      tradesMade: this.tradesMade, taughtTrade: this.taughtTrade,
       banditsKilled: this.banditsKilled, startSite: this.startSite,
       spoilLogged: this.spoilLogged,
     });
@@ -3026,6 +3621,8 @@ HF.Game.load = function (json) {
   g.dirtyTerrain = true;
   g.spoiledThisTurn = false;
   g.spoilLogged = d.spoilLogged || {};
+  if (g.standing == null) g.standing = HF.CFG.STANDING.start;
+  if (!HF.SCENARIOS[g.scenarioId]) g.scenarioId = HF.DEFAULT_SCENARIO;
   return g;
 };
 
@@ -3168,10 +3765,16 @@ HF.Render = (function () {
     water:    '#31536b',
     sand:     '#c9b98d',
     grass:    '#6f8b4e',
+    marsh:    '#59745a',      // standing water under reeds - greyer, colder
+    moor:     '#9a9159',      // dry susuki grass, closer to straw than green
     forest:   '#5e7c46',
+    bamboo:   '#6f8e4a',      // a shade yellower than pine
     hill:     '#8a8171',
     mountain: '#7c7768',
   };
+
+  // Which grounds take the seasonal tint, and which stay their own colour.
+  const GREEN = { grass: 1, forest: 1, bamboo: 1, marsh: 1, moor: 1 };
 
   let canvas, ctx;
   let dirty = true;
@@ -3215,7 +3818,7 @@ HF.Render = (function () {
      rather than washed over the top of it. */
   function groundColor(tile, season, variant) {
     let base = GROUND[tile.terrain];
-    const green = tile.terrain === 'grass' || tile.terrain === 'forest';
+    const green = !!GREEN[tile.terrain];
     if (season === 'Summer' && green) base = blend(base, '#4f7a3a', 0.35);
     else if (season === 'Autumn' && green) base = blend(base, '#a87c3a', 0.45);
     else if (season === 'Winter' && tile.terrain !== 'water') base = blend(base, '#dde6ec', 0.55);
@@ -3419,19 +4022,96 @@ HF.Render = (function () {
     }
   }
 
+  /* Reeds: thin verticals with a seed head, thickest in autumn. */
+  function drawReeds(sx, sy, v, season) {
+    const n = 5 + ((v * 100) | 0) % 3;
+    ctx.strokeStyle = season === 'Winter' ? '#8d9a8e'
+                    : season === 'Autumn' ? '#b0a05e' : '#7f9a60';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < n; i++) {
+      const ox = ((i * 37 + v * 190) % 30) - 15;
+      const hgt = 11 + ((i * 11 + v * 27) % 8);
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy + 2);
+      ctx.quadraticCurveTo(sx + ox + 1, sy - hgt * 0.6, sx + ox + 3, sy - hgt);
+      ctx.stroke();
+    }
+  }
+
+  /* Susuki: pale plumes over dry grass. */
+  function drawSusuki(sx, sy, v, season) {
+    if (season === 'Winter') return;
+    const n = 3 + ((v * 100) | 0) % 3;
+    for (let i = 0; i < n; i++) {
+      const ox = ((i * 53 + v * 210) % 28) - 14;
+      const hgt = 9 + ((i * 13 + v * 31) % 6);
+      ctx.strokeStyle = '#a89c5e';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy + 1);
+      ctx.lineTo(sx + ox + 2, sy - hgt);
+      ctx.stroke();
+      ctx.fillStyle = season === 'Autumn' ? '#e3d7a8' : '#c3bb84';
+      ctx.beginPath();
+      ctx.ellipse(sx + ox + 3, sy - hgt - 2, 3.4, 1.6, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /* A fish trap: stakes in the shallows with a ripple around them. */
+  function drawFish(sx, sy, v) {
+    ctx.strokeStyle = 'rgba(190,215,230,0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 11, 5.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#7d6a4c';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i < 3; i++) {
+      const ox = -6 + i * 6 + (v - 0.5) * 3;
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy + 2);
+      ctx.lineTo(sx + ox + 1, sy - 7 - (i === 1 ? 2 : 0));
+      ctx.stroke();
+    }
+  }
+
+  /* A roadside shrine: two posts, a lintel, and a small vermilion gate. */
+  function drawShrine(sx, sy) {
+    shadow(sx, sy + 2, 10);
+    ctx.strokeStyle = '#b8442c';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(sx - 7, sy + 1); ctx.lineTo(sx - 6, sy - 15);
+    ctx.moveTo(sx + 7, sy + 1); ctx.lineTo(sx + 6, sy - 15);
+    ctx.stroke();
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(sx - 10, sy - 16); ctx.lineTo(sx + 10, sy - 16);
+    ctx.moveTo(sx - 8, sy - 11); ctx.lineTo(sx + 8, sy - 11);
+    ctx.stroke();
+  }
+
   function drawScenery(game, x, y, season) {
     const tile = game.tiles[y * game.w + x];
     if (tile.building != null) return;
     const p = I.toScreen(x, y, I.elevOf(tile));
     if (tile.terrain === 'forest') {
-      if (tile.variant > 0.68) drawBamboo(p.sx, p.sy, tile.variant, season);
-      else drawPine(p.sx, p.sy, tile.variant, season);
+      drawPine(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'bamboo') {
+      drawBamboo(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'marsh') {
+      drawReeds(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'moor') {
+      drawSusuki(p.sx, p.sy, tile.variant, season);
     } else if (tile.terrain === 'mountain') {
       drawPeak(p.sx, p.sy, tile.variant, season);
     } else if (tile.terrain === 'hill') {
       drawRocks(p.sx, p.sy, tile.variant);
     }
     if (tile.feature === 'chestnut') drawChestnut(p.sx, p.sy, tile.variant, season);
+    else if (tile.feature === 'fish') drawFish(p.sx, p.sy, tile.variant);
+    else if (tile.feature === 'shrine') drawShrine(p.sx, p.sy);
   }
 
   /* ---------- buildings ---------- */
@@ -3833,7 +4513,20 @@ HF.UI = (function () {
     window.addEventListener('resize', function () { HF.Camera.refresh(); });
 
     refresh();
+    openHelpOnFirstVisit();
     requestAnimationFrame(frame);
+  }
+
+  /* The opening sheet is where the game explains itself and where the player
+     chooses how hard the world presses - both of which were unreachable while
+     it only ever opened from a Help button nobody had a reason to press. */
+  function openHelpOnFirstVisit() {
+    let seen = false;
+    try { seen = window.localStorage.getItem('hyakusho.seenHelp') === '1'; }
+    catch (err) { /* private mode - show it, no harm done */ }
+    if (seen) return;
+    $('help').classList.add('open');
+    try { window.localStorage.setItem('hyakusho.seenHelp', '1'); } catch (err) { /* ignore */ }
   }
 
   function resetCamera() {
@@ -3962,6 +4655,153 @@ HF.UI = (function () {
 
   function closePicker() { el.picker.classList.remove('open'); }
 
+  /* ---------- how hard the world presses ----------
+     Offered on the opening sheet rather than buried in a settings menu,
+     because whether anything is coming over the hill changes what the game
+     even is, and the player should get to say so before the first turn. */
+  const SCENARIO_KEY = 'hyakusho.scenario';
+
+  function savedScenario() {
+    try {
+      const s = window.localStorage.getItem(SCENARIO_KEY);
+      if (s && HF.SCENARIOS[s]) return s;
+    } catch (err) { /* private mode - fall through */ }
+    return HF.DEFAULT_SCENARIO;
+  }
+
+  function renderScenarioPick() {
+    const host = $('scenario-pick');
+    if (!host) return;
+    const current = game ? game.scenarioId : savedScenario();
+    let h = '';
+    for (const id in HF.SCENARIOS) {
+      const s = HF.SCENARIOS[id];
+      h += '<button class="scen' + (id === current ? ' on' : '') + '" data-scen="' + id + '">' +
+           '<span class="scen-name">' + s.label + '</span>' +
+           '<span class="scen-note">' + s.note + '</span></button>';
+    }
+    host.innerHTML = h;
+    for (const btn of host.querySelectorAll('.scen')) {
+      btn.addEventListener('click', function () {
+        const id = btn.dataset.scen;
+        try { window.localStorage.setItem(SCENARIO_KEY, id); } catch (err) { /* ignore */ }
+        // Changing how the world presses restarts it, since the levy schedule
+        // and the raid clock are both set when the valley is made.
+        setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0, id));
+        renderScenarioPick();
+      });
+    }
+  }
+
+  /* ---------- the ledger ----------
+     Standing is the thing the whole game now turns on, and a one-word label on
+     a chip cannot carry it. This sheet says what the castle thinks, why, and
+     lets the player choose to pay over the demand to build credit. */
+  function openLedger() {
+    const S = HF.CFG.STANDING;
+    const demand = game.levyDemand(game.levyIndex);
+    const have = Math.floor(game.res.food);
+    const due = game.turnsToLevy();
+    const pct = HF.U.clamp(game.standing, 0, 100);
+
+    let h = '<div class="ledger">';
+    h += '<div class="standing-bar"><div class="fill" style="width:' + pct + '%"></div>' +
+         '<span>Standing &middot; ' + esc(game.standingWord()) + '</span></div>';
+    h += '<p class="who">The castle asks <b>' + demand + ' koku</b> ' +
+         (due <= 0 ? '<b>now</b>' : 'in <b>' + due + (due === 1 ? ' turn' : ' turns') + '</b>') +
+         '. The kura holds <b>' + have + '</b>.</p>';
+    h += '<p class="who">Falling short costs standing in proportion to how far short you fall — ' +
+         'a few koku is a note in a ledger, half the demand is a mark against the village. ' +
+         'At nothing left, the village is broken up.</p>';
+    if (game.standing >= S.favourAt) {
+      h += '<p class="who good">The village is in favour, and this year\'s due has been eased.</p>';
+    }
+
+    h += '<button class="toggle-row' + (game.levyGenerous ? ' on' : '') + '" id="levy-generous">' +
+         '<span class="tick">' + (game.levyGenerous ? '&#10003;' : '') + '</span>' +
+         '<span class="toggle-text"><b>Press surplus on the collectors</b>' +
+         '<em>Hand over up to ' + (S.overPer * S.overCap) + ' koku beyond the demand to buy ' +
+         'standing. Rice you cannot eat later, for a castle that remembers.</em></span></button>';
+
+    if (game.levyHistory.length) {
+      h += '<h3>The record</h3><ul class="thoughts">';
+      for (const l of game.levyHistory.slice(-6)) {
+        h += '<li class="' + (l.paid ? 'up' : 'down') + '"><span>Year ' + l.year + ' &middot; ' +
+             (l.paid ? 'paid ' + l.demand + (l.extra ? ' and ' + l.extra + ' over' : '')
+                     : 'short by ' + l.short) + '</span><b>' +
+             (l.paid ? '&#10003;' : '&times;') + '</b></li>';
+      }
+      h += '</ul>';
+    }
+    h += '</div>';
+
+    el.pickerTitle.textContent = 'The Levy';
+    el.pickerList.innerHTML = h;
+    const t = $('levy-generous');
+    if (t) t.addEventListener('click', function () {
+      game.levyGenerous = !game.levyGenerous;
+      openLedger();
+    });
+    el.picker.classList.add('open');
+  }
+
+  /* ---------- merchants ----------
+     One person, one offer, accept or decline. A trade screen would be
+     arithmetic; an offer with somebody's face on it is a decision. */
+  function renderOfferChip() {
+    const chip = $('offer-chip');
+    if (!chip) return;
+    if (!game.offer) { chip.className = ''; chip.innerHTML = ''; return; }
+    const o = game.offer;
+    chip.className = 'show';
+    chip.innerHTML = '<span class="offer-mark">&#9678;</span> A trader is here &middot; ' +
+      o.wantAmount + ' ' + esc(HF.RESOURCES[o.wants].label.toLowerCase()) + ' for ' +
+      o.giveAmount + ' ' + esc(HF.RESOURCES[o.gives].label.toLowerCase());
+  }
+
+  function openOffer() {
+    const o = game.offer;
+    if (!o) return;
+    const W = HF.RESOURCES[o.wants], G = HF.RESOURCES[o.gives];
+    const canPay = game.res[o.wants] >= o.wantAmount;
+    const leaves = game.turnsToLevy();
+
+    let h = '<div class="ledger">';
+    h += '<p class="who lede">' + esc(o.who) + '.</p>';
+    h += '<div class="trade">' +
+         '<span class="side give"><b>' + o.wantAmount + '</b>' + esc(W.label) + '</span>' +
+         '<span class="arrow">&rarr;</span>' +
+         '<span class="side get"><b>' + o.giveAmount + '</b>' + esc(G.label) + '</span></div>';
+    h += '<p class="who">You hold ' + Math.floor(game.res[o.wants]) + ' ' +
+         esc(W.label.toLowerCase()) + '. They will wait ' +
+         Math.max(0, o.until - game.turn) + ' more ' +
+         (o.until - game.turn === 1 ? 'turn' : 'turns') + '.</p>';
+    if (o.gives === 'food' && leaves > 0) {
+      h += '<p class="who">The levy falls in ' + leaves + ' turns.</p>';
+    }
+    h += '<div class="offer-actions">' +
+         '<button id="offer-yes" class="primary"' + (canPay ? '' : ' disabled') + '>' +
+         (canPay ? 'Strike the deal' : 'Not enough ' + esc(W.label.toLowerCase())) + '</button>' +
+         '<button id="offer-no" class="plain">Send them on</button></div>';
+    h += '</div>';
+
+    el.pickerTitle.textContent = 'An Offer';
+    el.pickerList.innerHTML = h;
+    const yes = $('offer-yes'), no = $('offer-no');
+    if (yes) yes.addEventListener('click', function () {
+      const err = HF.Events.acceptOffer(game);
+      if (err) { toast(err); return; }
+      closePicker();
+      refresh();
+    });
+    if (no) no.addEventListener('click', function () {
+      HF.Events.declineOffer(game);
+      closePicker();
+      refresh();
+    });
+    el.picker.classList.add('open');
+  }
+
   /* ---------- pointer input ---------- */
 
   function tileAt(clientX, clientY) {
@@ -3979,7 +4819,8 @@ HF.UI = (function () {
 
     stage.addEventListener('pointerdown', function (e) {
       if (e.target.closest('#map-controls') || e.target.closest('#help') ||
-          e.target.closest('#ending') || e.target.closest('#mode-hint')) return;
+          e.target.closest('#ending') || e.target.closest('#mode-hint') ||
+          e.target.closest('#offer-chip')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: 0 });
@@ -4131,11 +4972,11 @@ HF.UI = (function () {
   }
 
   let toastTimer = null;
-  function toast(message) {
+  function toast(message, ms) {
     el.banner.textContent = message;
     el.banner.className = 'show warn';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2800);
+    toastTimer = setTimeout(function () { el.banner.className = ''; }, ms || 2800);
   }
 
   let tipTimer = null;
@@ -4196,6 +5037,8 @@ HF.UI = (function () {
   function bindButtons() {
     $('btn-endturn').addEventListener('click', endTurn);
     $('mode-hint').addEventListener('click', function () { setMode('none', null); });
+    el.levy.addEventListener('click', openLedger);
+    $('offer-chip').addEventListener('click', openOffer);
     $('btn-panel').addEventListener('click', function () { el.sidebar.classList.toggle('open'); });
     $('sheet-close').addEventListener('click', closeSheet);
 
@@ -4243,10 +5086,11 @@ HF.UI = (function () {
     });
     $('btn-help').addEventListener('click', function () { $('help').classList.toggle('open'); });
     $('help-close').addEventListener('click', function () { $('help').classList.remove('open'); });
+    renderScenarioPick();
   }
 
   function newGame() {
-    setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
+    setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0, savedScenario()));
   }
 
   function bindKeys() {
@@ -4274,8 +5118,17 @@ HF.UI = (function () {
 
   function endTurn() {
     if (game.gameOver) return;
+    const hadOffer = !!game.offer;
     game.endTurn();
     refresh();
+    // The first trader gets a nudge rather than a sheet. Opening a modal
+    // unasked put it straight over End Turn, and a village nobody is pressing
+    // should never be interrupted by a box demanding an answer. The chip on the
+    // map is the offer; this just points at it, once, and fades.
+    if (!hadOffer && game.offer && !game.taughtTrade) {
+      game.taughtTrade = true;
+      toast('A trader has come up the valley — tap the chip to hear the offer.', 4200);
+    }
   }
 
   /* ---------- panels ---------- */
@@ -4301,14 +5154,27 @@ HF.UI = (function () {
       '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() + '</div>';
 
     // The levy is the clock the whole village runs on, so it gets its own slot.
+    // Tapping it opens the ledger, which is where standing is explained. In an
+    // open valley there is no clock, so the slot goes away entirely rather than
+    // sitting there reading zero.
+    if (!game.scenario().levy) {
+      el.levy.className = 'hidden';
+      el.levy.innerHTML = '';
+      renderOfferChip();
+      $('btn-panel').innerHTML = 'Village <span class="badge">' +
+        game.aliveColonists().length + '</span>';
+      return;
+    }
     const due = game.turnsToLevy();
     const demand = game.levyDemand(game.levyIndex);
     const short = game.res.food < demand;
     el.levy.className = due <= 4 ? (short ? 'urgent' : 'due') : (short ? 'warn' : '');
     el.levy.innerHTML =
-      '<div class="levy-label">Next levy</div>' +
+      '<div class="levy-label">Next levy &middot; ' + game.standingWord() + '</div>' +
       '<div class="levy-value">' + demand + ' koku &middot; ' +
       (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' turn' : ' turns')) + '</div>';
+
+    renderOfferChip();
 
     $('btn-panel').innerHTML = 'Village <span class="badge">' +
       game.aliveColonists().length + '</span>';
@@ -4475,7 +5341,7 @@ HF.UI = (function () {
   const ENDINGS = {
     won: {
       title: 'The village endures',
-      sub: 'Three harvests brought in, three levies paid, and the valley is still yours.',
+      sub: 'Four harvests brought in, four levies met, and the valley is still yours.',
       mark: '村',
     },
     dissolved: {
@@ -4521,7 +5387,7 @@ HF.UI = (function () {
     node.classList.add('open');
   }
 
-  return { init: init, setGame: setGame };
+  return { init: init, setGame: setGame, savedScenario: savedScenario };
 })();
 
 /* ===== js/main.js ===== */
@@ -4536,7 +5402,10 @@ window.HF = window.HF || {};
       ? parseInt(raw, 10) >>> 0
       : (Math.random() * 0xffffffff) >>> 0;
 
-    const game = new HF.Game(seed);
+    // ?mode= lets a particular valley be shared complete with how hard it
+    // presses; otherwise the last choice is remembered.
+    const mode = params.get('mode') || HF.UI.savedScenario();
+    const game = new HF.Game(seed, mode);
     window.game = game;               // handy when poking at a colony from the console
     HF.UI.init(game);
   }

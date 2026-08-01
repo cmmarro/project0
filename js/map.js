@@ -6,29 +6,41 @@ HF.Map = {
   generate: function (rng, w, h) {
     const elev = HF.U.noiseField(rng, w, h, 11, 4, 0.5);
     const moist = HF.U.noiseField(rng, w, h, 8, 3, 0.55);
+    // A third, coarser field decides which *kind* of wet and which kind of
+    // wood, so groves and marshes come in patches rather than salting the map
+    // evenly. Two valleys should not feel like the same valley.
+    const grain = HF.U.noiseField(rng, w, h, 17, 2, 0.6);
     const tiles = new Array(w * h);
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = y * w + x;
 
-        // Island falloff: push elevation down towards the border so the colony
+        // Island falloff: push elevation down towards the border so the village
         // sits on a landmass with a coast rather than running off the screen.
+        // Softened from what it was - the old curve drowned well over half the
+        // map, which left too little ground for the terrain kinds to tell any
+        // story on.
         const nx = (x / (w - 1)) * 2 - 1;
         const ny = (y / (h - 1)) * 2 - 1;
         const edge = Math.max(Math.abs(nx), Math.abs(ny));
-        const e = elev[i] - Math.pow(edge, 3.2) * 0.55;
+        const e = elev[i] - Math.pow(edge, 4.2) * 0.42;
         const m = moist[i];
+        const g = grain[i];
 
         let terrain, feature = null;
-        if (e < 0.30) terrain = 'water';
-        else if (e < 0.34) terrain = 'sand';
+        if (e < 0.29) terrain = 'water';
+        else if (e < 0.33) terrain = 'sand';
         else if (e > 0.70) terrain = 'mountain';
         else if (e > 0.60) terrain = 'hill';
-        else if (m > 0.56) terrain = 'forest';
+        else if (e < 0.40 && m > 0.40) terrain = 'marsh';        // low and damp
+        else if (m > 0.52) terrain = g > 0.50 ? 'bamboo' : 'forest';
+        else if (m < 0.40 && g < 0.50) terrain = 'moor';         // high and dry
         else terrain = 'grass';
 
-        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'chestnut';
+        if ((terrain === 'grass' || terrain === 'moor') && m > 0.4 && rng.chance(0.07)) {
+          feature = 'chestnut';
+        }
 
         tiles[i] = {
           terrain: terrain,
@@ -36,11 +48,40 @@ HF.Map = {
           variant: rng.next(),      // per-tile jitter so the art isn't a flat grid
           building: null,           // building id occupying this tile
           regrow: 0,                // turn at which a stripped tile comes back
+          regrowTo: null,           // and what comes back - see HF.REGROW
         };
       }
     }
 
-    return { w: w, h: h, tiles: tiles };
+    const g = { w: w, h: h, tiles: tiles };
+
+    // Fish sit in water within reach of a bank, because a trap nobody can walk
+    // to is a promise the map cannot keep.
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const t = tiles[y * w + x];
+        if (t.terrain !== 'water') continue;
+        let bank = false;
+        for (const d of HF.U.NEIGHBORS) {
+          const n = HF.Map.at(g, x + d[0], y + d[1]);
+          if (n && HF.TERRAIN[n.terrain].passable) { bank = true; break; }
+        }
+        if (bank && rng.chance(0.09)) t.feature = 'fish';
+      }
+    }
+
+    // One or two roadside shrines. They do nothing but stand there and lift
+    // the spirits of anyone who lives near one.
+    let shrines = 0;
+    for (let tries = 0; tries < 400 && shrines < rng.int(1, 3); tries++) {
+      const x = rng.int(3, w - 4), y = rng.int(3, h - 4);
+      const t = tiles[y * w + x];
+      if (t.feature || (t.terrain !== 'grass' && t.terrain !== 'moor')) continue;
+      t.feature = 'shrine';
+      shrines++;
+    }
+
+    return g;
   },
 
   inBounds: function (g, x, y) {
@@ -94,20 +135,25 @@ HF.Map = {
     for (let y = 3; y < g.h - 3; y++) {
       for (let x = 3; x < g.w - 3; x++) {
         if (!HF.Map.passable(g, x, y)) continue;
-        let open = 0, wood = 0, rock = 0;
-        for (let dy = -3; dy <= 3; dy++) {
-          for (let dx = -3; dx <= 3; dx++) {
+        let open = 0, wood = 0, rock = 0, wet = 0;
+        for (let dy = -4; dy <= 4; dy++) {
+          for (let dx = -4; dx <= 4; dx++) {
             const t = HF.Map.at(g, x + dx, y + dy);
             if (!t) continue;
-            if (t.terrain === 'grass') open++;
-            if (t.terrain === 'forest') wood++;
+            if (t.terrain === 'grass' || t.terrain === 'moor') open++;
+            if (t.terrain === 'forest' || t.terrain === 'bamboo') wood++;
             if (t.terrain === 'hill' || t.terrain === 'mountain') rock++;
+            if (t.terrain === 'marsh') wet++;
           }
         }
-        // Want room to build, trees nearby, some stone, and roughly central.
+        /* Wet ground is weighted hard. People settled where the rice would
+           grow, and without this the site picker put every village on dry
+           meadow - marsh is a tenth of the map, but barely one paddy in a
+           hundred was ever built on it, so the best ground in the game was
+           something the player never actually met. */
         const centrality = 1 - HF.U.dist(x, y, g.w / 2, g.h / 2) / (g.w / 2);
-        const score = open * 1.0 + Math.min(wood, 14) * 0.8 + Math.min(rock, 10) * 0.6
-                    + centrality * 12 + rng.next();
+        const score = open * 0.7 + Math.min(wet, 16) * 1.6 + Math.min(wood, 16) * 0.8
+                    + Math.min(rock, 10) * 0.5 + centrality * 12 + rng.next();
         if (score > bestScore) { bestScore = score; best = { x: x, y: y }; }
       }
     }

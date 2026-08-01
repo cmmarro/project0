@@ -180,7 +180,7 @@ HF.Jobs = {
     if (!c.task) {
       c.task = HF.Jobs.findWork(game, c);
       if (!c.task) {
-        c.activity = 'Idle';
+        c.activity = HF.Jobs.idling(game, c);
         HF.Jobs.wander(game, c);
         HF.Colonists.applyHealth(game, c);
         return;
@@ -300,24 +300,65 @@ HF.Jobs = {
     }
   },
 
+  /* What somebody with nothing to do is doing.
+
+     Pure flavour - it changes nothing and is not simulated anywhere. But a
+     roster of four people all reading "Idle" is four blanks, and the same four
+     reading "sitting at the shrine" and "watching the river" is a village.
+     Keyed off what is actually around them so it never contradicts the map. */
+  idling: function (game, c) {
+    const near = function (pred, r) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const t = HF.Map.at(game, c.x + dx, c.y + dy);
+          if (t && pred(t)) return true;
+        }
+      }
+      return false;
+    };
+
+    const options = ['Sitting a while', 'Mending something', 'Talking'];
+    if (near(function (t) { return t.feature === 'shrine'; }, 3)) options.push('At the shrine');
+    if (near(function (t) { return t.terrain === 'water'; }, 2)) options.push('Watching the river');
+    if (near(function (t) { return t.building != null; }, 2)) options.push('Round the houses');
+    if (game.season() === 'Winter') options.push('Keeping out of the cold', 'Close to the fire');
+    if (game.season() === 'Spring') options.push('Looking over the paddies');
+    if (game.season() === 'Summer') options.push('Out of the sun');
+    if (game.season() === 'Autumn') options.push('Counting what is in the kura');
+    if (c.trait === 'devout') options.push('Saying something under their breath');
+    if (c.trait === 'diligent') options.push('Looking for something to do');
+
+    // Stable per villager per turn rather than flickering every repaint.
+    return options[(c.id * 7 + game.turn * 3) % options.length];
+  },
+
   completeDesignation: function (game, c, d) {
     const tile = HF.Map.at(game, d.x, d.y);
     const yields = HF.YIELDS[d.type] || {};
+    let scale = 1;
 
     if (d.type === 'chop') {
+      // Remember what stood here, so bamboo grows back as bamboo and on its own
+      // much shorter clock. That difference is the whole reason both exist.
+      const was = tile.terrain;
+      const spec = HF.REGROW[was] || HF.REGROW.forest;
+      scale = spec.yieldScale;
       tile.terrain = 'grass';
-      tile.regrow = game.turn + game.rng.int(55, 85);   // saplings come back
+      tile.regrowTo = was;
+      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
     } else if (d.type === 'mine') {
       tile.terrain = tile.terrain === 'mountain' ? 'hill' : 'grass';
-    } else if (d.type === 'forage') {
+    } else if (d.type === 'forage' || d.type === 'fish') {
+      const spec = HF.REGROW[d.type === 'fish' ? 'fish' : 'chestnut'];
       tile.feature = null;
-      tile.regrow = game.turn + game.rng.int(22, 34);
+      tile.regrowTo = d.type === 'fish' ? 'fish' : 'chestnut';
+      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
     } else if (d.type === 'harvest') {
       const farm = game.buildingAt(d.x, d.y);
       if (farm) farm.growth = 0;
     }
 
-    for (const r in yields) game.addResource(r, yields[r]);
+    for (const r in yields) game.addResource(r, Math.round(yields[r] * scale));
     game.dirtyTerrain = true;
     delete game.designations[HF.U.key(d.x, d.y)];
     c.task = null;

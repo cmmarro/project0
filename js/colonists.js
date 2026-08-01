@@ -23,7 +23,7 @@ HF.Colonists = {
       id: game.nextId++,
       // Peasants of the period rarely had surnames; they were known by name
       // and by where they came from.
-      name: rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place),
+      name: HF.Colonists.pickName(game, rng),
       renamed: false,
       origin: rng.pick(HF.ORIGINS),
       mark: rng.pick(HF.MARKS),
@@ -48,6 +48,24 @@ HF.Colonists = {
       departed: false,
     };
     return c;
+  },
+
+  /* Names have to be unique. Four villagers out of 26 given names and 16
+     places collide more often than you would guess, and two people called
+     Kiyo of Nomura is not a coincidence the player reads as flavour - it reads
+     as the game being broken, and it makes the death of one of them
+     meaningless. Falls back to a distinguishing epithet if the pool is
+     genuinely exhausted. */
+  pickName: function (game, rng) {
+    const taken = new Set(game.colonists.map(function (c) { return c.name; }));
+    for (let i = 0; i < 40; i++) {
+      const n = rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place);
+      if (!taken.has(n)) return n;
+    }
+    let n = rng.pick(HF.NAMES.first) + ' of ' + rng.pick(HF.NAMES.place);
+    let suffix = 2;
+    while (taken.has(n)) n = n + ' the ' + (suffix++ === 2 ? 'younger' : 'elder');
+    return n;
   },
 
   /* Ties one villager to another. Called once when the village is founded and
@@ -120,6 +138,19 @@ HF.Colonists = {
     return false;
   },
 
+  /* Roadside shrines are scenery with one small hook: living in sight of one
+     is a comfort, and more of one to somebody devout. It is a reason to settle
+     in one part of the valley rather than another. */
+  nearShrine: function (game, c) {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const t = HF.Map.at(game, c.x + dx, c.y + dy);
+        if (t && t.feature === 'shrine') return true;
+      }
+    }
+    return false;
+  },
+
   freeBed: function (game, c) {
     let best = null, bestD = Infinity;
     for (const b of game.buildings) {
@@ -184,6 +215,8 @@ HF.Colonists = {
     // thought for them. This is the rest of the village being subdued, and it
     // must not be the thing that finishes them off.
     if (game.grief > 0.5) add('Mourning', -Math.min(game.grief, HF.CFG.GRIEF_CAP));
+
+    if (HF.Colonists.nearShrine(game, c)) add('A shrine close by', c.trait === 'devout' ? 7 : 4);
 
     if (c.trait === 'devout') add('Devout', HF.TRAIT_TUNING.devoutMood);
     if (c.trait === 'homesick') {

@@ -47,7 +47,54 @@ HF.Events = {
     }
     game.log(count + ' bandit' + (count > 1 ? 's' : '') + ' sighted to the ' +
              HF.Events.compass(spawn, centre) + '.', 'bad');
-    game.nextRaidTurn = game.turn + game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP);
+    const gap = game.scenario().raidGapScale || 1;
+    game.nextRaidTurn = game.turn +
+      Math.round(game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP) * gap);
+  },
+
+  /* ---------- the year passing ----------
+     Things that happen and mean nothing. Almost every line in the record used
+     to be a threat or a transaction, which made the valley read as a problem
+     rather than a place - and a village worth keeping has to be somewhere the
+     player would want to look at even when nothing is going wrong. */
+  AMBIENT: {
+    Spring: [
+      'The mountain cherry is out along the ridge.',
+      'Frogs started up in the paddies last night and did not stop.',
+      'A heron has taken to standing in the shallows at dawn.',
+      'Someone has hung paper at the shrine for the year.',
+      'The first swallows are back under the eaves.',
+    ],
+    Summer: [
+      'Fireflies over the water after dark.',
+      'The cicadas have started, and will not be stopping.',
+      'Rain for three days. The paddies are as full as they will get.',
+      'Too hot to work through the middle of the day, so nobody does.',
+      'Someone has been sleeping outside on the good nights.',
+    ],
+    Autumn: [
+      'The maples have turned on the far slope.',
+      'Geese going over, heading somewhere else.',
+      'The first frost held off another week.',
+      'Chestnuts underfoot everywhere along the treeline.',
+      'The evenings are drawing in noticeably now.',
+    ],
+    Winter: [
+      'Snow on the mountain, and the smell of it in the air.',
+      'The river has ice at the edges.',
+      'Nothing to do but mend things and wait it out.',
+      'Someone keeps the hearth going all night now.',
+      'Tracks in the snow that nobody can agree about.',
+    ],
+  },
+
+  ambient: function (game) {
+    if (!game.rng.chance(0.16)) return;
+    const lines = HF.Events.AMBIENT[game.season()];
+    const line = game.rng.pick(lines);
+    // Do not repeat the same observation twice in a season's memory.
+    for (const e of game.entries.slice(-14)) if (e.message === line) return;
+    game.log(line, 'ambient');
   },
 
   compass: function (from, to) {
@@ -128,8 +175,20 @@ HF.Events = {
   tick: function (game) {
     const alive = game.aliveColonists();
 
-    if (game.turn >= HF.CFG.RAID_START_TURN && game.turn >= game.nextRaidTurn && alive.length > 0) {
+    if (game.scenario().raids && game.turn >= game.nextRaidTurn && alive.length > 0) {
       HF.Events.spawnRaid(game);
+    }
+
+    HF.Events.ambient(game);
+
+    // An offer left standing too long walks on down the valley.
+    if (game.offer && game.turn > game.offer.until) {
+      game.log((game.offer.tag || 'The trader') + ' has moved on.', 'info');
+      game.offer = null;
+    }
+    if (!game.offer && game.turn >= game.nextMerchantTurn && alive.length > 0) {
+      game.nextMerchantTurn = game.turn + game.rng.int(HF.CFG.MERCHANT.gap[0], HF.CFG.MERCHANT.gap[1]);
+      HF.Events.makeOffer(game);
     }
 
     if (game.turn >= game.nextMigrantTurn) {
@@ -158,6 +217,99 @@ HF.Events = {
     }
   },
 
+  /* ---------- merchants ----------
+     One person, one offer, take it or leave it. Deliberately not a trade
+     screen: an offer you can refuse is a decision with a face on it, where a
+     table of exchange rates would just be arithmetic. It is also the release
+     valve on the whole design - the castle only ever asks for rice, so without
+     some way to turn timber into rice there is exactly one way to play. */
+
+  MERCHANTS: [
+    { who: 'A rice broker up from the castle town', tag: 'The broker',
+      wants: 'wood',  gives: 'food' },
+    { who: 'A timber factor with an ox cart', tag: 'The timber factor',
+      wants: 'food',  gives: 'wood' },
+    { who: 'A mason\'s agent, buying for a keep', tag: 'The mason\'s agent',
+      wants: 'stone', gives: 'food' },
+    { who: 'A pedlar who has walked the whole province', tag: 'The pedlar',
+      wants: 'wood', gives: 'stone' },
+    { who: 'A monk collecting for a burnt temple', tag: 'The monk',
+      wants: 'food',  gives: 'stone' },
+    { who: 'A quartermaster with rice and no carts', tag: 'The quartermaster',
+      wants: 'stone', gives: 'food' },
+  ],
+
+  makeOffer: function (game) {
+    /* Weighted towards a trader who wants what the village has too much of and
+       carries what it has too little of. Purely random offers meant a timber
+       village could go sixty turns without anyone asking for timber, which made
+       trade too unreliable to actually plan around - and a path you cannot plan
+       around is not a path. Weighting keeps the uncertainty (you still cannot
+       summon a trader, and the rate still swings) while making the option real. */
+    const cap = HF.Build.storageCap(game);
+    const pressure = {};
+    for (const r in game.res) pressure[r] = game.res[r] / cap;
+    // Rice is never truly surplus while a levy is coming.
+    pressure.food = Math.max(0, pressure.food - game.levyDemand(game.levyIndex) / cap);
+
+    const weighted = [];
+    for (const m of HF.Events.MERCHANTS) {
+      // Wanting what we have plenty of, and bringing what we lack, is worth
+      // more. Everyone keeps a floor so any trader can still turn up.
+      const w = 1 + Math.max(0, pressure[m.wants] * 4) + Math.max(0, (1 - pressure[m.gives]) * 2);
+      weighted.push({ m: m, w: w });
+    }
+    let roll = game.rng.next() * weighted.length * 3;
+    let m = weighted[0].m;
+    for (const entry of weighted) {
+      roll -= entry.w;
+      if (roll <= 0) { m = entry.m; break; }
+    }
+
+    const have = Math.floor(game.res[m.wants]);
+    // Ask for something the village could plausibly part with, so the offer is
+    // a decision rather than a taunt.
+    const want = HF.U.clamp(Math.round(have * game.rng.int(40, 70) / 100), 10, 140);
+    if (want > have) return;
+
+    // Rates swing, so a patient village can wait for a better visitor.
+    const rate = m.gives === 'food' ? 0.62 : m.wants === 'food' ? 1.5 : 0.85;
+    const give = Math.max(6, Math.round(want * rate * (0.8 + game.rng.next() * 0.55)));
+
+    game.offer = {
+      who: m.who,
+      tag: m.tag,
+      wants: m.wants, wantAmount: want,
+      gives: m.gives, giveAmount: give,
+      until: game.turn + HF.CFG.MERCHANT.standFor,
+    };
+    const W = HF.RESOURCES[m.wants], G = HF.RESOURCES[m.gives];
+    game.log(m.who + ' will take ' + want + ' ' + W.label.toLowerCase() +
+             ' for ' + give + ' ' + G.label.toLowerCase() + '.', 'trade');
+  },
+
+  /* Returns a short reason when the deal cannot be struck, or null on success. */
+  acceptOffer: function (game) {
+    const o = game.offer;
+    if (!o) return 'Nobody is here to trade with.';
+    if (game.res[o.wants] < o.wantAmount) {
+      return 'Not enough ' + HF.RESOURCES[o.wants].label.toLowerCase() + ' left to make the trade.';
+    }
+    game.res[o.wants] -= o.wantAmount;
+    game.addResource(o.gives, o.giveAmount);
+    game.tradesMade++;
+    game.log('Traded ' + o.wantAmount + ' ' + HF.RESOURCES[o.wants].label.toLowerCase() +
+             ' for ' + o.giveAmount + ' ' + HF.RESOURCES[o.gives].label.toLowerCase() + '.', 'trade');
+    game.offer = null;
+    return null;
+  },
+
+  declineOffer: function (game) {
+    if (!game.offer) return;
+    game.offer = null;
+    game.log('The offer was let go.', 'info');
+  },
+
   addMigrant: function (game) {
     const centre = game.colonyCentre();
     const spots = HF.Map.openTilesNear(game, centre.x, centre.y, 6, new Set());
@@ -178,7 +330,10 @@ HF.Events = {
     const notes = {
       Spring: 'Spring. The paddies thaw and the rice begins to come on.',
       Summer: 'Summer. The rice swells fastest now.',
-      Autumn: 'Autumn. Growth slows, and the collectors are coming - fill the kura.',
+      // An open valley has no collectors, so it must not be told they are coming.
+      Autumn: game.scenario().levy
+        ? 'Autumn. Growth slows, and the collectors are coming - fill the kura.'
+        : 'Autumn. Growth slows. Bring in what there is.',
       Winter: 'Winter. Nothing grows, and the cold takes anyone far from a hearth.',
     };
     game.log(notes[s], 'season');

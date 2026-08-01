@@ -9,7 +9,10 @@ window.HF = window.HF || {};
       ? parseInt(raw, 10) >>> 0
       : (Math.random() * 0xffffffff) >>> 0;
 
-    const game = new HF.Game(seed);
+    // ?mode= lets a particular valley be shared complete with how hard it
+    // presses; otherwise the last choice is remembered.
+    const mode = params.get('mode') || HF.UI.savedScenario();
+    const game = new HF.Game(seed, mode);
     window.game = game;               // handy when poking at a colony from the console
     HF.UI.init(game);
   }

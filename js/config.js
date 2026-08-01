@@ -41,26 +41,73 @@ HF.CFG = {
   MIGRANT_GAP: 26,
 
   /* The spine of the game. The daimyo's collectors come after each harvest,
-     before winter, and they do not care whether you can spare it. */
+     before winter, and they do not care whether you can spare it.
+
+     Four years rather than three, and the first year is a remission year: newly
+     opened land was commonly taxed lightly, and it gives the player a full year
+     to learn what a levy even is before one can hurt them. The demand then
+     roughly doubles each autumn, so the difficulty arrives as a ramp instead of
+     a wall. */
   LEVY: {
-    turns: [30, 70, 110],
-    demands: [40, 75, 115],
-    laterIncrease: 45,      // per year beyond the third
-    warnAhead: 8,
-    /* Missing a levy earns strikes rather than ending things outright: a near
-       miss costs one, a bad miss costs two, and three break up the village.
-       So you can survive one bad year, or two tight ones, but not both. */
-    tolerance: 0.65,        // paying at least this share of the demand is a near miss
-    strikeNear: 1,
-    strikeBad: 2,
-    strikesAllowed: 2,
+    turns: [40, 80, 120, 160],
+    demands: [18, 55, 100, 155],
+    laterIncrease: 60,      // per year beyond the fourth
+    warnAhead: 10,
   },
 
-  VICTORY_TURN: 120,        // end of the third year
+  /* Standing is what the castle thinks of the village, and it replaced a
+     three-strikes counter. Strikes made every levy a pass/fail gate: 5 koku
+     short and 50 short cost exactly the same, so there was one correct plan and
+     no reason to ever grow more rice than the number. Standing is continuous -
+     a small shortfall is a small wound, a large one nearly fatal - and paying
+     over the demand buys credit you can spend on a bad year later. */
+  STANDING: {
+    start: 60,
+    max: 100,
+    payBonus: 12,           // for meeting the demand at all
+    overPer: 6,             // +1 standing per this much rice paid above the demand
+    overCap: 12,
+    shortPenalty: 62,       // scaled by the share of the demand you failed to pay
+    recover: 0.25,          // per turn, the castle slowly forgets
+    favourAt: 82,           // above this, next year's demand is eased
+    favourRelief: 0.85,
+    walkOutBelow: 22,       // desperate villages start losing people
+  },
+
+  VICTORY_TURN: 160,        // end of the fourth year
+
+  /* Merchants come up the valley with a single offer, take it or leave it.
+     This is the freedom valve: it is what makes a timber village or a fishing
+     village viable when the castle only ever asks for rice. */
+  MERCHANT: { firstTurn: 14, gap: [10, 16], standFor: 4 },
 
   SKILL_MAX: 10,
   XP_PER_LEVEL: 14,
 };
+
+/* ---------- how hard the world presses ----------
+   The levy and the bandits were built first and grew to fill the game, which
+   left no room to just keep a village. These let the player say how much of
+   that they want. Open Valley is the real answer to "let it breathe": the
+   seasons, the ground and the people, and nothing coming over the hill. */
+HF.SCENARIOS = {
+  open: {
+    id: 'open', label: 'Open Valley',
+    note: 'No collectors and no bandits. Seasons, ground, and people. It does not end.',
+    levy: false, raids: false,
+  },
+  quiet: {
+    id: 'quiet', label: 'A Quiet Province',
+    note: 'The castle asks, but lightly, and trouble is a long way off. Room to make mistakes.',
+    levy: true, levyScale: 0.6, raids: true, raidDelay: 55, raidGapScale: 1.5,
+  },
+  full: {
+    id: 'full', label: 'Under the Daimyō',
+    note: 'The levy as written, and bandits from the second year. The village can be broken up.',
+    levy: true, levyScale: 1, raids: true, raidDelay: 0, raidGapScale: 1,
+  },
+};
+HF.DEFAULT_SCENARIO = 'quiet';
 
 /* What the player calls each resource. */
 HF.RESOURCES = {
@@ -70,12 +117,20 @@ HF.RESOURCES = {
 };
 
 /* ---------- terrain ----------
-   `elev` is in whole tile-heights and drives the isometric relief. */
+   `elev` is in whole tile-heights and drives the isometric relief.
+
+   Every kind here has to be worth telling apart, or it is just noise on the
+   map. Marsh is where rice does best and nothing else will stand; bamboo is
+   timber that comes back within the year; moor is open ground you can build on
+   that grows nothing on its own. Between them, two valleys play differently. */
 HF.TERRAIN = {
   water:    { id: 'water',    name: 'River',        passable: false, cost: 99, build: false, elev: 0 },
   sand:     { id: 'sand',     name: 'Riverbank',    passable: true,  cost: 1,  build: true,  elev: 0 },
   grass:    { id: 'grass',    name: 'Meadow',       passable: true,  cost: 1,  build: true,  elev: 0 },
+  marsh:    { id: 'marsh',    name: 'Reed Marsh',   passable: true,  cost: 2,  build: false, elev: 0, wet: true },
+  moor:     { id: 'moor',     name: 'Susuki Moor',  passable: true,  cost: 1,  build: true,  elev: 0 },
   forest:   { id: 'forest',   name: 'Pine Grove',   passable: true,  cost: 2,  build: false, elev: 0 },
+  bamboo:   { id: 'bamboo',   name: 'Bamboo Grove', passable: true,  cost: 2,  build: false, elev: 0 },
   hill:     { id: 'hill',     name: 'Rocky Slope',  passable: true,  cost: 2,  build: true,  elev: 1 },
   mountain: { id: 'mountain', name: 'Mountain',     passable: false, cost: 99, build: false, elev: 2 },
 };
@@ -99,8 +154,8 @@ HF.ORDERS = {
   chop: {
     id: 'chop', label: 'Fell Timber', verb: 'Felling', key: 'C', work: 10, workType: 'woodcut',
     color: '#d9a441',
-    valid: function (t) { return t.terrain === 'forest'; },
-    hint: 'Fell pine for timber. The grove grows back in time.',
+    valid: function (t) { return t.terrain === 'forest' || t.terrain === 'bamboo'; },
+    hint: 'Fell pine or cut bamboo. Pine pays better; bamboo is back within the year.',
   },
   mine: {
     id: 'mine', label: 'Quarry Stone', verb: 'Quarrying', key: 'M', work: 15, workType: 'mine',
@@ -113,6 +168,13 @@ HF.ORDERS = {
     color: '#c9738a',
     valid: function (t) { return t.feature === 'chestnut'; },
     hint: 'Gather chestnuts for the stores. They ripen again, but never in winter.',
+  },
+  fish: {
+    id: 'fish', label: 'Set Fish Traps', verb: 'Fishing', key: 'T', work: 13, workType: 'farm',
+    color: '#6fb3c9',
+    valid: function (t) { return t.feature === 'fish'; },
+    hint: 'Trap fish from the bank. Steady food that owes nothing to the paddies - ' +
+          'a river valley can eat while the rice goes to the castle.',
   },
   harvest: {                                   // raised automatically by ripe paddies
     id: 'harvest', label: 'Harvest', verb: 'Harvesting', key: null, work: 8, workType: 'farm',
@@ -139,8 +201,9 @@ HF.BUILDINGS = {
   farm: {
     id: 'farm', label: 'Rice Paddy', sub: '',
     cost: { wood: 5 }, work: 12, farm: true,
-    on: ['grass'],
-    desc: 'Floods, ripens, and asks to be harvested. Your only real source of rice. Dormant all winter.',
+    on: ['grass', 'marsh', 'moor'],
+    desc: 'Floods, ripens, and asks to be harvested. Ripens half again as fast on reed marsh, ' +
+          'and slowly on dry moor - where you put it matters more than how many you have.',
   },
   campfire: {
     id: 'campfire', label: 'Hearth Fire', sub: '',
@@ -163,13 +226,30 @@ HF.BUILDINGS = {
   },
 };
 
-HF.FARM = { RIPE_AT: 20, YIELD: 13, GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 } };
+HF.FARM = {
+  RIPE_AT: 20,
+  YIELD: 13,
+  GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 },
+  /* Where a paddy sits is a real decision: wet ground is worth walking to. */
+  SOIL: { marsh: 1.5, grass: 1.0, moor: 0.6 },
+};
 
 HF.YIELDS = {
   chop:    { wood: 12 },
   mine:    { stone: 10 },
   forage:  { food: 8 },
+  fish:    { food: 7 },
   harvest: { food: HF.FARM.YIELD },
+};
+
+/* How long a stripped tile takes to come back, and as what. Bamboo is the
+   point of the pair: it yields less per cut than pine but returns inside a
+   year, so a bamboo valley can be logged over and over. */
+HF.REGROW = {
+  forest: { turns: [55, 85], yieldScale: 1 },
+  bamboo: { turns: [16, 26], yieldScale: 0.6 },
+  chestnut: { turns: [22, 34] },
+  fish: { turns: [20, 32] },
 };
 
 /* ---------- character ----------

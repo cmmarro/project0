@@ -5,9 +5,10 @@
    object references) so a save is just JSON.stringify. */
 window.HF = window.HF || {};
 
-HF.Game = function (seed) {
+HF.Game = function (seed, scenarioId) {
   this.seed = seed >>> 0;
   this.rng = new HF.RNG(this.seed);
+  this.scenarioId = HF.SCENARIOS[scenarioId] ? scenarioId : HF.DEFAULT_SCENARIO;
 
   const map = HF.Map.generate(this.rng, HF.CFG.MAP_W, HF.CFG.MAP_H);
   this.w = map.w;
@@ -23,14 +24,19 @@ HF.Game = function (seed) {
   this.res = Object.assign({}, HF.CFG.START_RES);
   this.entries = [];
   this.grief = 0;
-  this.nextRaidTurn = HF.CFG.RAID_START_TURN;
+  this.nextRaidTurn = HF.CFG.RAID_START_TURN + (this.scenario().raidDelay || 0);
   this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
   this.gameOver = null;
   this.endless = false;
   this.levyIndex = 0;          // how many levies have been collected
   this.levyFailures = 0;
-  this.levyStrikes = 0;
+  this.standing = HF.CFG.STANDING.start;
+  this.levyGenerous = false;   // press surplus rice on the collectors for credit
   this.levyHistory = [];
+  this.offer = null;           // the merchant's standing offer, if one is up
+  this.nextMerchantTurn = HF.CFG.MERCHANT.firstTurn;
+  this.tradesMade = 0;
+  this.taughtTrade = false;   // the first offer is opened for the player, once
   this.banditsKilled = 0;
   this.dirtyTerrain = true;
   this.spoiledThisTurn = false;
@@ -48,12 +54,16 @@ HF.Game = function (seed) {
 
   for (const c of this.colonists) HF.Colonists.bind(this, c);
 
-  this.log('Four peasants settle this valley. Three harvests, three levies - hold the village together.',
-           'season');
+  this.log(this.scenario().levy
+    ? 'Four peasants settle this valley. Four harvests, four levies - hold the village together.'
+    : 'Four peasants settle this valley. Nobody is coming for the rice. Make of it what you like.',
+    'season');
   for (const c of this.colonists) {
     this.log(c.name + ' ' + c.origin + '.', 'info');
   }
-  this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
+  if (this.scenario().levy) {
+    this.log('The daimyo will send collectors after each harvest. Rice is not just food here.', 'levy');
+  }
   HF.Events.announceSeason(this);
 };
 
@@ -79,10 +89,21 @@ HF.Game.prototype = {
      it is what the village owes, and a granary that looks comfortable in
      autumn can leave you starving through winter once they have been. */
 
+  scenario: function () {
+    return HF.SCENARIOS[this.scenarioId] || HF.SCENARIOS[HF.DEFAULT_SCENARIO];
+  },
+
   levyDemand: function (index) {
     const L = HF.CFG.LEVY;
-    if (index < L.demands.length) return L.demands[index];
-    return L.demands[L.demands.length - 1] + (index - L.demands.length + 1) * L.laterIncrease;
+    let base = index < L.demands.length
+      ? L.demands[index]
+      : L.demands[L.demands.length - 1] + (index - L.demands.length + 1) * L.laterIncrease;
+    // A village in favour is asked for less. Standing you built by overpaying
+    // in a good year comes back to you in a bad one.
+    if (this.standing >= HF.CFG.STANDING.favourAt) {
+      base = Math.round(base * HF.CFG.STANDING.favourRelief);
+    }
+    return Math.max(1, Math.round(base * (this.scenario().levyScale || 1)));
   },
 
   nextLevyTurn: function () {
@@ -94,7 +115,19 @@ HF.Game.prototype = {
 
   turnsToLevy: function () { return this.nextLevyTurn() - this.turn; },
 
+  /* How the castle describes the village, in words rather than a number. */
+  standingWord: function () {
+    const s = this.standing;
+    if (s >= HF.CFG.STANDING.favourAt) return 'in favour';
+    if (s >= 62) return 'in good order';
+    if (s >= 40) return 'noted';
+    if (s >= HF.CFG.STANDING.walkOutBelow) return 'in arrears';
+    return 'close to ruin';
+  },
+
   checkLevy: function () {
+    if (!this.scenario().levy) return;
+    const S = HF.CFG.STANDING;
     const due = this.nextLevyTurn();
     const demand = this.levyDemand(this.levyIndex);
 
@@ -105,55 +138,66 @@ HF.Game.prototype = {
     if (this.turn < due) return;
 
     const have = Math.floor(this.res.food);
+    const before = this.standing;
 
     if (have >= demand) {
-      this.res.food -= demand;
-      this.levyHistory.push({ year: this.year(), demand: demand, paid: true });
-      this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle.', 'levy');
+      /* Paying is not all-or-nothing any more. Handing over more than the
+         demand buys standing, which is the first reason the game has ever
+         given to grow rice beyond the number on the chip - and the credit
+         carries into a year when the harvest fails. */
+      const spare = have - demand;
+      const offered = Math.min(spare, S.overPer * S.overCap);
+      const generous = this.levyGenerous ? offered : 0;
+      this.res.food -= demand + generous;
+      const bonus = S.payBonus + Math.floor(generous / S.overPer);
+      this.standing = Math.min(S.max, this.standing + bonus);
+      this.levyHistory.push({ year: this.year(), demand: demand, paid: true, extra: generous });
+      this.log('The levy is paid in full - ' + demand + ' koku carried off to the castle' +
+               (generous > 0 ? ', and ' + generous + ' more pressed on them for goodwill' : '') +
+               '.', 'levy');
       this.grief = Math.max(0, this.grief - 4);
       HF.Colonists.rememberAll(this, 'levyPaid');
     } else {
+      // The wound scales with how far short you fell, so 5 koku missing and 50
+      // missing are no longer the same event.
       const short = demand - have;
+      const shareMissed = short / demand;
       this.res.food = 0;
-
-      // A near miss is a warning, not a strike. Without this band one bad
-      // harvest zeroes the granary and takes a villager, and the village can
-      // never climb back - the game would be decided turns before it ended.
-      const tolerated = have >= demand * HF.CFG.LEVY.tolerance;
-      this.levyHistory.push({
-        year: this.year(), demand: demand, paid: false, short: short, tolerated: tolerated,
-      });
-
+      this.standing = Math.max(0, this.standing - shareMissed * S.shortPenalty);
       this.levyFailures++;
-      const L = HF.CFG.LEVY;
-      const left = L.strikesAllowed + 1 - this.levyStrikes;
+      this.levyHistory.push({ year: this.year(), demand: demand, paid: false, short: short });
 
-      if (tolerated) {
-        this.levyStrikes += L.strikeNear;
-        this.grief += 5;
-        this.log('The levy falls ' + short + ' koku short. The collectors take everything and ' +
-                 'note the shortfall against the village.', 'bad');
+      if (shareMissed < 0.25) {
+        this.log('The levy falls ' + short + ' koku short. The clerk writes the shortfall ' +
+                 'down without comment.', 'bad');
         HF.Colonists.rememberAll(this, 'levyShort');
       } else {
-        this.levyStrikes += L.strikeBad;
-        this.grief += 10;
-        this.log('The levy falls ' + short + ' koku short - far short. The collectors strip the ' +
-                 'granary bare.', 'bad');
+        this.log('The levy falls ' + short + ' koku short of ' + demand +
+                 '. The collectors strip the kura bare and take the name of the village.', 'bad');
         HF.Colonists.rememberAll(this, 'levyStripped');
+      }
+
+      // Only a village already in arrears starts losing people over it.
+      if (this.standing < S.walkOutBelow) {
         const alive = this.aliveColonists();
-        if (alive.length > 1 && this.levyStrikes <= L.strikesAllowed) {
+        if (alive.length > 1) {
           const gone = this.rng.pick(alive);
           HF.Colonists.die(this, gone, ' has walked out rather than starve for the castle.', true);
         }
       }
-      if (this.levyStrikes <= L.strikesAllowed && left > 0) {
-        this.log('The village stands, but only just. Another year like this ends it.', 'levy');
-      }
+    }
+
+    this.log('The village stands ' + this.standingWord() + ' with the castle.',
+             this.standing >= before ? 'levy' : 'bad');
+
+    if (this.standing >= S.favourAt) {
+      this.log('Word comes back that the village is well thought of. Next year\'s due is eased.',
+               'good');
     }
 
     this.levyIndex++;
 
-    if (this.levyStrikes > HF.CFG.LEVY.strikesAllowed) {
+    if (this.standing <= 0) {
       this.gameOver = 'dissolved';
       this.log('The castle has run out of patience. The village is broken up and its people ' +
                'scattered across the province.', 'bad');
@@ -325,16 +369,20 @@ HF.Game.prototype = {
     }
 
     this.grief = Math.max(0, this.grief - 0.5);
+    this.standing = Math.min(HF.CFG.STANDING.max, this.standing + HF.CFG.STANDING.recover);
 
     this.checkLevy();
 
     if (this.aliveColonists().length === 0) {
       this.gameOver = 'lost';
       this.log('The last of the villagers is gone. The valley falls silent.', 'bad');
-    } else if (!this.gameOver && !this.endless &&
+    } else if (!this.gameOver && !this.endless && this.scenario().levy &&
                this.turn >= HF.CFG.VICTORY_TURN && this.levyIndex >= HF.CFG.LEVY.turns.length) {
+      // A milestone, not a finish line. The village is the point, so this
+      // stops once to mark four years survived and then gets out of the way -
+      // there is nothing after it that the player has to be protected from.
       this.gameOver = 'won';
-      this.log('Three years, three levies, and the village still stands.', 'good');
+      this.log('Four years, four levies, and the village still stands.', 'good');
     }
   },
 
@@ -361,6 +409,9 @@ HF.Game.prototype = {
       rice: Math.floor(this.res.food),
       leviesPaid: this.levyHistory.filter(function (l) { return l.paid; }).length,
       leviesMissed: this.levyFailures,
+      standing: Math.round(this.standing),
+      standingWord: this.standingWord(),
+      trades: this.tradesMade,
       bandits: this.banditsKilled,
       buildings: counts,
       built: built.length,
@@ -371,8 +422,8 @@ HF.Game.prototype = {
 
   serialize: function () {
     return JSON.stringify({
-      v: 1,
-      seed: this.seed, rngState: this.rng.s,
+      v: 2,
+      seed: this.seed, scenarioId: this.scenarioId, rngState: this.rng.s,
       w: this.w, h: this.h, tiles: this.tiles,
       turn: this.turn, nextId: this.nextId,
       colonists: this.colonists, buildings: this.buildings, raiders: this.raiders,
@@ -380,8 +431,10 @@ HF.Game.prototype = {
       grief: this.grief, nextRaidTurn: this.nextRaidTurn,
       nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
       endless: this.endless, levyIndex: this.levyIndex,
-      levyFailures: this.levyFailures, levyStrikes: this.levyStrikes,
-      levyHistory: this.levyHistory,
+      levyFailures: this.levyFailures, standing: this.standing,
+      levyGenerous: this.levyGenerous, levyHistory: this.levyHistory,
+      offer: this.offer, nextMerchantTurn: this.nextMerchantTurn,
+      tradesMade: this.tradesMade, taughtTrade: this.taughtTrade,
       banditsKilled: this.banditsKilled, startSite: this.startSite,
       spoilLogged: this.spoilLogged,
     });
@@ -397,5 +450,7 @@ HF.Game.load = function (json) {
   g.dirtyTerrain = true;
   g.spoiledThisTurn = false;
   g.spoilLogged = d.spoilLogged || {};
+  if (g.standing == null) g.standing = HF.CFG.STANDING.start;
+  if (!HF.SCENARIOS[g.scenarioId]) g.scenarioId = HF.DEFAULT_SCENARIO;
   return g;
 };

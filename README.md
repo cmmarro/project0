@@ -15,24 +15,46 @@ Add `?seed=12345` to the URL to replay a specific valley.
 
 ## The game
 
-Four peasants settle a valley. You have three years.
+Four peasants settle a valley. What happens next is up to you — including how
+much pressure you want.
 
-**The levy is the whole game.** After each harvest the daimyō's collectors come
-for rice — 40 koku, then 75, then 115 — and they do not care whether you can
-spare it. The countdown sits in the bar at the top.
-
-| Outcome | Effect |
+| | |
 | --- | --- |
-| Paid in full | Spirits lift across the village |
-| Short by less than a third | One strike, and everything in the granary is taken |
-| Short by more | Two strikes, and someone walks out rather than starve for the castle |
+| **Open Valley** | No collectors, no bandits. Seasons, ground, and people. It does not end. |
+| **A Quiet Province** | The castle asks, but lightly, and trouble is far off. Room to make mistakes. |
+| **Under the Daimyō** | The levy as written, bandits from year two, and the village can be broken up. |
 
-Three strikes and the village is broken up. So you can survive one bad year, or
-two tight ones — not both. Hold on through all three levies and the village
-endures; you can carry on afterwards, with the demand climbing every autumn.
+Chosen on the opening sheet, remembered between sessions, and shareable as
+`?mode=open`.
 
 Nothing happens until you press **End Turn**, so there is no time pressure while
 you plan.
+
+### The levy
+
+In the two scenarios that have one, the daimyō's collectors come after each
+harvest: **18 koku, then 55, then 100, then 155**. The first year is a remission
+year — newly opened land was taxed lightly — so you get a full year to learn the
+valley before a levy can hurt you.
+
+Falling short costs **standing**, in proportion to how far short you fall. A few
+koku is a note in a ledger; half the demand is a mark against the village. Run
+standing to nothing and the village is broken up. It recovers slowly on its own,
+and paying *over* the demand buys credit against a year when the harvest fails —
+which is the only reason to grow more rice than the number on the chip.
+
+Tap the levy chip to read the ledger.
+
+### More than one way to pay
+
+The castle only ever asks for rice, so there has to be a way to turn other
+things into it. Traders come up the valley with a **single offer** — timber for
+rice, rice for stone, take it or leave it, and gone in four turns. A village
+that cuts bamboo or traps fish can buy its way to the levy without a paddy in
+sight.
+
+Offers are weighted towards wanting what you have too much of and carrying what
+you lack, because a trade route you cannot plan around is not a route.
 
 ### Giving orders
 
@@ -41,15 +63,31 @@ they decide who does what.
 
 | Order | Effect |
 | --- | --- |
-| Fell Timber | Fells a pine grove; the grove grows back in time |
+| Fell Timber | Pine, or bamboo — bamboo pays less but is back inside the year |
 | Quarry Stone | Cuts stone from slopes and mountains |
-| Gather Chestnuts | Food, but never enough to cover a levy |
+| Gather Chestnuts | A little food, wherever chestnuts grow |
+| Set Fish Traps | Steady food from the riverbank that owes nothing to the paddies |
+
+### The ground
+
+Where you build matters more than how much you build.
+
+| Ground | What it is for |
+| --- | --- |
+| **Reed Marsh** | Paddies ripen half again as fast. Nothing else will stand on it |
+| **Meadow** | Ordinary. Paddies, houses, anything |
+| **Susuki Moor** | Open and buildable, but paddies barely work — dry ground |
+| **Pine Grove** | Timber, back in sixty turns or so |
+| **Bamboo Grove** | Less timber per cut, back inside the year — logged over and over |
+
+Villages are sited near marsh where there is any, so the good ground is
+something you actually meet.
 
 | Building | Cost | Purpose |
 | --- | --- | --- |
 | Minka | 22 timber | Farmhouse, sleeps two |
 | Kura | 28 timber | Granary; +150 to every storage cap |
-| Rice Paddy | 5 timber | Your only real source of rice |
+| Rice Paddy | 5 timber | Rice. Fast on marsh, slow on moor |
 | Hearth Fire | 12 timber | Keeps anyone within five tiles alive through winter |
 | Yagura | 16 timber, 8 stone | Watchtower; villagers nearby fight harder |
 | Ishigaki | 6 stone | Stone rampart; bandits must break through it |
@@ -104,8 +142,13 @@ autumn, and not at all in winter — when anyone more than five tiles from a hea
 loses health every turn. The levy falls after the autumn harvest, so you pay
 first and face winter on what's left.
 
-Bandits start arriving in year two. Villagers within seven tiles of one drop what
-they're doing and fight automatically.
+Bandits start arriving in year two — later and rarer in a Quiet Province, and
+never in an Open Valley. Villagers within seven tiles of one drop what they're
+doing and fight automatically.
+
+Roadside shrines stand in some valleys. They do nothing except lift the spirits
+of anyone living within a few tiles, which is a reason to settle in one part of
+the valley rather than another.
 
 ## Code layout
 
@@ -165,8 +208,16 @@ thoughts list.
 
 **Story-richness.** Skill-ups aren't logged, breakdowns log once per villager
 per fifteen turns, and spoilage once per twelve — bookkeeping crowds out the
-lines that are about something. What survives in the Chronicle names an actor
-and has something at stake.
+lines that are about something. What survives in the Record names an actor and
+has something at stake.
+
+**Room to breathe.** The levy and the bandits were built first and grew to fill
+the game. Open Valley removes both, the year-four mark is a milestone rather
+than a finish line, and the Record carries ambient lines — fireflies, geese
+going over, ice at the edges of the river — that mean nothing at all. A village
+worth keeping has to be somewhere you would look at when nothing is going
+wrong. For the same reason nobody is ever "Idle": they are mending something,
+watching the river, or sitting at the shrine.
 
 ## Controls
 

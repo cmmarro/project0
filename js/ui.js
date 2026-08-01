@@ -46,7 +46,20 @@ HF.UI = (function () {
     window.addEventListener('resize', function () { HF.Camera.refresh(); });
 
     refresh();
+    openHelpOnFirstVisit();
     requestAnimationFrame(frame);
+  }
+
+  /* The opening sheet is where the game explains itself and where the player
+     chooses how hard the world presses - both of which were unreachable while
+     it only ever opened from a Help button nobody had a reason to press. */
+  function openHelpOnFirstVisit() {
+    let seen = false;
+    try { seen = window.localStorage.getItem('hyakusho.seenHelp') === '1'; }
+    catch (err) { /* private mode - show it, no harm done */ }
+    if (seen) return;
+    $('help').classList.add('open');
+    try { window.localStorage.setItem('hyakusho.seenHelp', '1'); } catch (err) { /* ignore */ }
   }
 
   function resetCamera() {
@@ -175,6 +188,153 @@ HF.UI = (function () {
 
   function closePicker() { el.picker.classList.remove('open'); }
 
+  /* ---------- how hard the world presses ----------
+     Offered on the opening sheet rather than buried in a settings menu,
+     because whether anything is coming over the hill changes what the game
+     even is, and the player should get to say so before the first turn. */
+  const SCENARIO_KEY = 'hyakusho.scenario';
+
+  function savedScenario() {
+    try {
+      const s = window.localStorage.getItem(SCENARIO_KEY);
+      if (s && HF.SCENARIOS[s]) return s;
+    } catch (err) { /* private mode - fall through */ }
+    return HF.DEFAULT_SCENARIO;
+  }
+
+  function renderScenarioPick() {
+    const host = $('scenario-pick');
+    if (!host) return;
+    const current = game ? game.scenarioId : savedScenario();
+    let h = '';
+    for (const id in HF.SCENARIOS) {
+      const s = HF.SCENARIOS[id];
+      h += '<button class="scen' + (id === current ? ' on' : '') + '" data-scen="' + id + '">' +
+           '<span class="scen-name">' + s.label + '</span>' +
+           '<span class="scen-note">' + s.note + '</span></button>';
+    }
+    host.innerHTML = h;
+    for (const btn of host.querySelectorAll('.scen')) {
+      btn.addEventListener('click', function () {
+        const id = btn.dataset.scen;
+        try { window.localStorage.setItem(SCENARIO_KEY, id); } catch (err) { /* ignore */ }
+        // Changing how the world presses restarts it, since the levy schedule
+        // and the raid clock are both set when the valley is made.
+        setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0, id));
+        renderScenarioPick();
+      });
+    }
+  }
+
+  /* ---------- the ledger ----------
+     Standing is the thing the whole game now turns on, and a one-word label on
+     a chip cannot carry it. This sheet says what the castle thinks, why, and
+     lets the player choose to pay over the demand to build credit. */
+  function openLedger() {
+    const S = HF.CFG.STANDING;
+    const demand = game.levyDemand(game.levyIndex);
+    const have = Math.floor(game.res.food);
+    const due = game.turnsToLevy();
+    const pct = HF.U.clamp(game.standing, 0, 100);
+
+    let h = '<div class="ledger">';
+    h += '<div class="standing-bar"><div class="fill" style="width:' + pct + '%"></div>' +
+         '<span>Standing &middot; ' + esc(game.standingWord()) + '</span></div>';
+    h += '<p class="who">The castle asks <b>' + demand + ' koku</b> ' +
+         (due <= 0 ? '<b>now</b>' : 'in <b>' + due + (due === 1 ? ' turn' : ' turns') + '</b>') +
+         '. The kura holds <b>' + have + '</b>.</p>';
+    h += '<p class="who">Falling short costs standing in proportion to how far short you fall — ' +
+         'a few koku is a note in a ledger, half the demand is a mark against the village. ' +
+         'At nothing left, the village is broken up.</p>';
+    if (game.standing >= S.favourAt) {
+      h += '<p class="who good">The village is in favour, and this year\'s due has been eased.</p>';
+    }
+
+    h += '<button class="toggle-row' + (game.levyGenerous ? ' on' : '') + '" id="levy-generous">' +
+         '<span class="tick">' + (game.levyGenerous ? '&#10003;' : '') + '</span>' +
+         '<span class="toggle-text"><b>Press surplus on the collectors</b>' +
+         '<em>Hand over up to ' + (S.overPer * S.overCap) + ' koku beyond the demand to buy ' +
+         'standing. Rice you cannot eat later, for a castle that remembers.</em></span></button>';
+
+    if (game.levyHistory.length) {
+      h += '<h3>The record</h3><ul class="thoughts">';
+      for (const l of game.levyHistory.slice(-6)) {
+        h += '<li class="' + (l.paid ? 'up' : 'down') + '"><span>Year ' + l.year + ' &middot; ' +
+             (l.paid ? 'paid ' + l.demand + (l.extra ? ' and ' + l.extra + ' over' : '')
+                     : 'short by ' + l.short) + '</span><b>' +
+             (l.paid ? '&#10003;' : '&times;') + '</b></li>';
+      }
+      h += '</ul>';
+    }
+    h += '</div>';
+
+    el.pickerTitle.textContent = 'The Levy';
+    el.pickerList.innerHTML = h;
+    const t = $('levy-generous');
+    if (t) t.addEventListener('click', function () {
+      game.levyGenerous = !game.levyGenerous;
+      openLedger();
+    });
+    el.picker.classList.add('open');
+  }
+
+  /* ---------- merchants ----------
+     One person, one offer, accept or decline. A trade screen would be
+     arithmetic; an offer with somebody's face on it is a decision. */
+  function renderOfferChip() {
+    const chip = $('offer-chip');
+    if (!chip) return;
+    if (!game.offer) { chip.className = ''; chip.innerHTML = ''; return; }
+    const o = game.offer;
+    chip.className = 'show';
+    chip.innerHTML = '<span class="offer-mark">&#9678;</span> A trader is here &middot; ' +
+      o.wantAmount + ' ' + esc(HF.RESOURCES[o.wants].label.toLowerCase()) + ' for ' +
+      o.giveAmount + ' ' + esc(HF.RESOURCES[o.gives].label.toLowerCase());
+  }
+
+  function openOffer() {
+    const o = game.offer;
+    if (!o) return;
+    const W = HF.RESOURCES[o.wants], G = HF.RESOURCES[o.gives];
+    const canPay = game.res[o.wants] >= o.wantAmount;
+    const leaves = game.turnsToLevy();
+
+    let h = '<div class="ledger">';
+    h += '<p class="who lede">' + esc(o.who) + '.</p>';
+    h += '<div class="trade">' +
+         '<span class="side give"><b>' + o.wantAmount + '</b>' + esc(W.label) + '</span>' +
+         '<span class="arrow">&rarr;</span>' +
+         '<span class="side get"><b>' + o.giveAmount + '</b>' + esc(G.label) + '</span></div>';
+    h += '<p class="who">You hold ' + Math.floor(game.res[o.wants]) + ' ' +
+         esc(W.label.toLowerCase()) + '. They will wait ' +
+         Math.max(0, o.until - game.turn) + ' more ' +
+         (o.until - game.turn === 1 ? 'turn' : 'turns') + '.</p>';
+    if (o.gives === 'food' && leaves > 0) {
+      h += '<p class="who">The levy falls in ' + leaves + ' turns.</p>';
+    }
+    h += '<div class="offer-actions">' +
+         '<button id="offer-yes" class="primary"' + (canPay ? '' : ' disabled') + '>' +
+         (canPay ? 'Strike the deal' : 'Not enough ' + esc(W.label.toLowerCase())) + '</button>' +
+         '<button id="offer-no" class="plain">Send them on</button></div>';
+    h += '</div>';
+
+    el.pickerTitle.textContent = 'An Offer';
+    el.pickerList.innerHTML = h;
+    const yes = $('offer-yes'), no = $('offer-no');
+    if (yes) yes.addEventListener('click', function () {
+      const err = HF.Events.acceptOffer(game);
+      if (err) { toast(err); return; }
+      closePicker();
+      refresh();
+    });
+    if (no) no.addEventListener('click', function () {
+      HF.Events.declineOffer(game);
+      closePicker();
+      refresh();
+    });
+    el.picker.classList.add('open');
+  }
+
   /* ---------- pointer input ---------- */
 
   function tileAt(clientX, clientY) {
@@ -192,7 +352,8 @@ HF.UI = (function () {
 
     stage.addEventListener('pointerdown', function (e) {
       if (e.target.closest('#map-controls') || e.target.closest('#help') ||
-          e.target.closest('#ending') || e.target.closest('#mode-hint')) return;
+          e.target.closest('#ending') || e.target.closest('#mode-hint') ||
+          e.target.closest('#offer-chip')) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: 0 });
@@ -344,11 +505,11 @@ HF.UI = (function () {
   }
 
   let toastTimer = null;
-  function toast(message) {
+  function toast(message, ms) {
     el.banner.textContent = message;
     el.banner.className = 'show warn';
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2800);
+    toastTimer = setTimeout(function () { el.banner.className = ''; }, ms || 2800);
   }
 
   let tipTimer = null;
@@ -409,6 +570,8 @@ HF.UI = (function () {
   function bindButtons() {
     $('btn-endturn').addEventListener('click', endTurn);
     $('mode-hint').addEventListener('click', function () { setMode('none', null); });
+    el.levy.addEventListener('click', openLedger);
+    $('offer-chip').addEventListener('click', openOffer);
     $('btn-panel').addEventListener('click', function () { el.sidebar.classList.toggle('open'); });
     $('sheet-close').addEventListener('click', closeSheet);
 
@@ -456,10 +619,11 @@ HF.UI = (function () {
     });
     $('btn-help').addEventListener('click', function () { $('help').classList.toggle('open'); });
     $('help-close').addEventListener('click', function () { $('help').classList.remove('open'); });
+    renderScenarioPick();
   }
 
   function newGame() {
-    setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
+    setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0, savedScenario()));
   }
 
   function bindKeys() {
@@ -487,8 +651,17 @@ HF.UI = (function () {
 
   function endTurn() {
     if (game.gameOver) return;
+    const hadOffer = !!game.offer;
     game.endTurn();
     refresh();
+    // The first trader gets a nudge rather than a sheet. Opening a modal
+    // unasked put it straight over End Turn, and a village nobody is pressing
+    // should never be interrupted by a box demanding an answer. The chip on the
+    // map is the offer; this just points at it, once, and fades.
+    if (!hadOffer && game.offer && !game.taughtTrade) {
+      game.taughtTrade = true;
+      toast('A trader has come up the valley — tap the chip to hear the offer.', 4200);
+    }
   }
 
   /* ---------- panels ---------- */
@@ -514,14 +687,27 @@ HF.UI = (function () {
       '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() + '</div>';
 
     // The levy is the clock the whole village runs on, so it gets its own slot.
+    // Tapping it opens the ledger, which is where standing is explained. In an
+    // open valley there is no clock, so the slot goes away entirely rather than
+    // sitting there reading zero.
+    if (!game.scenario().levy) {
+      el.levy.className = 'hidden';
+      el.levy.innerHTML = '';
+      renderOfferChip();
+      $('btn-panel').innerHTML = 'Village <span class="badge">' +
+        game.aliveColonists().length + '</span>';
+      return;
+    }
     const due = game.turnsToLevy();
     const demand = game.levyDemand(game.levyIndex);
     const short = game.res.food < demand;
     el.levy.className = due <= 4 ? (short ? 'urgent' : 'due') : (short ? 'warn' : '');
     el.levy.innerHTML =
-      '<div class="levy-label">Next levy</div>' +
+      '<div class="levy-label">Next levy &middot; ' + game.standingWord() + '</div>' +
       '<div class="levy-value">' + demand + ' koku &middot; ' +
       (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' turn' : ' turns')) + '</div>';
+
+    renderOfferChip();
 
     $('btn-panel').innerHTML = 'Village <span class="badge">' +
       game.aliveColonists().length + '</span>';
@@ -688,7 +874,7 @@ HF.UI = (function () {
   const ENDINGS = {
     won: {
       title: 'The village endures',
-      sub: 'Three harvests brought in, three levies paid, and the valley is still yours.',
+      sub: 'Four harvests brought in, four levies met, and the valley is still yours.',
       mark: '村',
     },
     dissolved: {
@@ -734,5 +920,5 @@ HF.UI = (function () {
     node.classList.add('open');
   }
 
-  return { init: init, setGame: setGame };
+  return { init: init, setGame: setGame, savedScenario: savedScenario };
 })();

@@ -15,10 +15,16 @@ HF.Render = (function () {
     water:    '#31536b',
     sand:     '#c9b98d',
     grass:    '#6f8b4e',
+    marsh:    '#59745a',      // standing water under reeds - greyer, colder
+    moor:     '#9a9159',      // dry susuki grass, closer to straw than green
     forest:   '#5e7c46',
+    bamboo:   '#6f8e4a',      // a shade yellower than pine
     hill:     '#8a8171',
     mountain: '#7c7768',
   };
+
+  // Which grounds take the seasonal tint, and which stay their own colour.
+  const GREEN = { grass: 1, forest: 1, bamboo: 1, marsh: 1, moor: 1 };
 
   let canvas, ctx;
   let dirty = true;
@@ -62,7 +68,7 @@ HF.Render = (function () {
      rather than washed over the top of it. */
   function groundColor(tile, season, variant) {
     let base = GROUND[tile.terrain];
-    const green = tile.terrain === 'grass' || tile.terrain === 'forest';
+    const green = !!GREEN[tile.terrain];
     if (season === 'Summer' && green) base = blend(base, '#4f7a3a', 0.35);
     else if (season === 'Autumn' && green) base = blend(base, '#a87c3a', 0.45);
     else if (season === 'Winter' && tile.terrain !== 'water') base = blend(base, '#dde6ec', 0.55);
@@ -266,19 +272,96 @@ HF.Render = (function () {
     }
   }
 
+  /* Reeds: thin verticals with a seed head, thickest in autumn. */
+  function drawReeds(sx, sy, v, season) {
+    const n = 5 + ((v * 100) | 0) % 3;
+    ctx.strokeStyle = season === 'Winter' ? '#8d9a8e'
+                    : season === 'Autumn' ? '#b0a05e' : '#7f9a60';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < n; i++) {
+      const ox = ((i * 37 + v * 190) % 30) - 15;
+      const hgt = 11 + ((i * 11 + v * 27) % 8);
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy + 2);
+      ctx.quadraticCurveTo(sx + ox + 1, sy - hgt * 0.6, sx + ox + 3, sy - hgt);
+      ctx.stroke();
+    }
+  }
+
+  /* Susuki: pale plumes over dry grass. */
+  function drawSusuki(sx, sy, v, season) {
+    if (season === 'Winter') return;
+    const n = 3 + ((v * 100) | 0) % 3;
+    for (let i = 0; i < n; i++) {
+      const ox = ((i * 53 + v * 210) % 28) - 14;
+      const hgt = 9 + ((i * 13 + v * 31) % 6);
+      ctx.strokeStyle = '#a89c5e';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy + 1);
+      ctx.lineTo(sx + ox + 2, sy - hgt);
+      ctx.stroke();
+      ctx.fillStyle = season === 'Autumn' ? '#e3d7a8' : '#c3bb84';
+      ctx.beginPath();
+      ctx.ellipse(sx + ox + 3, sy - hgt - 2, 3.4, 1.6, -0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /* A fish trap: stakes in the shallows with a ripple around them. */
+  function drawFish(sx, sy, v) {
+    ctx.strokeStyle = 'rgba(190,215,230,0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy, 11, 5.5, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#7d6a4c';
+    ctx.lineWidth = 1.8;
+    for (let i = 0; i < 3; i++) {
+      const ox = -6 + i * 6 + (v - 0.5) * 3;
+      ctx.beginPath();
+      ctx.moveTo(sx + ox, sy + 2);
+      ctx.lineTo(sx + ox + 1, sy - 7 - (i === 1 ? 2 : 0));
+      ctx.stroke();
+    }
+  }
+
+  /* A roadside shrine: two posts, a lintel, and a small vermilion gate. */
+  function drawShrine(sx, sy) {
+    shadow(sx, sy + 2, 10);
+    ctx.strokeStyle = '#b8442c';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(sx - 7, sy + 1); ctx.lineTo(sx - 6, sy - 15);
+    ctx.moveTo(sx + 7, sy + 1); ctx.lineTo(sx + 6, sy - 15);
+    ctx.stroke();
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(sx - 10, sy - 16); ctx.lineTo(sx + 10, sy - 16);
+    ctx.moveTo(sx - 8, sy - 11); ctx.lineTo(sx + 8, sy - 11);
+    ctx.stroke();
+  }
+
   function drawScenery(game, x, y, season) {
     const tile = game.tiles[y * game.w + x];
     if (tile.building != null) return;
     const p = I.toScreen(x, y, I.elevOf(tile));
     if (tile.terrain === 'forest') {
-      if (tile.variant > 0.68) drawBamboo(p.sx, p.sy, tile.variant, season);
-      else drawPine(p.sx, p.sy, tile.variant, season);
+      drawPine(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'bamboo') {
+      drawBamboo(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'marsh') {
+      drawReeds(p.sx, p.sy, tile.variant, season);
+    } else if (tile.terrain === 'moor') {
+      drawSusuki(p.sx, p.sy, tile.variant, season);
     } else if (tile.terrain === 'mountain') {
       drawPeak(p.sx, p.sy, tile.variant, season);
     } else if (tile.terrain === 'hill') {
       drawRocks(p.sx, p.sy, tile.variant);
     }
     if (tile.feature === 'chestnut') drawChestnut(p.sx, p.sy, tile.variant, season);
+    else if (tile.feature === 'fish') drawFish(p.sx, p.sy, tile.variant);
+    else if (tile.feature === 'shrine') drawShrine(p.sx, p.sy);
   }
 
   /* ---------- buildings ---------- */

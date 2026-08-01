@@ -28,6 +28,7 @@
         <button id="recenter" title="Centre on the village" aria-label="Centre on the village">&#9678;</button>
       </div>
 
+      <div id="offer-chip"></div>
       <div id="mode-hint"></div>
       <div id="tooltip"></div>
       <div id="banner"></div>
@@ -35,14 +36,22 @@
       <div id="help">
         <div class="sheet">
           <h2>How to hold a village together</h2>
-          <p class="lede">Four peasants, one valley, and three years. Nothing happens until you
-             end the turn, so there is no hurry &mdash; only consequences.</p>
+          <p class="lede">Four peasants, one valley, four years. Nothing happens until you end
+             the turn, so there is no hurry &mdash; only consequences.</p>
           <ol class="steps">
-            <li><b>The levy is the whole game.</b> After each harvest the daimyō's collectors
-                come for rice: 40 koku, then 75, then 115. Miss two and the village is broken up.
-                The countdown is in the bar at the top.</li>
-            <li><b>Rice comes from paddies, and only from paddies.</b> Foraging and hunting will
-                not cover a levy. Tap <b>Build &rarr; Rice Paddy</b> early and often.</li>
+            <li><b>Your first year is nearly free.</b> Newly opened land is taxed lightly, so the
+                first levy asks only 18 koku. Use the year to learn the valley. The asking then
+                climbs: 55, then 100, then 155.</li>
+            <li><b>Standing, not strikes.</b> Falling short costs the castle's regard in
+                proportion to how far short you fall &mdash; a few koku is a note in a ledger,
+                half the demand is a mark against the village. Run it to nothing and the village
+                is broken up. Tap the levy chip to read the ledger.</li>
+            <li><b>There is more than one way to pay.</b> Traders come up the valley with a single
+                offer &mdash; timber for rice, rice for stone, take it or leave it. A village that
+                cuts bamboo or traps fish can buy its way to the levy without a paddy in sight.</li>
+            <li><b>The ground decides the harvest.</b> Paddies ripen half again as fast on
+                <b>reed marsh</b>, slowly on dry <b>moor</b>. <b>Bamboo</b> pays less than pine but
+                grows back inside the year. Read the valley before you plan it.</li>
             <li><b>Build shelter before winter.</b> A <b>Minka</b> sleeps two; villagers without a
                 bed lose heart. A <b>Hearth Fire</b> keeps anyone within five tiles alive through
                 the cold. A <b>Kura</b> raises how much you can store &mdash; everything over the
@@ -54,9 +63,8 @@
                 close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
                 waste turns breaking through.</li>
             <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is not a mood
-                dial &mdash; it is a list of reasons, each one named and counted. Sleeping on bare
-                earth, no hearth in the cold, the collectors came. Fix the reasons and the number
-                follows. Tap their name to call them something of your own.</li>
+                dial &mdash; it is a list of reasons, each one named and counted. Fix the reasons
+                and the number follows. Tap their name to call them something of your own.</li>
           </ol>
           <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
              to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
@@ -66,6 +74,8 @@
              menu &middot; <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot;
              <kbd>X</kbd> cancel tool &middot; <kbd>Esc</kbd> put the tool down &middot;
              <kbd>H</kbd> this page</p>
+          <h3 class="pick-head">How hard should the world press?</h3>
+          <div id="scenario-pick"></div>
           <button id="help-close">Begin</button>
         </div>
       </div>

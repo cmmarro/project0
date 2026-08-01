@@ -63,9 +63,18 @@ HF.Build = {
     return true;
   },
 
+  /* What a paddy on this tile is worth per turn: the season, times the ground
+     it was dug into. Marsh is half again as fast as meadow, moor barely
+     works - so choosing where to build is a real decision rather than a
+     formality. */
+  growthRate: function (game, b) {
+    const tile = HF.Map.at(game, b.x, b.y);
+    const soil = (tile && HF.FARM.SOIL[tile.terrain]) || 1;
+    return HF.FARM.GROWTH[game.season()] * soil;
+  },
+
   /* Crops ripen with the season, then post their own harvest order. */
   tickFarms: function (game) {
-    const rate = HF.FARM.GROWTH[game.season()];
     for (const b of game.buildings) {
       if (!b || !b.built || !HF.BUILDINGS[b.type].farm) continue;
       if (b.growth >= HF.FARM.RIPE_AT) {
@@ -77,7 +86,7 @@ HF.Build = {
         }
         continue;
       }
-      b.growth += rate;
+      b.growth += HF.Build.growthRate(game, b);
       if (b.growth >= HF.FARM.RIPE_AT) {
         b.growth = HF.FARM.RIPE_AT;
         game.dirtyTerrain = true;
@@ -96,11 +105,15 @@ HF.Build = {
       const x = i % game.w, y = (i / game.w) | 0;
       if (game.designations[HF.U.key(x, y)]) continue;
 
-      if (t.terrain === 'grass' && !t.feature) {
-        // Whichever was stripped here grows back: trees, or the bush.
-        if (game.rng.chance(0.6)) t.terrain = 'forest';
-        else t.feature = 'chestnut';
-        game.dirtyTerrain = true;
+      // Whatever was taken from this tile is what comes back to it.
+      const what = t.regrowTo;
+      t.regrowTo = null;
+      if (what === 'fish') {
+        if (t.terrain === 'water' && !t.feature) { t.feature = 'fish'; game.dirtyTerrain = true; }
+      } else if (what === 'chestnut') {
+        if (!t.feature) { t.feature = 'chestnut'; game.dirtyTerrain = true; }
+      } else if (what && HF.TERRAIN[what]) {
+        if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
     }
   },
