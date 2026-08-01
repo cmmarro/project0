@@ -1,25 +1,29 @@
-/* DOM panels and input handling. Everything the player can do goes through a
-   single "mode" (none / order / build / cancel) applied to a tile or a dragged
-   rectangle of tiles. */
+/* DOM panels and input handling.
+
+   Everything the player can do goes through a single "mode" (none / order /
+   build / cancel) applied to a tile or a dragged rectangle of tiles. Input is
+   pointer-based so mouse and touch share one path: with a tool selected a drag
+   paints, with no tool a drag pans, and two fingers always pinch-zoom. */
 window.HF = window.HF || {};
 
 HF.UI = (function () {
-  const T = HF.CFG.TILE;
-
   let game = null;
   let canvas = null;
+  let stage = null;
   const view = { hover: null, selectedId: null, mode: { kind: 'none', id: null }, drag: null };
 
   const el = {};
-
   function $(id) { return document.getElementById(id); }
+  function isNarrow() { return window.innerWidth < 900; }
 
   /* ---------- setup ---------- */
 
   function init(g) {
     game = g;
     canvas = $('board');
+    stage = $('stage');
     HF.Render.init(canvas);
+    HF.Camera.init(canvas, stage);
 
     el.stats = $('stats');
     el.calendar = $('calendar');
@@ -29,21 +33,33 @@ HF.UI = (function () {
     el.banner = $('banner');
     el.orders = $('orders');
     el.builds = $('builds');
+    el.sidebar = $('sidebar');
 
     buildToolbar();
-    bindCanvas();
+    bindPointer();
     bindButtons();
     bindKeys();
+
+    resetCamera();
+    window.addEventListener('resize', function () { HF.Camera.refresh(); });
 
     refresh();
     requestAnimationFrame(frame);
   }
 
+  function resetCamera() {
+    const c = game.colonyCentre();
+    if (isNarrow()) HF.Camera.centerOn(c.x, c.y, HF.Camera.scaleForTilesAcross(15));
+    else HF.Camera.fit();
+  }
+
   function setGame(g) {
     game = g;
     view.selectedId = null;
-    view.mode = { kind: 'none', id: null };
+    view.drag = null;
+    setMode('none', null);
     game.dirtyTerrain = true;
+    resetCamera();
     refresh();
   }
 
@@ -110,57 +126,147 @@ HF.UI = (function () {
       b.classList.toggle('active',
         b.dataset.mode === view.mode.kind && (b.dataset.id || null) === view.mode.id);
     }
-    canvas.classList.toggle('painting', view.mode.kind !== 'none');
+    stage.classList.toggle('painting', view.mode.kind !== 'none');
+    // A tool is useless behind the colony sheet, so close it when one is picked.
+    if (view.mode.kind !== 'none') closeSheet();
+    updateHint();
   }
 
-  /* ---------- canvas input ---------- */
-
-  function tileFromEvent(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width) / T);
-    const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height) / T);
-    if (x < 0 || y < 0 || x >= game.w || y >= game.h) return null;
-    return { x: x, y: y };
+  /* With a tool held, every drag paints instead of panning. The hint says which
+     tool is live and doubles as the way to put it down. */
+  function updateHint() {
+    const hint = $('mode-hint');
+    if (view.mode.kind === 'none') { hint.className = ''; hint.innerHTML = ''; return; }
+    let text;
+    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' - drag over the map';
+    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label;
+    else text = 'Cancel - drag over orders to remove';
+    hint.innerHTML = text + '<span class="clear">&times;</span>';
+    hint.className = 'show';
   }
 
-  function bindCanvas() {
-    canvas.addEventListener('mousedown', function (e) {
-      const t = tileFromEvent(e);
-      if (!t) return;
-      if (e.button !== 0) return;
-      if (view.mode.kind === 'none') { selectAt(t); return; }
-      view.drag = { x0: t.x, y0: t.y, x1: t.x, y1: t.y };
+  /* ---------- pointer input ---------- */
+
+  function bindPointer() {
+    const pointers = new Map();
+    let gesture = null;        // 'paint' | 'tap' | 'pan' | 'pinch'
+    let pinch = null;
+    let leadPointer = null;
+
+    function spread(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    stage.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('#map-controls') || e.target.closest('#help') ||
+          e.target.closest('#mode-hint')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // Capture keeps a drag alive if the finger leaves the map, but it is not
+      // worth losing all input over if the browser refuses it.
+      try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: 0 });
+
+      if (pointers.size === 2) {
+        // A second finger always means pinch, so abandon any paint in progress.
+        view.drag = null;
+        gesture = 'pinch';
+        const p = Array.from(pointers.values());
+        pinch = { d: spread(p[0], p[1]), mx: (p[0].x + p[1].x) / 2, my: (p[0].y + p[1].y) / 2 };
+        return;
+      }
+      if (pointers.size > 2) return;
+
+      const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+      if (view.mode.kind !== 'none' && t) {
+        gesture = 'paint';
+        view.drag = { x0: t.x, y0: t.y, x1: t.x, y1: t.y };
+      } else {
+        gesture = 'tap';                    // becomes a pan once it moves far enough
+        leadPointer = e.pointerId;
+      }
     });
 
-    canvas.addEventListener('mousemove', function (e) {
-      const t = tileFromEvent(e);
-      view.hover = t;
-      if (view.drag && t) { view.drag.x1 = t.x; view.drag.y1 = t.y; }
-      updateTooltip(e, t);
+    stage.addEventListener('pointermove', function (e) {
+      const p = pointers.get(e.pointerId);
+      if (p) {
+        const dx = e.clientX - p.x, dy = e.clientY - p.y;
+        p.moved += Math.abs(dx) + Math.abs(dy);
+        p.x = e.clientX; p.y = e.clientY;
+
+        if (gesture === 'pinch' && pointers.size === 2) {
+          const pts = Array.from(pointers.values());
+          const d = spread(pts[0], pts[1]);
+          const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
+          if (pinch.d > 0) HF.Camera.zoomBy(d / pinch.d, mx, my);
+          HF.Camera.panBy(mx - pinch.mx, my - pinch.my);
+          pinch = { d: d, mx: mx, my: my };
+          return;
+        }
+        if (gesture === 'paint' && view.drag) {
+          const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+          if (t) { view.drag.x1 = t.x; view.drag.y1 = t.y; }
+        } else if (e.pointerId === leadPointer && (gesture === 'tap' || gesture === 'pan')) {
+          if (gesture === 'tap' && p.moved > 10) gesture = 'pan';
+          if (gesture === 'pan') HF.Camera.panBy(dx, dy);
+        }
+      }
+
+      if (e.pointerType === 'mouse') {
+        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        view.hover = t;
+        showTileInfo(t, e.clientX, e.clientY, false);
+      }
     });
 
-    window.addEventListener('mouseup', function () {
-      if (!view.drag) return;
-      applyToRect(view.drag);
-      view.drag = null;
-      refresh();
-    });
+    function release(e) {
+      const p = pointers.get(e.pointerId);
+      pointers.delete(e.pointerId);
+      if (!p) return;
 
-    canvas.addEventListener('mouseleave', function () {
+      if (gesture === 'paint' && pointers.size === 0) {
+        if (view.drag) { applyToRect(view.drag); view.drag = null; refresh(); }
+        gesture = null;
+      } else if (gesture === 'tap' && e.pointerId === leadPointer) {
+        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        if (t) handleTap(t, e);
+        gesture = null; leadPointer = null;
+      } else if (pointers.size < 2) {
+        // Coming out of a pinch, ignore the finger still down until it lifts.
+        gesture = null; pinch = null; leadPointer = null;
+      }
+
+      if (pointers.size === 0) { gesture = null; pinch = null; leadPointer = null; view.drag = null; }
+    }
+
+    stage.addEventListener('pointerup', release);
+    stage.addEventListener('pointercancel', release);
+
+    stage.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      HF.Camera.zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+    }, { passive: false });
+
+    stage.addEventListener('pointerleave', function (e) {
+      if (e.pointerType !== 'mouse') return;
       view.hover = null;
       el.tooltip.style.display = 'none';
     });
 
-    canvas.addEventListener('contextmenu', function (e) {
+    stage.addEventListener('contextmenu', function (e) {
       e.preventDefault();
       setMode('none', null);
     });
   }
 
-  function selectAt(t) {
+  function handleTap(t, e) {
     const c = game.colonistAt(t.x, t.y);
-    view.selectedId = c ? c.id : null;
+    if (c) {
+      view.selectedId = c.id;
+      renderColonists();
+      return;
+    }
+    view.selectedId = null;
     renderColonists();
+    // Touch has no hover, so a tap on empty ground is how you inspect a tile.
+    if (e.pointerType !== 'mouse') showTileInfo(t, e.clientX, e.clientY, true);
   }
 
   function applyToRect(drag) {
@@ -184,10 +290,7 @@ HF.UI = (function () {
     }
 
     if (placed === 0 && failReason) toast(failReason);
-    if (view.mode.kind === 'build' && placed > 0) {
-      // Stay in build mode so a row of walls is one selection, many clicks.
-      game.dirtyTerrain = true;
-    }
+    if (placed > 0) game.dirtyTerrain = true;
   }
 
   let toastTimer = null;
@@ -198,7 +301,8 @@ HF.UI = (function () {
     toastTimer = setTimeout(function () { el.banner.className = ''; }, 2600);
   }
 
-  function updateTooltip(e, t) {
+  let tipTimer = null;
+  function showTileInfo(t, clientX, clientY, sticky) {
     if (!t) { el.tooltip.style.display = 'none'; return; }
     const tile = HF.Map.at(game, t.x, t.y);
     const lines = [HF.TERRAIN[tile.terrain].name];
@@ -234,15 +338,39 @@ HF.UI = (function () {
 
     el.tooltip.innerHTML = lines.join('<br>');
     el.tooltip.style.display = 'block';
-    const rect = canvas.getBoundingClientRect();
-    el.tooltip.style.left = (e.clientX - rect.left + 16) + 'px';
-    el.tooltip.style.top = (e.clientY - rect.top + 16) + 'px';
+
+    const rect = stage.getBoundingClientRect();
+    const w = el.tooltip.offsetWidth, h = el.tooltip.offsetHeight;
+    let left = clientX - rect.left + 14;
+    let top = clientY - rect.top + 14;
+    if (left + w > rect.width - 8) left = clientX - rect.left - w - 14;
+    if (top + h > rect.height - 8) top = clientY - rect.top - h - 14;
+    el.tooltip.style.left = Math.max(6, left) + 'px';
+    el.tooltip.style.top = Math.max(6, top) + 'px';
+
+    clearTimeout(tipTimer);
+    if (sticky) tipTimer = setTimeout(function () { el.tooltip.style.display = 'none'; }, 2800);
   }
 
   /* ---------- buttons and keys ---------- */
 
+  function openSheet() { el.sidebar.classList.add('open'); }
+  function closeSheet() { el.sidebar.classList.remove('open'); }
+
   function bindButtons() {
     $('btn-endturn').addEventListener('click', endTurn);
+    $('mode-hint').addEventListener('click', function () { setMode('none', null); });
+    $('btn-panel').addEventListener('click', function () { el.sidebar.classList.toggle('open'); });
+    $('sheet-close').addEventListener('click', closeSheet);
+
+    $('zoom-in').addEventListener('click', function () { HF.Camera.zoomBy(1.35); });
+    $('zoom-out').addEventListener('click', function () { HF.Camera.zoomBy(1 / 1.35); });
+    $('recenter').addEventListener('click', function () {
+      const sel = view.selectedId != null ? game.colonistById(view.selectedId) : null;
+      const target = sel && !sel.dead ? sel : game.colonyCentre();
+      HF.Camera.centerOn(target.x, target.y);
+    });
+
     $('btn-new').addEventListener('click', function () {
       if (!confirm('Abandon this colony and generate a new map?')) return;
       setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
@@ -256,7 +384,8 @@ HF.UI = (function () {
       }
     });
     $('btn-load').addEventListener('click', function () {
-      const data = localStorage.getItem('hearthfall.save');
+      let data = null;
+      try { data = localStorage.getItem('hearthfall.save'); } catch (err) { data = null; }
       if (!data) { toast('No saved colony found.'); return; }
       try {
         setGame(HF.Game.load(data));
@@ -265,12 +394,8 @@ HF.UI = (function () {
         toast('Save file could not be read.');
       }
     });
-    $('btn-help').addEventListener('click', function () {
-      $('help').classList.toggle('open');
-    });
-    $('help-close').addEventListener('click', function () {
-      $('help').classList.remove('open');
-    });
+    $('btn-help').addEventListener('click', function () { $('help').classList.toggle('open'); });
+    $('help-close').addEventListener('click', function () { $('help').classList.remove('open'); });
   }
 
   function bindKeys() {
@@ -319,6 +444,7 @@ HF.UI = (function () {
       '<div class="season ' + game.season().toLowerCase() + '">' + game.season() + '</div>' +
       '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() +
       ' &middot; Turn ' + game.turn + '</div>';
+    $('btn-panel').innerHTML = 'Colony <span class="badge">' + alive + '</span>';
   }
 
   function stat(label, value, cls) {
@@ -335,7 +461,12 @@ HF.UI = (function () {
 
   function renderColonists() {
     const alive = game.aliveColonists();
-    let html = '<h2>Colonists <span class="count">' + alive.length + '</span></h2>';
+    const beds = HF.Build.bedCount(game);
+    // Beds sit next to the roster because "who has nowhere to sleep" is the
+    // question the roster is being read to answer.
+    let html = '<h2>Colonists <span class="count">' + alive.length + '</span>' +
+               ' &middot; Beds <span class="count' + (beds < alive.length ? ' short' : '') + '">' +
+               beds + '</span></h2>';
 
     if (alive.length === 0) html += '<p class="empty">No one is left.</p>';
 
@@ -356,8 +487,8 @@ HF.UI = (function () {
         const lvl = HF.Colonists.skillLevel(c, wt.skill);
         html += '<button class="work' + (c.work[wt.id] ? ' on' : '') +
                 '" data-colonist="' + c.id + '" data-work="' + wt.id + '" title="' +
-                wt.label + ' - skill ' + lvl + '. Click to toggle.">' +
-                wt.label.slice(0, 5) + '<span class="lvl">' + lvl + '</span></button>';
+                wt.label + ' - skill ' + lvl + '. Tap to toggle.">' +
+                wt.short + '<span class="lvl">' + lvl + '</span></button>';
       }
       html += '</div></div>';
     }
@@ -366,9 +497,12 @@ HF.UI = (function () {
 
     for (const node of el.colonists.querySelectorAll('.colonist')) {
       node.addEventListener('click', function (e) {
-        if (e.target.classList.contains('work')) return;
+        if (e.target.closest('.work')) return;
         view.selectedId = parseInt(node.dataset.id, 10);
+        const c = game.colonistById(view.selectedId);
+        if (c) HF.Camera.centerOn(c.x, c.y);
         renderColonists();
+        if (isNarrow()) closeSheet();      // get out of the way so you can see them
       });
     }
     for (const btn of el.colonists.querySelectorAll('.work')) {

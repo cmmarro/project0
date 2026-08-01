@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Hearthfall &mdash; a turn-based colony</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312141a'/><path d='M8 3l5 5H3z' fill='%23e0b64a'/><rect x='5' y='8' width='6' height='5' fill='%238a6a45'/></svg>">
   <link rel="stylesheet" href="styles/style.css">
@@ -20,6 +20,14 @@
 
     <main id="stage">
       <canvas id="board" width="1056" height="672"></canvas>
+
+      <div id="map-controls">
+        <button id="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out">&minus;</button>
+        <button id="recenter" title="Centre on the colony">&#9678;</button>
+      </div>
+
+      <div id="mode-hint"></div>
       <div id="tooltip"></div>
       <div id="banner"></div>
 
@@ -29,13 +37,12 @@
           <p>Four settlers, one valley, and three years to survive. Nothing happens
              until you end the turn &mdash; you have all the time you want to plan.</p>
           <ul>
-            <li><strong>Give orders, not commands.</strong> Paint work orders on the map
-                (<kbd>C</kbd>hop, <kbd>M</kbd>ine, <kbd>F</kbd>orage) and drop blueprints
-                (<kbd>1</kbd>&ndash;<kbd>5</kbd>). Drag to cover an area. Colonists pick up
-                the nearest job they are willing to do.</li>
+            <li><strong>Give orders, not commands.</strong> Pick a tool from the bar at the
+                bottom, then drag across the map to mark work or drop blueprints.
+                Colonists pick up the nearest job they are willing to do.</li>
             <li><strong>Everyone has a mind of their own.</strong> Each colonist has skills,
-                hunger, tiredness and a mood. Use the toggles beside their name to decide
-                which kinds of work they will accept.</li>
+                hunger, tiredness and a mood. Open <strong>Colony</strong> to see them and to
+                choose which kinds of work each one will accept.</li>
             <li><strong>Eat, sleep, repeat.</strong> Food is a shared stockpile. Rest needs a
                 bed, and a bed needs a house &mdash; sleeping rough wrecks morale.</li>
             <li><strong>Winter is the test.</strong> Crops stop growing and anyone more than
@@ -43,15 +50,22 @@
             <li><strong>Raiders come from year two.</strong> Colonists fight automatically
                 when raiders get close. Stone walls buy you time.</li>
           </ul>
-          <p class="keys"><kbd>Space</kbd> end turn &middot; <kbd>X</kbd> cancel tool &middot;
-             <kbd>Esc</kbd> deselect &middot; <kbd>H</kbd> this sheet &middot;
-             right-click clears the current tool</p>
+          <p class="keys"><strong>Moving the map:</strong> drag with no tool selected to pan,
+             pinch or scroll to zoom, tap a tile to inspect it, tap a colonist to select them.</p>
+          <p class="keys"><strong>Keyboard:</strong> <kbd>Space</kbd> end turn &middot;
+             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> orders &middot;
+             <kbd>1</kbd>&ndash;<kbd>5</kbd> buildings &middot; <kbd>X</kbd> cancel tool &middot;
+             <kbd>Esc</kbd> deselect &middot; <kbd>H</kbd> this sheet</p>
           <button id="help-close">Got it</button>
         </div>
       </div>
     </main>
 
     <aside id="sidebar">
+      <div class="sheet-grip">
+        <span>Colony</span>
+        <button id="sheet-close" aria-label="Close">&times;</button>
+      </div>
       <section id="colonist-panel"></section>
       <section id="log-panel">
         <h2>Chronicle</h2>
@@ -63,12 +77,15 @@
       <div class="toolbar-scroll">
         <div class="tool-group" id="orders"></div>
         <div class="tool-group" id="builds"></div>
+        <div class="tool-group meta">
+          <button id="btn-help" class="plain">Help</button>
+          <button id="btn-save" class="plain">Save</button>
+          <button id="btn-load" class="plain">Load</button>
+          <button id="btn-new" class="plain">New</button>
+        </div>
       </div>
-      <div class="tool-group right">
-        <button id="btn-help" class="plain">Help</button>
-        <button id="btn-save" class="plain">Save</button>
-        <button id="btn-load" class="plain">Load</button>
-        <button id="btn-new" class="plain">New</button>
+      <div class="tool-group pinned">
+        <button id="btn-panel" class="plain">Colony</button>
         <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
       </div>
     </footer>
@@ -84,6 +101,7 @@
   <script src="js/buildings.js"></script>
   <script src="js/events.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/camera.js"></script>
   <script src="js/render.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>

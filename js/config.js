@@ -52,10 +52,10 @@ HF.TERRAIN = {
 
 /* ---------- work types (per-colonist toggles) ---------- */
 HF.WORK_TYPES = [
-  { id: 'woodcut', label: 'Woodcutting', skill: 'woodcutting' },
-  { id: 'mine',    label: 'Mining',      skill: 'mining' },
-  { id: 'build',   label: 'Building',    skill: 'construction' },
-  { id: 'farm',    label: 'Farming',     skill: 'farming' },
+  { id: 'woodcut', label: 'Woodcutting', short: 'Wood',  skill: 'woodcutting' },
+  { id: 'mine',    label: 'Mining',      short: 'Mine',  skill: 'mining' },
+  { id: 'build',   label: 'Building',    short: 'Build', skill: 'construction' },
+  { id: 'farm',    label: 'Farming',     short: 'Farm',  skill: 'farming' },
 ];
 
 HF.SKILLS = ['woodcutting', 'mining', 'construction', 'farming'];

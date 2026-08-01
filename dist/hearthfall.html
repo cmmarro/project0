@@ -1,0 +1,3388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hearthfall &mdash; a turn-based colony</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%2312141a'/><path d='M8 3l5 5H3z' fill='%23e0b64a'/><rect x='5' y='8' width='6' height='5' fill='%238a6a45'/></svg>">
+<style>
+/* Hearthfall */
+
+:root {
+  /* Hearthfall commits to one visual world - a lamplit game screen - so it does
+     not follow the viewer's light/dark preference. Declaring the scheme keeps
+     scrollbars and form controls in the same key. */
+  color-scheme: dark;
+
+  --bg: #12141a;
+  --panel: #1b1f27;
+  --panel-2: #232833;
+  --line: #333a47;
+  --ink: #e9e3d5;
+  --ink-dim: #9aa1ae;
+  --gold: #e0b64a;
+  --good: #7ec46a;
+  --bad: #d9584f;
+  --warn: #e0a83f;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  margin-left: 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #11131a;
+  color: var(--ink-dim);
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#app {
+  /* Pinned to the viewport rather than sized by the document, so the game fills
+     the screen even when it is embedded in a host page with its own body
+     margins, padding or scroll container. */
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr 330px;
+  grid-template-rows: 52px 1fr 66px;
+  grid-template-areas:
+    "top    top"
+    "stage  side"
+    "tools  tools";
+  height: 100vh;
+  height: 100dvh;
+  gap: 1px;
+  background: var(--line);
+}
+
+/* ---------- top bar ---------- */
+
+#topbar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  background: var(--panel);
+  min-width: 0;
+}
+
+.brand {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--gold);
+  flex-shrink: 0;
+}
+
+#stats {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#stats::-webkit-scrollbar { display: none; }
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  min-width: 84px;
+}
+
+.stat .label {
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.stat .value { font-size: 14px; font-weight: 600; }
+.stat.food  .value { color: #8fd06f; }
+.stat.wood  .value { color: #d8a86a; }
+.stat.stone .value { color: #adb6c4; }
+.stat.pop   .value { color: var(--gold); }
+.stat.bed   .value { color: #8fb8e0; }
+
+#calendar { text-align: right; flex-shrink: 0; }
+
+#calendar .season {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+#calendar .season.spring { color: #8fd06f; }
+#calendar .season.summer { color: #e8c94a; }
+#calendar .season.autumn { color: #e08c4a; }
+#calendar .season.winter { color: #9fcfe8; }
+#calendar .date { font-size: 11px; color: var(--ink-dim); }
+
+/* ---------- stage ---------- */
+
+#stage {
+  grid-area: stage;
+  position: relative;
+  overflow: hidden;
+  background: #0d0f14;
+  touch-action: none;              /* gestures are ours, not the browser's */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#board {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+#stage.painting { cursor: crosshair; }
+
+#map-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 7;
+}
+
+#map-controls button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(20, 23, 30, 0.9);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#map-controls button:active { background: #2b313d; }
+
+#tooltip {
+  position: absolute;
+  display: none;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(12, 14, 19, 0.94);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+#mode-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border: 1px solid var(--gold);
+  border-radius: 20px;
+  background: rgba(12, 14, 19, 0.92);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s;
+  z-index: 6;
+}
+#mode-hint.show { opacity: 1; pointer-events: auto; }
+
+#mode-hint .clear {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: rgba(224, 182, 74, 0.18);
+  font-size: 14px;
+}
+
+#banner {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translate(-50%, -14px);
+  max-width: min(92%, 460px);
+  padding: 9px 18px;
+  border-radius: 8px;
+  background: rgba(12, 14, 19, 0.95);
+  border: 1px solid var(--line);
+  font-weight: 600;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 6;
+}
+
+#banner.show { opacity: 1; transform: translate(-50%, 0); }
+#banner.good { border-color: var(--good); color: var(--good); }
+#banner.bad  { border-color: var(--bad);  color: var(--bad); }
+#banner.warn { border-color: var(--warn); color: var(--warn); }
+
+/* ---------- help sheet ---------- */
+
+#help {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(8, 9, 13, 0.8);
+  z-index: 10;
+}
+
+#help.open { display: flex; }
+
+#help .sheet {
+  max-width: 560px;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+
+#help h2 { margin: 0 0 10px; color: var(--gold); font-size: 18px; }
+#help ul { margin: 12px 0; padding-left: 18px; }
+#help li { margin-bottom: 8px; }
+#help .keys { color: var(--ink-dim); font-size: 12px; }
+
+#help button {
+  margin-top: 8px;
+  padding: 10px 18px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--gold);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---------- sidebar ---------- */
+
+#sidebar {
+  grid-area: side;
+  display: grid;
+  grid-template-rows: auto 1.5fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.sheet-grip { display: none; }
+
+#sidebar section {
+  background: var(--panel);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px;
+}
+
+#sidebar h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+#sidebar h2 .count { color: var(--gold); }
+#sidebar h2 .count.short { color: var(--bad); }
+
+.colonist {
+  padding: 8px;
+  margin-bottom: 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--panel-2);
+  cursor: pointer;
+}
+
+.colonist:hover { border-color: #3d4655; }
+.colonist.selected { border-color: var(--gold); }
+
+.row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.row-head .name { font-weight: 600; }
+.row-head .activity {
+  font-size: 11px;
+  color: var(--ink-dim);
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bars { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 6px 0; }
+
+.bar {
+  position: relative;
+  height: 14px;
+  border-radius: 3px;
+  background: #12151c;
+  overflow: hidden;
+}
+
+.bar .fill { position: absolute; inset: 0; width: 0; }
+.bar span {
+  position: relative;
+  display: block;
+  padding-left: 5px;
+  font-size: 10px;
+  line-height: 14px;
+  color: #e9e3d5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.bar.food .fill { background: #4f7a3c; }
+.bar.rest .fill { background: #3f6480; }
+.bar.mood .fill { background: #8a6a2f; }
+.bar.hp   .fill { background: #7d3733; }
+
+.works { display: flex; gap: 3px; }
+
+.works .work {
+  flex: 1;
+  padding: 4px 2px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #14171e;
+  color: var(--ink-dim);
+  font: 10px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.works .work.on { background: #2c3a2a; border-color: #4d6b45; color: #cfe6c4; }
+.works .work .lvl { display: block; font-weight: 700; }
+
+#log { list-style: none; margin: 0; padding: 0; }
+
+#log li {
+  padding: 3px 0 3px 2px;
+  border-bottom: 1px solid #21252e;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+#log li .turn {
+  display: inline-block;
+  min-width: 26px;
+  margin-right: 6px;
+  color: #5d6674;
+  font: 11px/1 ui-monospace, monospace;
+}
+
+#log li.good   { color: var(--good); }
+#log li.bad    { color: var(--bad); }
+#log li.season { color: var(--gold); }
+
+.empty { color: var(--ink-dim); font-style: italic; }
+
+/* ---------- toolbar ---------- */
+
+#toolbar {
+  grid-area: tools;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+/* Only the order and build palettes scroll on a narrow window - End Turn and
+   the Colony button stay pinned to the right where a thumb can reach them. */
+.toolbar-scroll {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 4px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.tool-group { display: flex; align-items: center; gap: 5px; }
+.tool-group.meta { margin-left: auto; }
+.tool-group.pinned { flex-shrink: 0; }
+
+.group-label {
+  margin-right: 4px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  flex-shrink: 0;
+}
+
+.tool, #toolbar button {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  gap: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--ink);
+  font: 12px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tool:hover, #toolbar button:hover { background: #2b313d; }
+.tool.active { border-color: var(--gold); background: #3a3223; color: var(--gold); }
+.tool.danger.active { border-color: var(--bad); background: #3a2422; color: var(--bad); }
+
+.tool .cost { margin-left: 4px; font-size: 10px; color: var(--ink-dim); }
+
+.tool .swatch { width: 9px; height: 9px; border-radius: 2px; margin-right: 2px; }
+.swatch.chop   { background: #e0a83f; }
+.swatch.mine   { background: #7fa8d9; }
+.swatch.forage { background: #dd7f8d; }
+
+#btn-panel .badge {
+  margin-left: 5px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--gold);
+  color: #1b1f27;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+#btn-endturn {
+  padding: 9px 18px;
+  border-color: var(--gold);
+  background: #3a3223;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+#btn-endturn:hover { background: #4a4029; }
+
+/* ---------- phones and small windows ---------- */
+
+@media (max-width: 900px) {
+  #app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 46px 1fr 98px;
+    grid-template-areas: "top" "stage" "tools";
+  }
+
+  /* Two rows at the bottom: the palette gets the full width to scroll in, and
+     Colony / End Turn get a row of their own instead of eating half of it. */
+  #toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .toolbar-scroll { flex: 0 0 auto; padding: 0; }
+  .tool-group.meta { margin-left: 0; }
+  .tool-group.pinned { gap: 8px; }
+  #btn-panel { flex: 0 0 auto; }
+  #btn-endturn { flex: 1; justify-content: center; }
+
+  .brand { display: none; }
+  #topbar { gap: 10px; padding: 0 10px; }
+  .stat { min-width: 0; padding: 3px 8px; }
+  .stat .value { font-size: 13px; }
+  #calendar .date { font-size: 10px; }
+
+  /* The sidebar becomes a bottom sheet over the map. */
+  #sidebar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    display: block;
+    max-height: 66%;
+    overflow-y: auto;
+    border-top: 1px solid var(--line);
+    border-radius: 14px 14px 0 0;
+    background: var(--panel);
+    box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55);
+    transform: translateY(101%);
+    transition: transform 0.22s ease;
+  }
+
+  #sidebar.open { transform: none; }
+
+  .sheet-grip {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    z-index: 2;
+  }
+
+  .sheet-grip button {
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel-2);
+    color: var(--ink);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  #sidebar section { overflow: visible; }
+
+  /* Bigger tap targets everywhere along the bottom. */
+  .tool, #toolbar button { padding: 9px 11px; font-size: 13px; }
+  .tool kbd, #btn-endturn kbd { display: none; }
+  #btn-endturn { padding: 10px 14px; }
+  .works .work { padding: 7px 2px; font-size: 11px; }
+  .bars { grid-template-columns: 1fr 1fr; gap: 4px; }
+  .bar { height: 16px; }
+  .bar span { line-height: 16px; font-size: 11px; }
+
+  #map-controls { bottom: 8px; right: 8px; }
+  #map-controls button { width: 42px; height: 42px; font-size: 19px; }
+  #mode-hint { bottom: 10px; left: 12px; transform: none; }
+}
+
+@media (max-width: 900px) and (max-height: 560px) {
+  #sidebar { max-height: 80%; }
+}
+
+</style>
+</head>
+<body>
+<div id="app">
+
+    <header id="topbar">
+      <div class="brand">Hearthfall</div>
+      <div id="stats"></div>
+      <div id="calendar"></div>
+    </header>
+
+    <main id="stage">
+      <canvas id="board" width="1056" height="672"></canvas>
+
+      <div id="map-controls">
+        <button id="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out">&minus;</button>
+        <button id="recenter" title="Centre on the colony">&#9678;</button>
+      </div>
+
+      <div id="mode-hint"></div>
+      <div id="tooltip"></div>
+      <div id="banner"></div>
+
+      <div id="help">
+        <div class="sheet">
+          <h2>How Hearthfall works</h2>
+          <p>Four settlers, one valley, and three years to survive. Nothing happens
+             until you end the turn &mdash; you have all the time you want to plan.</p>
+          <ul>
+            <li><strong>Give orders, not commands.</strong> Pick a tool from the bar at the
+                bottom, then drag across the map to mark work or drop blueprints.
+                Colonists pick up the nearest job they are willing to do.</li>
+            <li><strong>Everyone has a mind of their own.</strong> Each colonist has skills,
+                hunger, tiredness and a mood. Open <strong>Colony</strong> to see them and to
+                choose which kinds of work each one will accept.</li>
+            <li><strong>Eat, sleep, repeat.</strong> Food is a shared stockpile. Rest needs a
+                bed, and a bed needs a house &mdash; sleeping rough wrecks morale.</li>
+            <li><strong>Winter is the test.</strong> Crops stop growing and anyone more than
+                five tiles from a campfire loses health. Stockpile in autumn.</li>
+            <li><strong>Raiders come from year two.</strong> Colonists fight automatically
+                when raiders get close. Stone walls buy you time.</li>
+          </ul>
+          <p class="keys"><strong>Moving the map:</strong> drag with no tool selected to pan,
+             pinch or scroll to zoom, tap a tile to inspect it, tap a colonist to select them.</p>
+          <p class="keys"><strong>Keyboard:</strong> <kbd>Space</kbd> end turn &middot;
+             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> orders &middot;
+             <kbd>1</kbd>&ndash;<kbd>5</kbd> buildings &middot; <kbd>X</kbd> cancel tool &middot;
+             <kbd>Esc</kbd> deselect &middot; <kbd>H</kbd> this sheet</p>
+          <button id="help-close">Got it</button>
+        </div>
+      </div>
+    </main>
+
+    <aside id="sidebar">
+      <div class="sheet-grip">
+        <span>Colony</span>
+        <button id="sheet-close" aria-label="Close">&times;</button>
+      </div>
+      <section id="colonist-panel"></section>
+      <section id="log-panel">
+        <h2>Chronicle</h2>
+        <ul id="log"></ul>
+      </section>
+    </aside>
+
+    <footer id="toolbar">
+      <div class="toolbar-scroll">
+        <div class="tool-group" id="orders"></div>
+        <div class="tool-group" id="builds"></div>
+        <div class="tool-group meta">
+          <button id="btn-help" class="plain">Help</button>
+          <button id="btn-save" class="plain">Save</button>
+          <button id="btn-load" class="plain">Load</button>
+          <button id="btn-new" class="plain">New</button>
+        </div>
+      </div>
+      <div class="tool-group pinned">
+        <button id="btn-panel" class="plain">Colony</button>
+        <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
+      </div>
+    </footer>
+
+  </div>
+<script>
+/* ===== js/config.js ===== */
+/* Hearthfall - balance constants and content definitions.
+   Everything tunable lives here so the rest of the code stays about mechanics. */
+window.HF = window.HF || {};
+
+HF.CFG = {
+  MAP_W: 44,
+  MAP_H: 28,
+  TILE: 24,
+
+  START_COLONISTS: 4,
+  START_RES: { food: 55, wood: 45, stone: 12 },
+  BASE_STORAGE: 150,
+
+  MOVE_BUDGET: 3,          // movement points per colonist per turn
+  TURNS_PER_SEASON: 10,
+  SEASONS: ['Spring', 'Summer', 'Autumn', 'Winter'],
+
+  FOOD_DECAY: 1.7,
+  REST_DECAY: 2.0,
+  EAT_THRESHOLD: 34,
+  SLEEP_THRESHOLD: 24,
+  WAKE_AT: 92,
+  MEAL_FOOD: 1,            // stockpile food spent per meal
+  MEAL_RESTORE: 46,
+  BED_REST: 13,
+  GROUND_REST: 6,
+
+  COLONIST_HP: 60,
+  STARVE_DAMAGE: 3,
+  COLD_DAMAGE: 1,
+  REGEN: 1,
+
+  RAID_START_TURN: 42,
+  RAID_MIN_GAP: 24,
+  RAID_MAX_GAP: 38,
+  MIGRANT_GAP: 26,
+  MILESTONE_TURN: 120,     // "three years endured"
+
+  SKILL_MAX: 10,
+  XP_PER_LEVEL: 14,
+};
+
+/* ---------- terrain ---------- */
+HF.TERRAIN = {
+  water:    { id: 'water',    name: 'Water',    passable: false, cost: 99, build: false },
+  sand:     { id: 'sand',     name: 'Sand',     passable: true,  cost: 1,  build: true  },
+  grass:    { id: 'grass',    name: 'Meadow',   passable: true,  cost: 1,  build: true  },
+  forest:   { id: 'forest',   name: 'Forest',   passable: true,  cost: 2,  build: false },
+  hill:     { id: 'hill',     name: 'Rocky Hill', passable: true, cost: 2, build: true  },
+  mountain: { id: 'mountain', name: 'Mountain', passable: false, cost: 99, build: false },
+};
+
+/* ---------- work types (per-colonist toggles) ---------- */
+HF.WORK_TYPES = [
+  { id: 'woodcut', label: 'Woodcutting', short: 'Wood',  skill: 'woodcutting' },
+  { id: 'mine',    label: 'Mining',      short: 'Mine',  skill: 'mining' },
+  { id: 'build',   label: 'Building',    short: 'Build', skill: 'construction' },
+  { id: 'farm',    label: 'Farming',     short: 'Farm',  skill: 'farming' },
+];
+
+HF.SKILLS = ['woodcutting', 'mining', 'construction', 'farming'];
+
+/* ---------- designations the player paints onto tiles ---------- */
+HF.ORDERS = {
+  chop: {
+    id: 'chop', label: 'Chop', key: 'C', work: 10, workType: 'woodcut',
+    valid: function (t) { return t.terrain === 'forest'; },
+    hint: 'Fell trees for wood.',
+  },
+  mine: {
+    id: 'mine', label: 'Mine', key: 'M', work: 15, workType: 'mine',
+    valid: function (t) { return t.terrain === 'mountain' || t.terrain === 'hill'; },
+    hint: 'Cut stone from rock. Mountains must be worked from an adjacent tile.',
+  },
+  forage: {
+    id: 'forage', label: 'Forage', key: 'F', work: 6, workType: 'farm',
+    valid: function (t) { return t.feature === 'berries'; },
+    hint: 'Gather berries. Bushes regrow, but not in winter.',
+  },
+  harvest: { // created automatically by ripe farm plots
+    id: 'harvest', label: 'Harvest', key: null, work: 8, workType: 'farm',
+    valid: function () { return false; },
+    hint: 'Bring in a ripe crop.',
+  },
+};
+
+/* ---------- buildings ---------- */
+HF.BUILDINGS = {
+  house: {
+    id: 'house', label: 'House', cost: { wood: 22 }, work: 26, beds: 2,
+    on: ['grass', 'sand', 'hill'],
+    desc: 'Sleeps 2. Rested colonists work faster and stay cheerful.',
+  },
+  storehouse: {
+    id: 'storehouse', label: 'Storehouse', cost: { wood: 28 }, work: 24, storage: 150,
+    on: ['grass', 'sand', 'hill'],
+    desc: '+150 to the cap on every resource. Surplus above the cap spoils.',
+  },
+  farm: {
+    id: 'farm', label: 'Farm Plot', cost: { wood: 5 }, work: 12, farm: true,
+    on: ['grass'],
+    desc: 'Ripens over time, then asks to be harvested. Dormant all winter.',
+  },
+  campfire: {
+    id: 'campfire', label: 'Campfire', cost: { wood: 12 }, work: 8, warmth: 5,
+    on: ['grass', 'sand', 'hill'],
+    desc: 'Keeps colonists within 5 tiles warm through winter.',
+  },
+  wall: {
+    id: 'wall', label: 'Stone Wall', cost: { stone: 6 }, work: 10, blocks: true, hp: 80,
+    adjacentWork: true,
+    on: ['grass', 'sand', 'hill'],
+    desc: 'Impassable. Raiders must break through it.',
+  },
+};
+
+HF.FARM = { RIPE_AT: 20, YIELD: 13, GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 } };
+
+HF.YIELDS = {
+  chop:    { wood: 12 },
+  mine:    { stone: 10 },
+  forage:  { food: 8 },
+  harvest: { food: HF.FARM.YIELD },
+};
+
+/* ---------- names ---------- */
+HF.NAMES = {
+  first: ['Ada', 'Bran', 'Cyra', 'Dov', 'Eira', 'Finn', 'Greta', 'Hale', 'Ines', 'Jori',
+          'Kess', 'Lune', 'Mira', 'Nels', 'Orin', 'Pell', 'Quill', 'Rowan', 'Sena', 'Tove',
+          'Uma', 'Vesa', 'Wren', 'Yarl', 'Zora'],
+  last:  ['Ashfell', 'Brookmere', 'Cairn', 'Dunmoor', 'Emberly', 'Frostvale', 'Gladholt',
+          'Harrow', 'Ironwood', 'Kelder', 'Lowmarsh', 'Northgate', 'Oakhurst', 'Quarry',
+          'Redsong', 'Stonebrook', 'Thornby', 'Weatherall'],
+};
+
+/* ===== js/util.js ===== */
+/* Seeded RNG plus small helpers shared across the simulation. */
+window.HF = window.HF || {};
+
+/* mulberry32 - tiny, fast, and its whole state is one integer, which means a
+   saved game can restore the exact random stream it was running on. */
+HF.RNG = function (seed) {
+  this.s = seed >>> 0;
+};
+HF.RNG.prototype.next = function () {
+  this.s = (this.s + 0x6D2B79F5) >>> 0;
+  let t = this.s;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+HF.RNG.prototype.int = function (min, max) {          // inclusive
+  return min + Math.floor(this.next() * (max - min + 1));
+};
+HF.RNG.prototype.pick = function (arr) {
+  return arr[Math.floor(this.next() * arr.length)];
+};
+HF.RNG.prototype.chance = function (p) {
+  return this.next() < p;
+};
+
+HF.U = {
+  clamp: function (v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; },
+
+  /* Chebyshev distance - the right metric for 8-way movement. */
+  dist: function (ax, ay, bx, by) {
+    return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+  },
+
+  key: function (x, y) { return x + ',' + y; },
+
+  parseKey: function (k) {
+    const p = k.split(',');
+    return { x: +p[0], y: +p[1] };
+  },
+
+  NEIGHBORS: [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+  ],
+
+  capitalize: function (s) { return s.charAt(0).toUpperCase() + s.slice(1); },
+
+  /* Value noise: a coarse random lattice smoothed with cosine interpolation and
+     stacked over a few octaves. Enough structure for coastlines and ridges
+     without pulling in a noise library. */
+  noiseField: function (rng, w, h, cells, octaves, persistence) {
+    const out = new Float32Array(w * h);
+    let amp = 1, total = 0, freq = cells;
+
+    for (let o = 0; o < octaves; o++) {
+      const gw = Math.max(2, Math.ceil(w / freq) + 1);
+      const gh = Math.max(2, Math.ceil(h / freq) + 1);
+      const grid = new Float32Array(gw * gh);
+      for (let i = 0; i < grid.length; i++) grid[i] = rng.next();
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const fx = x / freq, fy = y / freq;
+          const x0 = Math.floor(fx), y0 = Math.floor(fy);
+          const tx = fx - x0, ty = fy - y0;
+          const sx = tx * tx * (3 - 2 * tx);          // smoothstep
+          const sy = ty * ty * (3 - 2 * ty);
+          const a = grid[y0 * gw + x0];
+          const b = grid[y0 * gw + Math.min(x0 + 1, gw - 1)];
+          const c = grid[Math.min(y0 + 1, gh - 1) * gw + x0];
+          const d = grid[Math.min(y0 + 1, gh - 1) * gw + Math.min(x0 + 1, gw - 1)];
+          const top = a + (b - a) * sx;
+          const bot = c + (d - c) * sx;
+          out[y * w + x] += (top + (bot - top) * sy) * amp;
+        }
+      }
+      total += amp;
+      amp *= persistence;
+      freq = Math.max(2, freq / 2);
+    }
+
+    for (let i = 0; i < out.length; i++) out[i] /= total;
+    return out;
+  },
+};
+
+/* ===== js/map.js ===== */
+/* Terrain generation and tile queries. */
+window.HF = window.HF || {};
+
+HF.Map = {
+  /* Returns { w, h, tiles } where tiles is a flat row-major array. */
+  generate: function (rng, w, h) {
+    const elev = HF.U.noiseField(rng, w, h, 11, 4, 0.5);
+    const moist = HF.U.noiseField(rng, w, h, 8, 3, 0.55);
+    const tiles = new Array(w * h);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+
+        // Island falloff: push elevation down towards the border so the colony
+        // sits on a landmass with a coast rather than running off the screen.
+        const nx = (x / (w - 1)) * 2 - 1;
+        const ny = (y / (h - 1)) * 2 - 1;
+        const edge = Math.max(Math.abs(nx), Math.abs(ny));
+        const e = elev[i] - Math.pow(edge, 3.2) * 0.55;
+        const m = moist[i];
+
+        let terrain, feature = null;
+        if (e < 0.30) terrain = 'water';
+        else if (e < 0.34) terrain = 'sand';
+        else if (e > 0.70) terrain = 'mountain';
+        else if (e > 0.60) terrain = 'hill';
+        else if (m > 0.56) terrain = 'forest';
+        else terrain = 'grass';
+
+        if (terrain === 'grass' && m > 0.45 && rng.chance(0.06)) feature = 'berries';
+
+        tiles[i] = {
+          terrain: terrain,
+          feature: feature,
+          variant: rng.next(),      // per-tile jitter so the art isn't a flat grid
+          building: null,           // building id occupying this tile
+          regrow: 0,                // turn at which a stripped tile comes back
+        };
+      }
+    }
+
+    return { w: w, h: h, tiles: tiles };
+  },
+
+  inBounds: function (g, x, y) {
+    return x >= 0 && y >= 0 && x < g.w && y < g.h;
+  },
+
+  at: function (g, x, y) {
+    if (!HF.Map.inBounds(g, x, y)) return null;
+    return g.tiles[y * g.w + x];
+  },
+
+  terrainOf: function (g, x, y) {
+    const t = HF.Map.at(g, x, y);
+    return t ? HF.TERRAIN[t.terrain] : null;
+  },
+
+  /* Can a colonist stand here? Built walls block; blueprints do not, so a
+     builder can stand beside a half-finished wall without trapping itself. */
+  passable: function (g, x, y) {
+    const t = HF.Map.at(g, x, y);
+    if (!t) return false;
+    if (!HF.TERRAIN[t.terrain].passable) return false;
+    if (t.building != null) {
+      const b = g.buildings[t.building];
+      if (b && b.built && HF.BUILDINGS[b.type].blocks) return false;
+    }
+    return true;
+  },
+
+  moveCost: function (g, x, y) {
+    return HF.TERRAIN[HF.Map.at(g, x, y).terrain].cost;
+  },
+
+  /* Tiles a colonist can work this job from: the tile itself when it is
+     walkable, otherwise every walkable neighbour. */
+  workStands: function (g, x, y, forceAdjacent) {
+    const out = [];
+    if (!forceAdjacent && HF.Map.passable(g, x, y)) out.push({ x: x, y: y });
+    if (out.length === 0 || forceAdjacent) {
+      for (const d of HF.U.NEIGHBORS) {
+        const nx = x + d[0], ny = y + d[1];
+        if (HF.Map.passable(g, nx, ny)) out.push({ x: nx, y: ny });
+      }
+    }
+    return out;
+  },
+
+  /* Picks a sheltered, walkable, non-coastal spot for the first camp. */
+  findStartSite: function (g, rng) {
+    let best = null, bestScore = -Infinity;
+    for (let y = 3; y < g.h - 3; y++) {
+      for (let x = 3; x < g.w - 3; x++) {
+        if (!HF.Map.passable(g, x, y)) continue;
+        let open = 0, wood = 0, rock = 0;
+        for (let dy = -3; dy <= 3; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            const t = HF.Map.at(g, x + dx, y + dy);
+            if (!t) continue;
+            if (t.terrain === 'grass') open++;
+            if (t.terrain === 'forest') wood++;
+            if (t.terrain === 'hill' || t.terrain === 'mountain') rock++;
+          }
+        }
+        // Want room to build, trees nearby, some stone, and roughly central.
+        const centrality = 1 - HF.U.dist(x, y, g.w / 2, g.h / 2) / (g.w / 2);
+        const score = open * 1.0 + Math.min(wood, 14) * 0.8 + Math.min(rock, 10) * 0.6
+                    + centrality * 12 + rng.next();
+        if (score > bestScore) { bestScore = score; best = { x: x, y: y }; }
+      }
+    }
+    return best || { x: (g.w / 2) | 0, y: (g.h / 2) | 0 };
+  },
+
+  /* Flood fill of everywhere on foot from a tile, ignoring buildings - the map
+     can generate offshore islands, and anything spawned on one could never
+     reach the colony. Walls are deliberately not treated as barriers here
+     because raiders break through them. */
+  reachMask: function (g, sx, sy) {
+    const mask = new Uint8Array(g.w * g.h);
+    const start = HF.Map.at(g, sx, sy);
+    if (!start || !HF.TERRAIN[start.terrain].passable) return mask;
+
+    function walkable(x, y) {
+      if (x < 0 || y < 0 || x >= g.w || y >= g.h) return false;
+      return HF.TERRAIN[g.tiles[y * g.w + x].terrain].passable;
+    }
+
+    const queue = [sy * g.w + sx];
+    mask[queue[0]] = 1;
+    for (let i = 0; i < queue.length; i++) {
+      const idx = queue[i];
+      const x = idx % g.w, y = (idx / g.w) | 0;
+      for (const d of HF.U.NEIGHBORS) {
+        const nx = x + d[0], ny = y + d[1];
+        if (!walkable(nx, ny)) continue;
+        const ni = ny * g.w + nx;
+        if (mask[ni]) continue;
+        // Match the pathfinder's rule: no slipping diagonally between two
+        // blocked tiles, or this would report corner-only spits as connected.
+        if (d[0] !== 0 && d[1] !== 0 && !walkable(x + d[0], y) && !walkable(x, y + d[1])) continue;
+        mask[ni] = 1;
+        queue.push(ni);
+      }
+    }
+    return mask;
+  },
+
+  /* Walkable tiles near a point, nearest first - used to place arrivals. */
+  openTilesNear: function (g, x, y, radius, occupied) {
+    const out = [];
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (!HF.Map.passable(g, nx, ny)) continue;
+        if (occupied && occupied.has(HF.U.key(nx, ny))) continue;
+        out.push({ x: nx, y: ny, d: HF.U.dist(x, y, nx, ny) });
+      }
+    }
+    out.sort(function (a, b) { return a.d - b.d; });
+    return out;
+  },
+};
+
+/* ===== js/path.js ===== */
+/* 8-way A* over the tile grid, with a set of acceptable goals rather than a
+   single destination (a chopping job can be worked from any adjacent tile). */
+window.HF = window.HF || {};
+
+function Heap() { this.a = []; }
+Heap.prototype.push = function (node) {
+  const a = this.a;
+  a.push(node);
+  let i = a.length - 1;
+  while (i > 0) {
+    const p = (i - 1) >> 1;
+    if (a[p].f <= a[i].f) break;
+    const t = a[p]; a[p] = a[i]; a[i] = t;
+    i = p;
+  }
+};
+Heap.prototype.pop = function () {
+  const a = this.a;
+  const top = a[0];
+  const last = a.pop();
+  if (a.length) {
+    a[0] = last;
+    let i = 0;
+    for (;;) {
+      const l = 2 * i + 1, r = l + 1;
+      let s = i;
+      if (l < a.length && a[l].f < a[s].f) s = l;
+      if (r < a.length && a[r].f < a[s].f) s = r;
+      if (s === i) break;
+      const t = a[s]; a[s] = a[i]; a[i] = t;
+      i = s;
+    }
+  }
+  return top;
+};
+
+HF.Path = {
+  /* opts.wallCost > 0 lets raiders route through walls, paying a penalty that
+     stands in for the turns spent smashing them. */
+  find: function (g, sx, sy, goals, opts) {
+    opts = opts || {};
+    if (!goals || goals.length === 0) return null;
+
+    const goalSet = new Set();
+    for (const gl of goals) goalSet.add(HF.U.key(gl.x, gl.y));
+    if (goalSet.has(HF.U.key(sx, sy))) return [];
+
+    const w = g.w, h = g.h;
+    const gScore = new Float32Array(w * h).fill(Infinity);
+    const cameFrom = new Int32Array(w * h).fill(-1);
+    const closed = new Uint8Array(w * h);
+
+    function heuristic(x, y) {
+      let best = Infinity;
+      for (const gl of goals) {
+        const d = HF.U.dist(x, y, gl.x, gl.y);
+        if (d < best) best = d;
+      }
+      return best;
+    }
+
+    function enterCost(x, y) {
+      const t = HF.Map.at(g, x, y);
+      if (!t) return -1;
+      if (!HF.TERRAIN[t.terrain].passable) return -1;
+      if (t.building != null) {
+        const b = g.buildings[t.building];
+        if (b && b.built && HF.BUILDINGS[b.type].blocks) {
+          return opts.wallCost ? opts.wallCost : -1;
+        }
+      }
+      return HF.TERRAIN[t.terrain].cost;
+    }
+
+    const start = sy * w + sx;
+    gScore[start] = 0;
+    const open = new Heap();
+    open.push({ i: start, x: sx, y: sy, f: heuristic(sx, sy) });
+
+    let goalIndex = -1;
+    let expanded = 0;
+    // Stale heap entries mean a tile can be popped more than once, so the
+    // runaway guard has to sit comfortably above the tile count.
+    const limit = w * h * 12;
+
+    while (open.a.length && expanded++ < limit) {
+      const cur = open.pop();
+      if (closed[cur.i]) continue;
+      closed[cur.i] = 1;
+
+      if (goalSet.has(HF.U.key(cur.x, cur.y))) { goalIndex = cur.i; break; }
+
+      for (const d of HF.U.NEIGHBORS) {
+        const nx = cur.x + d[0], ny = cur.y + d[1];
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (closed[ni]) continue;
+
+        const c = enterCost(nx, ny);
+        if (c < 0) continue;
+
+        // No cutting corners diagonally between two blocked tiles.
+        const diagonal = d[0] !== 0 && d[1] !== 0;
+        if (diagonal) {
+          if (enterCost(cur.x + d[0], cur.y) < 0 && enterCost(cur.x, cur.y + d[1]) < 0) continue;
+        }
+
+        const step = diagonal ? c * 1.4 : c;
+        const tentative = gScore[cur.i] + step;
+        if (tentative < gScore[ni]) {
+          gScore[ni] = tentative;
+          cameFrom[ni] = cur.i;
+          open.push({ i: ni, x: nx, y: ny, f: tentative + heuristic(nx, ny) });
+        }
+      }
+    }
+
+    if (goalIndex < 0) return null;
+
+    const path = [];
+    let node = goalIndex;
+    while (node !== start) {
+      path.push({ x: node % w, y: (node / w) | 0 });
+      node = cameFrom[node];
+      if (node < 0) return null;
+    }
+    path.reverse();
+    return path;
+  },
+};
+
+/* ===== js/colonists.js ===== */
+/* Colonists: creation, needs, mood, skills, and combat stats.
+   Deciding what they do each turn lives in jobs.js. */
+window.HF = window.HF || {};
+
+HF.Colonists = {
+  create: function (game, x, y) {
+    const rng = game.rng;
+    const skills = {};
+    for (const s of HF.SKILLS) skills[s] = { level: rng.int(0, 3), xp: 0 };
+
+    // Everyone gets one thing they are genuinely good at, so the roster feels
+    // like a group of people rather than interchangeable workers.
+    const specialty = rng.pick(HF.SKILLS);
+    skills[specialty].level = rng.int(4, 6);
+
+    const work = {};
+    for (const wt of HF.WORK_TYPES) work[wt.id] = true;
+
+    const c = {
+      id: game.nextId++,
+      name: rng.pick(HF.NAMES.first) + ' ' + rng.pick(HF.NAMES.last),
+      specialty: specialty,
+      x: x, y: y,
+      hp: HF.CFG.COLONIST_HP,
+      maxHp: HF.CFG.COLONIST_HP,
+      needs: { food: rng.int(70, 95), rest: rng.int(70, 95) },
+      mood: 62,
+      lowMoodTurns: 0,
+      breakdown: 0,          // turns left refusing to work
+      asleep: false,
+      skills: skills,
+      work: work,
+      task: null,
+      activity: 'Idle',
+      dead: false,
+    };
+    return c;
+  },
+
+  skillLevel: function (c, skill) {
+    return c.skills[skill] ? c.skills[skill].level : 0;
+  },
+
+  /* Work done per turn. Skill dominates; misery and exhaustion drag it down. */
+  workRate: function (c, skill) {
+    let rate = 1 + HF.Colonists.skillLevel(c, skill) * 0.3;
+    if (c.mood < 30) rate *= 0.65;
+    if (c.needs.rest < 20) rate *= 0.7;
+    return rate;
+  },
+
+  gainXp: function (game, c, skill, amount) {
+    const s = c.skills[skill];
+    if (!s || s.level >= HF.CFG.SKILL_MAX) return;
+    s.xp += amount;
+    const need = HF.CFG.XP_PER_LEVEL * (s.level + 1);
+    if (s.xp >= need) {
+      s.xp -= need;
+      s.level++;
+      game.log(c.name + ' is now ' + HF.U.capitalize(skill) + ' ' + s.level + '.', 'good');
+    }
+  },
+
+  isWarm: function (game, c) {
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (def.warmth && HF.U.dist(c.x, c.y, b.x, b.y) <= def.warmth) return true;
+      if (def.beds && c.x === b.x && c.y === b.y) return true;
+    }
+    return false;
+  },
+
+  freeBed: function (game, c) {
+    let best = null, bestD = Infinity;
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.beds) continue;
+      const used = game.colonists.filter(function (o) {
+        return !o.dead && o.id !== c.id && o.asleep && o.x === b.x && o.y === b.y;
+      }).length;
+      if (used >= def.beds) continue;
+      const d = HF.U.dist(c.x, c.y, b.x, b.y);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
+  },
+
+  /* Mood is recomputed from scratch each turn from living conditions, then
+     eased towards the target so it does not whipsaw. */
+  updateMood: function (game, c) {
+    let target = 55;
+    const n = c.needs;
+
+    if (n.food > 70) target += 8;
+    else if (n.food < 25) target -= 22;
+    else if (n.food < 45) target -= 9;
+
+    if (n.rest > 70) target += 6;
+    else if (n.rest < 20) target -= 16;
+    else if (n.rest < 40) target -= 7;
+
+    if (HF.Colonists.freeBed(game, c) || c.asleep) target += 8;
+    else target -= 8;
+
+    if (game.season() === 'Winter') {
+      target += HF.Colonists.isWarm(game, c) ? 4 : -14;
+    }
+    if (game.res.food > 90) target += 5;
+    if (game.res.food <= 0) target -= 10;
+    target += Math.min(8, game.builtCount('house') * 3);
+    target -= game.grief;
+
+    c.mood = HF.U.clamp(c.mood + (target - c.mood) * 0.4, 0, 100);
+
+    if (c.mood < 22) c.lowMoodTurns++;
+    else c.lowMoodTurns = Math.max(0, c.lowMoodTurns - 1);
+
+    if (c.lowMoodTurns >= 4 && c.breakdown <= 0) {
+      c.breakdown = 3;
+      c.lowMoodTurns = 0;
+      c.task = null;
+      game.log(c.name + ' has broken down and stopped working.', 'bad');
+    }
+  },
+
+  decayNeeds: function (game, c) {
+    const n = c.needs;
+    n.food = HF.U.clamp(n.food - HF.CFG.FOOD_DECAY, 0, 100);
+    if (c.asleep) {
+      const inBed = game.buildingAt(c.x, c.y) &&
+                    HF.BUILDINGS[game.buildingAt(c.x, c.y).type].beds;
+      n.rest = HF.U.clamp(n.rest + (inBed ? HF.CFG.BED_REST : HF.CFG.GROUND_REST), 0, 100);
+    } else {
+      n.rest = HF.U.clamp(n.rest - HF.CFG.REST_DECAY, 0, 100);
+    }
+  },
+
+  applyHealth: function (game, c) {
+    if (c.needs.food <= 0) {
+      c.hp -= HF.CFG.STARVE_DAMAGE;
+      if (c.hp > 0) c.activity = 'Starving';
+    } else if (game.season() === 'Winter' && !HF.Colonists.isWarm(game, c)) {
+      c.hp -= HF.CFG.COLD_DAMAGE;
+    } else if (c.needs.food > 45 && c.hp < c.maxHp) {
+      c.hp = Math.min(c.maxHp, c.hp + HF.CFG.REGEN);
+    }
+
+    if (c.hp <= 0 && !c.dead) {
+      c.dead = true;
+      c.hp = 0;
+      game.releaseClaims(c.id);
+      game.grief += 6;
+      game.log(c.name + ' has died.', 'bad');
+    }
+  },
+
+  attack: function (game, c, raider) {
+    const dmg = game.rng.int(5, 9) + Math.floor(HF.Colonists.skillLevel(c, 'mining') / 4);
+    raider.hp -= dmg;
+    c.activity = 'Fighting';
+    if (raider.hp <= 0) {
+      raider.dead = true;
+      game.log(c.name + ' cut down a raider.', 'good');
+    }
+  },
+};
+
+/* ===== js/jobs.js ===== */
+/* What each colonist decides to do on a turn, and what happens when they do it.
+
+   Priority order is fixed: survive (eat, sleep), defend, then work. Which work
+   they will accept is up to the player's per-colonist toggles; which job they
+   pick from that set is nearest-first. */
+window.HF = window.HF || {};
+
+HF.Jobs = {
+  /* ---------- job descriptors ---------- */
+
+  standsFor: function (game, task) {
+    if (task.targetType === 'designation') {
+      return HF.Map.workStands(game, task.tx, task.ty, false);
+    }
+    if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      if (!b) return [];
+      return HF.Map.workStands(game, b.x, b.y, !!HF.BUILDINGS[b.type].adjacentWork);
+    }
+    return [{ x: task.tx, y: task.ty }];
+  },
+
+  taskStillValid: function (game, c, task) {
+    if (!task) return false;
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      return !!d && (d.claimedBy === c.id || d.claimedBy == null);
+    }
+    if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      return !!b && !b.built && !b.cancelled;
+    }
+    if (task.targetType === 'raider') {
+      const r = game.raiderById(task.targetKey);
+      return !!r && !r.dead;
+    }
+    return true;
+  },
+
+  workTypeOf: function (game, task) {
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      return d ? HF.ORDERS[d.type].workType : null;
+    }
+    if (task.targetType === 'building') return 'build';
+    return null;
+  },
+
+  skillFor: function (workTypeId) {
+    const wt = HF.WORK_TYPES.find(function (w) { return w.id === workTypeId; });
+    return wt ? wt.skill : 'construction';
+  },
+
+  /* ---------- choosing work ---------- */
+
+  findWork: function (game, c) {
+    const candidates = [];
+
+    for (const key in game.designations) {
+      const d = game.designations[key];
+      if (d.claimedBy != null && d.claimedBy !== c.id) continue;
+      const order = HF.ORDERS[d.type];
+      if (!c.work[order.workType]) continue;
+      candidates.push({
+        targetType: 'designation', targetKey: key, tx: d.x, ty: d.y,
+        skill: order.workType,
+        d: HF.U.dist(c.x, c.y, d.x, d.y),
+      });
+    }
+
+    if (c.work.build) {
+      for (const b of game.buildings) {
+        if (!b || b.built || b.cancelled) continue;
+        if (b.claimedBy != null && b.claimedBy !== c.id) continue;
+        candidates.push({
+          targetType: 'building', targetKey: b.id, tx: b.x, ty: b.y,
+          skill: 'build',
+          d: HF.U.dist(c.x, c.y, b.x, b.y),
+        });
+      }
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Nearest first, with a nudge towards jobs this colonist is good at so the
+    // carpenter tends to drift to the building site.
+    candidates.sort(function (a, b) {
+      const sa = a.d - HF.Colonists.skillLevel(c, HF.Jobs.skillFor(a.skill)) * 0.9;
+      const sb = b.d - HF.Colonists.skillLevel(c, HF.Jobs.skillFor(b.skill)) * 0.9;
+      return sa - sb;
+    });
+
+    // Pathfinding is the expensive part, so only test the closest handful.
+    for (let i = 0; i < Math.min(candidates.length, 14); i++) {
+      const cand = candidates[i];
+      const task = {
+        kind: 'work',
+        targetType: cand.targetType,
+        targetKey: cand.targetKey,
+        tx: cand.tx, ty: cand.ty,
+        path: null,
+      };
+      const stands = HF.Jobs.standsFor(game, task);
+      if (stands.length === 0) continue;
+      const path = HF.Path.find(game, c.x, c.y, stands);
+      if (path === null) continue;
+      task.path = path;
+      game.claim(task, c.id);
+      return task;
+    }
+    return null;
+  },
+
+  nearestRaider: function (game, c, radius) {
+    let best = null, bestD = Infinity;
+    for (const r of game.raiders) {
+      if (r.dead) continue;
+      const d = HF.U.dist(c.x, c.y, r.x, r.y);
+      if (d <= radius && d < bestD) { bestD = d; best = r; }
+    }
+    return best;
+  },
+
+  /* ---------- the per-colonist turn ---------- */
+
+  takeTurn: function (game, c) {
+    if (c.dead) return;
+
+    HF.Colonists.decayNeeds(game, c);
+    HF.Colonists.updateMood(game, c);
+
+    // Waking up takes priority over everything: a colonist at full rest gets up.
+    if (c.asleep) {
+      if (c.needs.rest >= HF.CFG.WAKE_AT || HF.Jobs.nearestRaider(game, c, 4)) {
+        c.asleep = false;
+        c.task = null;
+      } else {
+        c.activity = 'Sleeping';
+        HF.Colonists.applyHealth(game, c);
+        return;
+      }
+    }
+
+    if (c.breakdown > 0) {
+      c.breakdown--;
+      game.releaseClaims(c.id);
+      c.task = null;
+      c.activity = 'Wandering (low mood)';
+      HF.Jobs.wander(game, c);
+      HF.Colonists.applyHealth(game, c);
+      return;
+    }
+
+    // Eating is instantaneous - food is a shared stockpile, not a hauled item.
+    if (c.needs.food < HF.CFG.EAT_THRESHOLD && game.res.food >= HF.CFG.MEAL_FOOD) {
+      game.res.food -= HF.CFG.MEAL_FOOD;
+      c.needs.food = HF.U.clamp(c.needs.food + HF.CFG.MEAL_RESTORE, 0, 100);
+      c.activity = 'Eating';
+      HF.Colonists.applyHealth(game, c);
+      return;
+    }
+
+    const threat = HF.Jobs.nearestRaider(game, c, 7);
+    if (threat) {
+      game.releaseClaims(c.id);
+      c.task = { kind: 'fight', targetType: 'raider', targetKey: threat.id, tx: threat.x, ty: threat.y, path: null };
+    } else if (c.needs.rest < HF.CFG.SLEEP_THRESHOLD && (!c.task || c.task.kind !== 'sleep')) {
+      game.releaseClaims(c.id);
+      const bed = HF.Colonists.freeBed(game, c);
+      c.task = bed
+        ? { kind: 'sleep', targetType: 'bed', targetKey: bed.id, tx: bed.x, ty: bed.y, path: null }
+        : { kind: 'sleep', targetType: null, targetKey: null, tx: c.x, ty: c.y, path: [] };
+    }
+
+    if (!HF.Jobs.taskStillValid(game, c, c.task)) {
+      game.releaseClaims(c.id);
+      c.task = null;
+    }
+
+    if (!c.task) {
+      c.task = HF.Jobs.findWork(game, c);
+      if (!c.task) {
+        c.activity = 'Idle';
+        HF.Jobs.wander(game, c);
+        HF.Colonists.applyHealth(game, c);
+        return;
+      }
+    }
+
+    HF.Jobs.execute(game, c, c.task);
+    HF.Colonists.applyHealth(game, c);
+  },
+
+  execute: function (game, c, task) {
+    if (task.kind === 'fight') {
+      const r = game.raiderById(task.targetKey);
+      if (!r || r.dead) { c.task = null; return; }
+      if (HF.U.dist(c.x, c.y, r.x, r.y) <= 1) {
+        HF.Colonists.attack(game, c, r);
+        return;
+      }
+      task.path = HF.Path.find(game, c.x, c.y, [{ x: r.x, y: r.y }]);
+      c.activity = 'Closing on a raider';
+      if (task.path === null || task.path.length === 0) { c.task = null; return; }
+      task.path.pop();                 // stop next to the raider, not on it
+      HF.Jobs.move(game, c, task);
+      return;
+    }
+
+    if (task.kind === 'sleep') {
+      if (task.targetType === 'bed') {
+        const bed = game.buildings[task.targetKey];
+        if (!bed || !bed.built) { c.task = null; return; }
+        if (c.x === bed.x && c.y === bed.y) { c.asleep = true; c.activity = 'Sleeping'; return; }
+        if (!task.path || task.path.length === 0) {
+          task.path = HF.Path.find(game, c.x, c.y, [{ x: bed.x, y: bed.y }]);
+        }
+        c.activity = 'Heading to bed';
+        if (task.path === null) { c.task = null; c.asleep = true; return; }
+        HF.Jobs.move(game, c, task);
+        if (c.x === bed.x && c.y === bed.y) { c.asleep = true; c.activity = 'Sleeping'; }
+      } else {
+        c.asleep = true;
+        c.activity = 'Sleeping rough';
+      }
+      return;
+    }
+
+    // Regular work: walk to a stand tile, then put turns into the job.
+    const stands = HF.Jobs.standsFor(game, task);
+    if (stands.length === 0) { game.releaseClaims(c.id); c.task = null; return; }
+
+    const atStand = stands.some(function (s) { return s.x === c.x && s.y === c.y; });
+    if (!atStand) {
+      if (!task.path || task.path.length === 0) {
+        task.path = HF.Path.find(game, c.x, c.y, stands);
+      }
+      if (task.path === null) { game.releaseClaims(c.id); c.task = null; c.activity = 'Idle'; return; }
+      c.activity = HF.Jobs.describe(game, task, true);
+      HF.Jobs.move(game, c, task);
+      const arrived = stands.some(function (s) { return s.x === c.x && s.y === c.y; });
+      if (!arrived) return;
+    }
+
+    c.activity = HF.Jobs.describe(game, task, false);
+    HF.Jobs.applyWork(game, c, task);
+  },
+
+  describe: function (game, task, travelling) {
+    const VERBS = { chop: 'Chopping', mine: 'Mining', forage: 'Foraging', harvest: 'Harvesting' };
+    let what = 'Work';
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      if (d) what = VERBS[d.type];
+    } else if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
+    }
+    return travelling ? 'Walking to ' + what.toLowerCase() : what;
+  },
+
+  move: function (game, c, task) {
+    let budget = HF.CFG.MOVE_BUDGET;
+    let moved = 0;
+    while (task.path && task.path.length > 0) {
+      const next = task.path[0];
+      if (!HF.Map.passable(game, next.x, next.y)) { task.path = null; return; }
+      const diagonal = next.x !== c.x && next.y !== c.y;
+      const cost = HF.Map.moveCost(game, next.x, next.y) * (diagonal ? 1.4 : 1);
+      if (cost > budget && moved > 0) break;
+      budget -= cost;
+      c.x = next.x; c.y = next.y;
+      task.path.shift();
+      moved++;
+      if (budget <= 0) break;
+    }
+  },
+
+  wander: function (game, c) {
+    if (!game.rng.chance(0.4)) return;
+    const d = game.rng.pick(HF.U.NEIGHBORS);
+    if (HF.Map.passable(game, c.x + d[0], c.y + d[1])) { c.x += d[0]; c.y += d[1]; }
+  },
+
+  applyWork: function (game, c, task) {
+    const workType = HF.Jobs.workTypeOf(game, task);
+    const skill = HF.Jobs.skillFor(workType);
+    const amount = HF.Colonists.workRate(c, skill);
+    HF.Colonists.gainXp(game, c, skill, amount);
+
+    if (task.targetType === 'designation') {
+      const d = game.designations[task.targetKey];
+      if (!d) { c.task = null; return; }
+      d.workDone += amount;
+      if (d.workDone >= HF.ORDERS[d.type].work) HF.Jobs.completeDesignation(game, c, d);
+    } else if (task.targetType === 'building') {
+      const b = game.buildings[task.targetKey];
+      if (!b) { c.task = null; return; }
+      b.workDone += amount;
+      if (b.workDone >= HF.BUILDINGS[b.type].work) HF.Jobs.completeBuilding(game, c, b);
+    }
+  },
+
+  completeDesignation: function (game, c, d) {
+    const tile = HF.Map.at(game, d.x, d.y);
+    const yields = HF.YIELDS[d.type] || {};
+
+    if (d.type === 'chop') {
+      tile.terrain = 'grass';
+      tile.regrow = game.turn + game.rng.int(55, 85);   // saplings come back
+    } else if (d.type === 'mine') {
+      tile.terrain = tile.terrain === 'mountain' ? 'hill' : 'grass';
+    } else if (d.type === 'forage') {
+      tile.feature = null;
+      tile.regrow = game.turn + game.rng.int(22, 34);
+    } else if (d.type === 'harvest') {
+      const farm = game.buildingAt(d.x, d.y);
+      if (farm) farm.growth = 0;
+    }
+
+    for (const r in yields) game.addResource(r, yields[r]);
+    game.dirtyTerrain = true;
+    delete game.designations[HF.U.key(d.x, d.y)];
+    c.task = null;
+  },
+
+  completeBuilding: function (game, c, b) {
+    b.built = true;
+    b.workDone = HF.BUILDINGS[b.type].work;
+    b.claimedBy = null;
+    if (HF.BUILDINGS[b.type].hp) b.hp = HF.BUILDINGS[b.type].hp;
+    if (HF.BUILDINGS[b.type].farm) b.growth = 0;
+    game.dirtyTerrain = true;
+    game.log(HF.BUILDINGS[b.type].label + ' finished by ' + c.name + '.', 'good');
+    c.task = null;
+  },
+};
+
+/* ===== js/buildings.js ===== */
+/* Placing, cancelling and running buildings. Resources are paid at placement
+   and refunded on cancel, so the player always knows what a plan has cost. */
+window.HF = window.HF || {};
+
+HF.Build = {
+  canPlace: function (game, type, x, y) {
+    const def = HF.BUILDINGS[type];
+    const tile = HF.Map.at(game, x, y);
+    if (!tile) return { ok: false, reason: 'Off the map.' };
+    if (tile.building != null) return { ok: false, reason: 'Something is already here.' };
+    if (game.designations[HF.U.key(x, y)]) return { ok: false, reason: 'A work order is here.' };
+    if (def.on.indexOf(tile.terrain) === -1) {
+      return { ok: false, reason: def.label + ' cannot go on ' + HF.TERRAIN[tile.terrain].name.toLowerCase() + '.' };
+    }
+    for (const r in def.cost) {
+      if (game.res[r] < def.cost[r]) {
+        return { ok: false, reason: 'Not enough ' + r + ' (' + def.cost[r] + ' needed).' };
+      }
+    }
+    return { ok: true };
+  },
+
+  place: function (game, type, x, y) {
+    const check = HF.Build.canPlace(game, type, x, y);
+    if (!check.ok) return check;
+
+    const def = HF.BUILDINGS[type];
+    for (const r in def.cost) game.res[r] -= def.cost[r];
+
+    const b = {
+      id: game.buildings.length,
+      type: type,
+      x: x, y: y,
+      built: false,
+      cancelled: false,
+      workDone: 0,
+      claimedBy: null,
+      hp: def.hp || 0,
+      growth: 0,
+    };
+    game.buildings.push(b);
+    HF.Map.at(game, x, y).building = b.id;
+    game.dirtyTerrain = true;
+    return { ok: true, building: b };
+  },
+
+  /* Refunds materials in full for a blueprint, half for a finished building. */
+  remove: function (game, x, y) {
+    const tile = HF.Map.at(game, x, y);
+    if (!tile || tile.building == null) return false;
+    const b = game.buildings[tile.building];
+    if (!b) return false;
+    const def = HF.BUILDINGS[b.type];
+    const ratio = b.built ? 0.5 : 1;
+    for (const r in def.cost) game.addResource(r, Math.floor(def.cost[r] * ratio));
+
+    b.cancelled = true;
+    game.buildings[b.id] = null;
+    tile.building = null;
+    delete game.designations[HF.U.key(x, y)];
+    game.releaseClaimsOnBuilding(b.id);
+    game.dirtyTerrain = true;
+    return true;
+  },
+
+  /* Crops ripen with the season, then post their own harvest order. */
+  tickFarms: function (game) {
+    const rate = HF.FARM.GROWTH[game.season()];
+    for (const b of game.buildings) {
+      if (!b || !b.built || !HF.BUILDINGS[b.type].farm) continue;
+      if (b.growth >= HF.FARM.RIPE_AT) {
+        const k = HF.U.key(b.x, b.y);
+        if (!game.designations[k]) {
+          game.designations[k] = {
+            type: 'harvest', x: b.x, y: b.y, workDone: 0, claimedBy: null,
+          };
+        }
+        continue;
+      }
+      b.growth += rate;
+      if (b.growth >= HF.FARM.RIPE_AT) {
+        b.growth = HF.FARM.RIPE_AT;
+        game.dirtyTerrain = true;
+      }
+    }
+  },
+
+  /* Felled forest and picked bushes come back on their own timer. */
+  tickRegrowth: function (game) {
+    if (game.season() === 'Winter') return;
+    for (let i = 0; i < game.tiles.length; i++) {
+      const t = game.tiles[i];
+      if (!t.regrow || t.regrow > game.turn) continue;
+      t.regrow = 0;
+      if (t.building != null) continue;
+      const x = i % game.w, y = (i / game.w) | 0;
+      if (game.designations[HF.U.key(x, y)]) continue;
+
+      if (t.terrain === 'grass' && !t.feature) {
+        // Whichever was stripped here grows back: trees, or the bush.
+        if (game.rng.chance(0.6)) t.terrain = 'forest';
+        else t.feature = 'berries';
+        game.dirtyTerrain = true;
+      }
+    }
+  },
+
+  storageCap: function (game) {
+    let cap = HF.CFG.BASE_STORAGE;
+    for (const b of game.buildings) {
+      if (b && b.built && HF.BUILDINGS[b.type].storage) cap += HF.BUILDINGS[b.type].storage;
+    }
+    return cap;
+  },
+
+  bedCount: function (game) {
+    let n = 0;
+    for (const b of game.buildings) {
+      if (b && b.built && HF.BUILDINGS[b.type].beds) n += HF.BUILDINGS[b.type].beds;
+    }
+    return n;
+  },
+};
+
+/* ===== js/events.js ===== */
+/* Raids, arrivals and seasonal misfortune - everything that happens *to* the
+   colony rather than because of it. */
+window.HF = window.HF || {};
+
+HF.Events = {
+  /* ---------- raiders ---------- */
+
+  spawnRaid: function (game) {
+    const count = 1 + Math.floor(game.turn / 55) + (game.rng.chance(0.35) ? 1 : 0);
+    const anchor = game.aliveColonists()[0];
+    if (!anchor) return;
+    const centre = game.colonyCentre();
+
+    // Only spawn where a raider could actually walk to the colony - the map
+    // generator produces offshore islands, and a raid stranded on one would
+    // never resolve. Then come in from a distant part of that landmass so
+    // there is a turn or two of warning.
+    const mask = HF.Map.reachMask(game, anchor.x, anchor.y);
+    const far = [];
+    let maxD = 0;
+    for (let y = 0; y < game.h; y++) {
+      for (let x = 0; x < game.w; x++) {
+        if (!mask[y * game.w + x]) continue;
+        const d = HF.U.dist(x, y, centre.x, centre.y);
+        if (d > maxD) maxD = d;
+        far.push({ x: x, y: y, d: d });
+      }
+    }
+    const rim = far.filter(function (t) { return t.d >= maxD * 0.72; });
+    if (rim.length === 0) return;
+    const spawn = game.rng.pick(rim);
+
+    const spots = HF.Map.openTilesNear(game, spawn.x, spawn.y, 4, new Set())
+      .filter(function (s) { return mask[s.y * game.w + s.x]; });
+
+    for (let i = 0; i < count; i++) {
+      const s = spots.length ? spots[i % spots.length] : spawn;
+      game.raiders.push({
+        id: game.nextId++,
+        x: s.x, y: s.y,
+        hp: 26, maxHp: 26,
+        dead: false,
+        withdrew: false,
+        spawnTurn: game.turn,
+        lost: 0,
+      });
+    }
+    game.log(count + ' raider' + (count > 1 ? 's' : '') + ' sighted to the ' +
+             HF.Events.compass(spawn, centre) + '.', 'bad');
+    game.nextRaidTurn = game.turn + game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP);
+  },
+
+  compass: function (from, to) {
+    const dx = from.x - to.x, dy = from.y - to.y;
+    if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'east' : 'west';
+    return dy > 0 ? 'south' : 'north';
+  },
+
+  raiderTurn: function (game, r) {
+    if (r.dead || r.withdrew) return;
+
+    const target = HF.Events.nearestColonist(game, r);
+    if (!target) return;
+
+    // A raid that has dragged on gives up, so a siege can never become
+    // permanent scenery.
+    if (game.turn - (r.spawnTurn || 0) > 45) { r.withdrew = true; return; }
+
+    if (HF.U.dist(r.x, r.y, target.x, target.y) <= 1) {
+      const dmg = game.rng.int(4, 7);
+      target.hp -= dmg;
+      if (target.hp <= 0 && !target.dead) {
+        target.dead = true;
+        target.hp = 0;
+        game.releaseClaims(target.id);
+        game.grief += 6;
+        game.log(target.name + ' was killed by raiders.', 'bad');
+      }
+      return;
+    }
+
+    // Walls are routed through at a penalty; when the next step is a wall the
+    // raider stops and hits it instead of walking past.
+    const path = HF.Path.find(game, r.x, r.y, [{ x: target.x, y: target.y }], { wallCost: 14 });
+    if (!path || path.length === 0) {
+      r.lost = (r.lost || 0) + 1;
+      if (r.lost >= 3) r.withdrew = true;    // no route at all - go home
+      return;
+    }
+    r.lost = 0;
+
+    let budget = HF.CFG.MOVE_BUDGET;
+    let moved = 0;
+    while (path.length > 0 && budget > 0) {
+      const next = path[0];
+      const tile = HF.Map.at(game, next.x, next.y);
+      if (tile.building != null) {
+        const b = game.buildings[tile.building];
+        if (b && b.built && HF.BUILDINGS[b.type].blocks) {
+          b.hp -= game.rng.int(6, 11);
+          if (b.hp <= 0) {
+            game.log('Raiders smashed through a wall.', 'bad');
+            game.buildings[b.id] = null;
+            tile.building = null;
+            game.dirtyTerrain = true;
+          }
+          return;
+        }
+      }
+      const diagonal = next.x !== r.x && next.y !== r.y;
+      const cost = HF.Map.moveCost(game, next.x, next.y) * (diagonal ? 1.4 : 1);
+      if (cost > budget && moved > 0) break;
+      budget -= cost;
+      r.x = next.x; r.y = next.y;
+      path.shift();
+      moved++;
+    }
+  },
+
+  nearestColonist: function (game, r) {
+    let best = null, bestD = Infinity;
+    for (const c of game.colonists) {
+      if (c.dead) continue;
+      const d = HF.U.dist(r.x, r.y, c.x, c.y);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return best;
+  },
+
+  /* ---------- scheduled and random events ---------- */
+
+  tick: function (game) {
+    const alive = game.aliveColonists();
+
+    if (game.turn >= HF.CFG.RAID_START_TURN && game.turn >= game.nextRaidTurn && alive.length > 0) {
+      HF.Events.spawnRaid(game);
+    }
+
+    if (game.turn >= game.nextMigrantTurn) {
+      game.nextMigrantTurn = game.turn + HF.CFG.MIGRANT_GAP + game.rng.int(-4, 6);
+      const beds = HF.Build.bedCount(game);
+      if (game.res.food > 55 && alive.length > 0 && alive.length < beds + 2) {
+        HF.Events.addMigrant(game);
+      }
+    }
+
+    if (game.rng.chance(0.05) && game.season() !== 'Winter') {
+      const farms = game.buildings.filter(function (b) {
+        return b && b.built && HF.BUILDINGS[b.type].farm && b.growth > 4;
+      });
+      if (farms.length) {
+        const f = game.rng.pick(farms);
+        f.growth = Math.max(0, f.growth - 10);
+        game.log('Blight struck a farm plot.', 'bad');
+      }
+    }
+
+    if (game.rng.chance(0.04)) {
+      const bonus = game.rng.int(6, 14);
+      game.addResource('food', bonus);
+      game.log('A hunting party brought in ' + bonus + ' food.', 'good');
+    }
+  },
+
+  addMigrant: function (game) {
+    const centre = game.colonyCentre();
+    const spots = HF.Map.openTilesNear(game, centre.x, centre.y, 6, new Set());
+    if (!spots.length) return;
+    const spot = spots[Math.min(spots.length - 1, game.rng.int(2, 6))];
+    const c = HF.Colonists.create(game, spot.x, spot.y);
+    game.colonists.push(c);
+    game.log(c.name + ' has joined the colony, skilled in ' +
+             HF.U.capitalize(c.specialty) + '.', 'good');
+  },
+
+  announceSeason: function (game) {
+    const s = game.season();
+    const notes = {
+      Spring: 'Spring. The ground thaws and crops start to grow.',
+      Summer: 'Summer. Crops ripen fastest now.',
+      Autumn: 'Autumn. Growth slows - stock the storehouse.',
+      Winter: 'Winter. Nothing grows, and the cold bites anyone far from a fire.',
+    };
+    game.log(notes[s], 'season');
+  },
+};
+
+/* ===== js/game.js ===== */
+/* The game state and the turn engine.
+
+   A turn resolves in a fixed order: the world grows, colonists act, raiders
+   act, then events fire. Everything here is plain JSON-able data (ids, not
+   object references) so a save is just JSON.stringify. */
+window.HF = window.HF || {};
+
+HF.Game = function (seed) {
+  this.seed = seed >>> 0;
+  this.rng = new HF.RNG(this.seed);
+
+  const map = HF.Map.generate(this.rng, HF.CFG.MAP_W, HF.CFG.MAP_H);
+  this.w = map.w;
+  this.h = map.h;
+  this.tiles = map.tiles;
+
+  this.turn = 1;
+  this.nextId = 1;
+  this.colonists = [];
+  this.buildings = [];
+  this.raiders = [];
+  this.designations = {};
+  this.res = Object.assign({}, HF.CFG.START_RES);
+  this.entries = [];
+  this.grief = 0;
+  this.nextRaidTurn = HF.CFG.RAID_START_TURN;
+  this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
+  this.gameOver = null;
+  this.milestoneShown = false;
+  this.dirtyTerrain = true;
+  this.spoiledThisTurn = false;
+
+  const site = HF.Map.findStartSite(this, this.rng);
+  this.startSite = site;
+  const occupied = new Set();
+  const spots = HF.Map.openTilesNear(this, site.x, site.y, 3, occupied);
+  for (let i = 0; i < HF.CFG.START_COLONISTS; i++) {
+    const s = spots[i % spots.length];
+    occupied.add(HF.U.key(s.x, s.y));
+    this.colonists.push(HF.Colonists.create(this, s.x, s.y));
+  }
+
+  this.log('Your party makes camp. Endure three years here.', 'season');
+  HF.Events.announceSeason(this);
+};
+
+HF.Game.prototype = {
+
+  /* ---------- calendar ---------- */
+
+  seasonIndex: function () {
+    return Math.floor((this.turn - 1) / HF.CFG.TURNS_PER_SEASON) % 4;
+  },
+  season: function () {
+    return HF.CFG.SEASONS[this.seasonIndex()];
+  },
+  year: function () {
+    return Math.floor((this.turn - 1) / (HF.CFG.TURNS_PER_SEASON * 4)) + 1;
+  },
+  dayOfSeason: function () {
+    return ((this.turn - 1) % HF.CFG.TURNS_PER_SEASON) + 1;
+  },
+
+  /* ---------- lookups ---------- */
+
+  buildingAt: function (x, y) {
+    const t = HF.Map.at(this, x, y);
+    if (!t || t.building == null) return null;
+    return this.buildings[t.building] || null;
+  },
+
+  raiderById: function (id) {
+    for (const r of this.raiders) if (r.id === id) return r;
+    return null;
+  },
+
+  colonistById: function (id) {
+    for (const c of this.colonists) if (c.id === id) return c;
+    return null;
+  },
+
+  colonistAt: function (x, y) {
+    for (const c of this.colonists) if (!c.dead && c.x === x && c.y === y) return c;
+    return null;
+  },
+
+  aliveColonists: function () {
+    return this.colonists.filter(function (c) { return !c.dead; });
+  },
+
+  builtCount: function (type) {
+    let n = 0;
+    for (const b of this.buildings) if (b && b.built && b.type === type) n++;
+    return n;
+  },
+
+  colonyCentre: function () {
+    const alive = this.aliveColonists();
+    if (alive.length === 0) return this.startSite;
+    let sx = 0, sy = 0;
+    for (const c of alive) { sx += c.x; sy += c.y; }
+    return { x: Math.round(sx / alive.length), y: Math.round(sy / alive.length) };
+  },
+
+  /* ---------- resources ---------- */
+
+  addResource: function (r, n) {
+    const cap = HF.Build.storageCap(this);
+    const before = this.res[r];
+    this.res[r] = HF.U.clamp(before + n, 0, cap);
+    const lost = before + n - this.res[r];
+    if (lost > 0.5 && !this.spoiledThisTurn) {
+      this.spoiledThisTurn = true;
+      this.log('Storage is full - ' + Math.round(lost) + ' ' + r + ' went to waste.', 'bad');
+    }
+  },
+
+  /* ---------- work orders ---------- */
+
+  designate: function (type, x, y) {
+    const tile = HF.Map.at(this, x, y);
+    if (!tile) return false;
+    const key = HF.U.key(x, y);
+    if (this.designations[key]) return false;
+    if (tile.building != null) return false;
+    if (!HF.ORDERS[type].valid(tile)) return false;
+    this.designations[key] = { type: type, x: x, y: y, workDone: 0, claimedBy: null };
+    return true;
+  },
+
+  undesignate: function (x, y) {
+    const key = HF.U.key(x, y);
+    const d = this.designations[key];
+    if (!d) return false;
+    delete this.designations[key];
+    for (const c of this.colonists) {
+      if (c.task && c.task.targetType === 'designation' && c.task.targetKey === key) c.task = null;
+    }
+    return true;
+  },
+
+  claim: function (task, colonistId) {
+    if (task.targetType === 'designation') {
+      const d = this.designations[task.targetKey];
+      if (d) d.claimedBy = colonistId;
+    } else if (task.targetType === 'building') {
+      const b = this.buildings[task.targetKey];
+      if (b) b.claimedBy = colonistId;
+    }
+  },
+
+  releaseClaims: function (colonistId) {
+    for (const k in this.designations) {
+      if (this.designations[k].claimedBy === colonistId) this.designations[k].claimedBy = null;
+    }
+    for (const b of this.buildings) {
+      if (b && b.claimedBy === colonistId) b.claimedBy = null;
+    }
+  },
+
+  releaseClaimsOnBuilding: function (buildingId) {
+    for (const c of this.colonists) {
+      if (c.task && c.task.targetType === 'building' && c.task.targetKey === buildingId) c.task = null;
+    }
+  },
+
+  /* ---------- log ---------- */
+
+  log: function (message, kind) {
+    this.entries.push({ turn: this.turn, message: message, kind: kind || 'info' });
+    if (this.entries.length > 220) this.entries.splice(0, this.entries.length - 220);
+  },
+
+  /* ---------- the turn ---------- */
+
+  endTurn: function () {
+    if (this.gameOver) return;
+
+    const seasonBefore = this.season();
+    this.turn++;
+    this.spoiledThisTurn = false;
+
+    if (this.season() !== seasonBefore) HF.Events.announceSeason(this);
+
+    HF.Build.tickFarms(this);
+    HF.Build.tickRegrowth(this);
+
+    for (const c of this.colonists) {
+      if (!c.dead) HF.Jobs.takeTurn(this, c);
+    }
+
+    for (const r of this.raiders) HF.Events.raiderTurn(this, r);
+    const before = this.raiders.length;
+    const withdrew = this.raiders.filter(function (r) { return r.withdrew; }).length;
+    const killed = this.raiders.filter(function (r) { return r.dead; }).length;
+    if (withdrew > 0) {
+      this.log(withdrew + ' raider' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.', 'info');
+    }
+    this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
+    if (before > 0 && this.raiders.length === 0 && killed > 0) this.log('The raid is broken.', 'good');
+
+    HF.Events.tick(this);
+
+    // Purge orders that no longer make sense (the tree got chopped, the bush
+    // was picked by someone else, a wall was built over the spot).
+    for (const k in this.designations) {
+      const d = this.designations[k];
+      const tile = HF.Map.at(this, d.x, d.y);
+      if (d.type === 'harvest') {
+        const farm = this.buildingAt(d.x, d.y);
+        if (!farm || !farm.built || farm.growth < HF.FARM.RIPE_AT) delete this.designations[k];
+      } else if (!tile || !HF.ORDERS[d.type].valid(tile)) {
+        delete this.designations[k];
+      }
+    }
+
+    this.grief = Math.max(0, this.grief - 0.5);
+
+    if (this.aliveColonists().length === 0) {
+      this.gameOver = 'lost';
+      this.log('The last of your colonists is gone. The camp falls silent.', 'bad');
+    } else if (!this.milestoneShown && this.turn >= HF.CFG.MILESTONE_TURN) {
+      this.milestoneShown = true;
+      this.log('Three years endured. The colony is here to stay - keep going as long as you can.', 'good');
+    }
+  },
+
+  /* ---------- persistence ---------- */
+
+  serialize: function () {
+    return JSON.stringify({
+      v: 1,
+      seed: this.seed, rngState: this.rng.s,
+      w: this.w, h: this.h, tiles: this.tiles,
+      turn: this.turn, nextId: this.nextId,
+      colonists: this.colonists, buildings: this.buildings, raiders: this.raiders,
+      designations: this.designations, res: this.res, entries: this.entries,
+      grief: this.grief, nextRaidTurn: this.nextRaidTurn,
+      nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
+      milestoneShown: this.milestoneShown, startSite: this.startSite,
+    });
+  },
+};
+
+HF.Game.load = function (json) {
+  const d = JSON.parse(json);
+  const g = Object.create(HF.Game.prototype);
+  Object.assign(g, d);
+  g.rng = new HF.RNG(d.seed);
+  g.rng.s = d.rngState >>> 0;
+  g.dirtyTerrain = true;
+  g.spoiledThisTurn = false;
+  return g;
+};
+
+/* ===== js/camera.js ===== */
+/* Map viewport: pan and zoom.
+
+   The canvas stays a fixed-size bitmap and the camera moves it with a CSS
+   transform, so nothing in the renderer has to know about scrolling. Screen
+   coordinates are converted back to tiles here rather than measured off the
+   element, which keeps the maths exact under any transform. */
+window.HF = window.HF || {};
+
+HF.Camera = (function () {
+  const T = HF.CFG.TILE;
+  const MIN_SCALE = 0.3;
+  const MAX_SCALE = 3.2;
+
+  let canvas = null;
+  let stage = null;
+  const cam = { x: 0, y: 0, scale: 1 };
+
+  function init(canvasEl, stageEl) {
+    canvas = canvasEl;
+    stage = stageEl;
+  }
+
+  function box() { return stage.getBoundingClientRect(); }
+
+  function apply() {
+    canvas.style.transform =
+      'translate(' + cam.x.toFixed(2) + 'px,' + cam.y.toFixed(2) + 'px) scale(' + cam.scale + ')';
+  }
+
+  /* Keeps the map inside the viewport, centring whichever axis is smaller than
+     the screen so a zoomed-out map never drifts into a corner. */
+  function clampView() {
+    const r = box();
+    const w = canvas.width * cam.scale;
+    const h = canvas.height * cam.scale;
+    cam.x = w <= r.width ? (r.width - w) / 2 : HF.U.clamp(cam.x, r.width - w, 0);
+    cam.y = h <= r.height ? (r.height - h) / 2 : HF.U.clamp(cam.y, r.height - h, 0);
+  }
+
+  /* Zooms about a screen point, so pinching and wheeling both keep whatever is
+     under the fingers or cursor pinned in place. */
+  function setScale(next, clientX, clientY) {
+    const r = box();
+    const ax = clientX == null ? r.width / 2 : clientX - r.left;
+    const ay = clientY == null ? r.height / 2 : clientY - r.top;
+    const wx = (ax - cam.x) / cam.scale;
+    const wy = (ay - cam.y) / cam.scale;
+    cam.scale = HF.U.clamp(next, MIN_SCALE, MAX_SCALE);
+    cam.x = ax - wx * cam.scale;
+    cam.y = ay - wy * cam.scale;
+    clampView();
+    apply();
+  }
+
+  return {
+    init: init,
+    apply: apply,
+    cam: cam,
+
+    zoomBy: function (factor, clientX, clientY) {
+      setScale(cam.scale * factor, clientX, clientY);
+    },
+
+    panBy: function (dx, dy) {
+      cam.x += dx;
+      cam.y += dy;
+      clampView();
+      apply();
+    },
+
+    /* Whole map on screen - the desktop default. */
+    fit: function () {
+      const r = box();
+      cam.scale = HF.U.clamp(
+        Math.min(r.width / canvas.width, r.height / canvas.height), MIN_SCALE, MAX_SCALE);
+      clampView();
+      apply();
+    },
+
+    centerOn: function (tx, ty, scale) {
+      const r = box();
+      if (scale) cam.scale = HF.U.clamp(scale, MIN_SCALE, MAX_SCALE);
+      cam.x = r.width / 2 - (tx + 0.5) * T * cam.scale;
+      cam.y = r.height / 2 - (ty + 0.5) * T * cam.scale;
+      clampView();
+      apply();
+    },
+
+    /* Scale that fits roughly `tiles` tiles across the viewport - used to open
+       a phone at a tappable zoom instead of a 9-pixel-per-tile postage stamp. */
+    scaleForTilesAcross: function (tiles) {
+      return HF.U.clamp(box().width / (tiles * T), MIN_SCALE, MAX_SCALE);
+    },
+
+    screenToTile: function (clientX, clientY) {
+      const r = box();
+      const x = Math.floor((clientX - r.left - cam.x) / cam.scale / T);
+      const y = Math.floor((clientY - r.top - cam.y) / cam.scale / T);
+      if (x < 0 || y < 0 || x >= HF.CFG.MAP_W || y >= HF.CFG.MAP_H) return null;
+      return { x: x, y: y };
+    },
+
+    /* Re-clamp after a resize or orientation change. */
+    refresh: function () { clampView(); apply(); },
+  };
+})();
+
+/* ===== js/render.js ===== */
+/* Canvas drawing. Terrain is painted once into an offscreen buffer and only
+   repainted when the map actually changes; everything that moves is drawn on
+   top of that each frame. */
+window.HF = window.HF || {};
+
+HF.Render = (function () {
+  const T = HF.CFG.TILE;
+
+  const COLORS = {
+    water: ['#2b556e', '#33627d'],
+    sand: ['#c9b184', '#d4bd92'],
+    grass: ['#63864a', '#719654'],
+    forest: ['#4d7040', '#567a46'],
+    hill: ['#847d6d', '#918a79'],
+    mountain: ['#6b665e', '#7a746b'],
+  };
+
+  const ORDER_COLOR = {
+    chop: '#e0a83f',
+    mine: '#7fa8d9',
+    forage: '#dd7f8d',
+    harvest: '#9ad46a',
+  };
+
+  let canvas, ctx, buffer, bctx;
+
+  function mix(hexA, hexB, t) {
+    const a = parseInt(hexA.slice(1), 16), b = parseInt(hexB.slice(1), 16);
+    const ar = a >> 16, ag = (a >> 8) & 255, ab = a & 255;
+    const br = b >> 16, bg = (b >> 8) & 255, bb = b & 255;
+    const r = Math.round(ar + (br - ar) * t);
+    const g = Math.round(ag + (bg - ag) * t);
+    const bl = Math.round(ab + (bb - ab) * t);
+    return 'rgb(' + r + ',' + g + ',' + bl + ')';
+  }
+
+  function init(cv) {
+    canvas = cv;
+    canvas.width = HF.CFG.MAP_W * T;
+    canvas.height = HF.CFG.MAP_H * T;
+    ctx = canvas.getContext('2d');
+    buffer = document.createElement('canvas');
+    buffer.width = canvas.width;
+    buffer.height = canvas.height;
+    bctx = buffer.getContext('2d');
+  }
+
+  /* ---------- terrain buffer ---------- */
+
+  function paintTerrain(game) {
+    bctx.clearRect(0, 0, buffer.width, buffer.height);
+
+    for (let y = 0; y < game.h; y++) {
+      for (let x = 0; x < game.w; x++) {
+        const tile = game.tiles[y * game.w + x];
+        const px = x * T, py = y * T;
+        const pal = COLORS[tile.terrain] || COLORS.grass;
+        bctx.fillStyle = mix(pal[0], pal[1], tile.variant);
+        bctx.fillRect(px, py, T, T);
+
+        if (tile.terrain === 'forest') drawTree(bctx, px, py, tile.variant);
+        else if (tile.terrain === 'mountain') drawMountain(bctx, px, py, tile.variant);
+        else if (tile.terrain === 'hill') drawRocks(bctx, px, py, tile.variant);
+        else if (tile.terrain === 'water') drawRipple(bctx, px, py, tile.variant);
+
+        if (tile.feature === 'berries') drawBerries(bctx, px, py, tile.variant);
+      }
+    }
+
+    // Faint grid so the tile structure reads without dominating the art.
+    bctx.strokeStyle = 'rgba(0,0,0,0.10)';
+    bctx.lineWidth = 1;
+    bctx.beginPath();
+    for (let x = 0; x <= game.w; x++) { bctx.moveTo(x * T + 0.5, 0); bctx.lineTo(x * T + 0.5, buffer.height); }
+    for (let y = 0; y <= game.h; y++) { bctx.moveTo(0, y * T + 0.5); bctx.lineTo(buffer.width, y * T + 0.5); }
+    bctx.stroke();
+  }
+
+  function drawTree(c, px, py, v) {
+    const cx = px + T / 2 + (v - 0.5) * 4;
+    const cy = py + T / 2 + (v - 0.5) * 3;
+    const r = T * 0.30 + v * 2;
+    c.fillStyle = '#3a5c33';
+    c.fillRect(cx - 1.5, cy, 3, T * 0.28);
+    c.fillStyle = v > 0.5 ? '#2f5730' : '#356334';
+    c.beginPath();
+    c.moveTo(cx, cy - r * 1.5);
+    c.lineTo(cx + r, cy + r * 0.55);
+    c.lineTo(cx - r, cy + r * 0.55);
+    c.closePath();
+    c.fill();
+  }
+
+  function drawMountain(c, px, py, v) {
+    c.fillStyle = '#585349';
+    c.beginPath();
+    c.moveTo(px + T * 0.5, py + T * 0.12);
+    c.lineTo(px + T * 0.95, py + T * 0.9);
+    c.lineTo(px + T * 0.05, py + T * 0.9);
+    c.closePath();
+    c.fill();
+    c.fillStyle = v > 0.6 ? '#cfd3d6' : '#8d8880';
+    c.beginPath();
+    c.moveTo(px + T * 0.5, py + T * 0.12);
+    c.lineTo(px + T * 0.68, py + T * 0.45);
+    c.lineTo(px + T * 0.32, py + T * 0.45);
+    c.closePath();
+    c.fill();
+  }
+
+  function drawRocks(c, px, py, v) {
+    c.fillStyle = 'rgba(60,56,50,0.55)';
+    c.beginPath();
+    c.ellipse(px + T * (0.3 + v * 0.2), py + T * 0.62, T * 0.16, T * 0.11, 0, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.ellipse(px + T * (0.65 - v * 0.15), py + T * 0.38, T * 0.11, T * 0.08, 0, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  function drawRipple(c, px, py, v) {
+    c.strokeStyle = 'rgba(255,255,255,0.10)';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(px + T * 0.2, py + T * (0.35 + v * 0.3));
+    c.lineTo(px + T * 0.8, py + T * (0.35 + v * 0.3));
+    c.stroke();
+  }
+
+  function drawBerries(c, px, py, v) {
+    c.fillStyle = '#4a6b3a';
+    c.beginPath();
+    c.ellipse(px + T / 2, py + T * 0.6, T * 0.26, T * 0.2, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#c8434f';
+    for (let i = 0; i < 3; i++) {
+      c.beginPath();
+      c.arc(px + T * (0.35 + i * 0.15), py + T * (0.52 + (i === 1 ? 0.14 : 0.05) + v * 0.05), 1.9, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+
+  /* ---------- buildings ---------- */
+
+  function drawBuilding(c, game, b) {
+    const px = b.x * T, py = b.y * T;
+    const def = HF.BUILDINGS[b.type];
+
+    if (!b.built) {
+      c.save();
+      c.fillStyle = 'rgba(220,230,255,0.12)';
+      c.fillRect(px + 2, py + 2, T - 4, T - 4);
+      c.setLineDash([4, 3]);
+      c.strokeStyle = 'rgba(200,220,255,0.85)';
+      c.lineWidth = 1.5;
+      c.strokeRect(px + 2.5, py + 2.5, T - 5, T - 5);
+      c.restore();
+      c.fillStyle = 'rgba(230,240,255,0.9)';
+      c.font = 'bold 11px system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.fillText(def.label.charAt(0), px + T / 2, py + T / 2 + 4);
+      progressBar(c, px, py, b.workDone / def.work, '#8fc7ff');
+      return;
+    }
+
+    if (b.type === 'house') {
+      c.fillStyle = '#8a6a45';
+      c.fillRect(px + 3, py + T * 0.42, T - 6, T * 0.5);
+      c.fillStyle = '#a8493c';
+      c.beginPath();
+      c.moveTo(px + T * 0.5, py + T * 0.12);
+      c.lineTo(px + T - 2, py + T * 0.45);
+      c.lineTo(px + 2, py + T * 0.45);
+      c.closePath();
+      c.fill();
+      c.fillStyle = '#3c2d1e';
+      c.fillRect(px + T * 0.42, py + T * 0.6, T * 0.16, T * 0.3);
+    } else if (b.type === 'storehouse') {
+      c.fillStyle = '#6f5837';
+      c.fillRect(px + 2, py + T * 0.3, T - 4, T * 0.62);
+      c.fillStyle = '#8a7048';
+      c.fillRect(px + 2, py + T * 0.3, T - 4, T * 0.14);
+      c.strokeStyle = '#3f3223';
+      c.lineWidth = 1;
+      c.strokeRect(px + 2.5, py + T * 0.3, T - 5, T * 0.62);
+    } else if (b.type === 'farm') {
+      const ripeness = HF.U.clamp(b.growth / HF.FARM.RIPE_AT, 0, 1);
+      c.fillStyle = '#5b452c';
+      c.fillRect(px + 1, py + 1, T - 2, T - 2);
+      c.strokeStyle = mix('#6d8c48', '#e0c14a', ripeness);
+      c.lineWidth = 2;
+      c.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const yy = py + T * (0.28 + i * 0.22);
+        c.moveTo(px + 3, yy);
+        c.lineTo(px + T - 3, yy);
+      }
+      c.stroke();
+      if (ripeness >= 1) {
+        c.fillStyle = '#f0d24a';
+        c.beginPath();
+        c.arc(px + T - 5, py + 5, 2.5, 0, Math.PI * 2);
+        c.fill();
+      }
+    } else if (b.type === 'campfire') {
+      c.fillStyle = '#4a4038';
+      c.beginPath();
+      c.arc(px + T / 2, py + T / 2, T * 0.34, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = '#e8892e';
+      c.beginPath();
+      c.moveTo(px + T * 0.5, py + T * 0.24);
+      c.lineTo(px + T * 0.68, py + T * 0.66);
+      c.lineTo(px + T * 0.32, py + T * 0.66);
+      c.closePath();
+      c.fill();
+      c.fillStyle = '#f5cf5a';
+      c.beginPath();
+      c.arc(px + T * 0.5, py + T * 0.56, T * 0.1, 0, Math.PI * 2);
+      c.fill();
+    } else if (b.type === 'wall') {
+      c.fillStyle = '#9a958c';
+      c.fillRect(px + 1, py + 1, T - 2, T - 2);
+      c.strokeStyle = '#6f6b64';
+      c.lineWidth = 1;
+      c.strokeRect(px + 1.5, py + 1.5, T - 3, T - 3);
+      c.beginPath();
+      c.moveTo(px + 1, py + T * 0.5); c.lineTo(px + T - 1, py + T * 0.5);
+      c.moveTo(px + T * 0.5, py + 1); c.lineTo(px + T * 0.5, py + T * 0.5);
+      c.moveTo(px + T * 0.3, py + T * 0.5); c.lineTo(px + T * 0.3, py + T - 1);
+      c.stroke();
+      if (def.hp && b.hp < def.hp) progressBar(c, px, py, b.hp / def.hp, '#d9584f');
+    }
+  }
+
+  function progressBar(c, px, py, frac, color) {
+    const w = T - 6;
+    c.fillStyle = 'rgba(0,0,0,0.55)';
+    c.fillRect(px + 3, py + T - 6, w, 4);
+    c.fillStyle = color;
+    c.fillRect(px + 3, py + T - 6, w * HF.U.clamp(frac, 0, 1), 4);
+  }
+
+  /* ---------- overlays ---------- */
+
+  function drawDesignation(c, d) {
+    const px = d.x * T, py = d.y * T;
+    const color = ORDER_COLOR[d.type] || '#ffffff';
+    c.strokeStyle = color;
+    c.lineWidth = 2;
+    const s = 6;
+    // corner brackets
+    c.beginPath();
+    c.moveTo(px + 2, py + 2 + s); c.lineTo(px + 2, py + 2); c.lineTo(px + 2 + s, py + 2);
+    c.moveTo(px + T - 2 - s, py + 2); c.lineTo(px + T - 2, py + 2); c.lineTo(px + T - 2, py + 2 + s);
+    c.moveTo(px + 2, py + T - 2 - s); c.lineTo(px + 2, py + T - 2); c.lineTo(px + 2 + s, py + T - 2);
+    c.moveTo(px + T - 2 - s, py + T - 2); c.lineTo(px + T - 2, py + T - 2); c.lineTo(px + T - 2, py + T - 2 - s);
+    c.stroke();
+    const work = HF.ORDERS[d.type].work;
+    if (d.workDone > 0.01) progressBar(c, px, py, d.workDone / work, color);
+  }
+
+  function moodColor(mood) {
+    if (mood >= 60) return '#7ec46a';
+    if (mood >= 35) return '#e0c14a';
+    return '#d9584f';
+  }
+
+  function drawColonist(c, game, col, selected) {
+    const cx = col.x * T + T / 2;
+    const cy = col.y * T + T / 2;
+
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    c.beginPath();
+    c.ellipse(cx, cy + T * 0.32, T * 0.28, T * 0.12, 0, 0, Math.PI * 2);
+    c.fill();
+
+    if (selected) {
+      c.strokeStyle = '#f0c25a';
+      c.lineWidth = 2.5;
+      c.beginPath();
+      c.arc(cx, cy, T * 0.46, 0, Math.PI * 2);
+      c.stroke();
+    }
+
+    c.fillStyle = '#efe3c8';
+    c.strokeStyle = '#22252c';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(cx, cy, T * 0.32, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+
+    c.fillStyle = '#22252c';
+    c.font = 'bold 10px system-ui, sans-serif';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillText(col.name.charAt(0), cx, cy + 0.5);
+    c.textBaseline = 'alphabetic';
+
+    // mood pip
+    c.fillStyle = moodColor(col.mood);
+    c.beginPath();
+    c.arc(cx + T * 0.28, cy - T * 0.28, 3, 0, Math.PI * 2);
+    c.fill();
+
+    if (col.asleep) {
+      c.fillStyle = '#cfe3ff';
+      c.font = 'bold 10px system-ui, sans-serif';
+      c.fillText('z', cx - T * 0.3, cy - T * 0.24);
+    }
+    if (col.hp < col.maxHp) progressBar(c, col.x * T, col.y * T, col.hp / col.maxHp, '#d9584f');
+  }
+
+  function drawRaider(c, r) {
+    const cx = r.x * T + T / 2, cy = r.y * T + T / 2;
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    c.beginPath();
+    c.ellipse(cx, cy + T * 0.32, T * 0.26, T * 0.11, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = '#a5342f';
+    c.strokeStyle = '#2a1414';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(cx, cy - T * 0.36);
+    c.lineTo(cx + T * 0.32, cy);
+    c.lineTo(cx, cy + T * 0.36);
+    c.lineTo(cx - T * 0.32, cy);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    if (r.hp < r.maxHp) progressBar(c, r.x * T, r.y * T, r.hp / r.maxHp, '#ff6b5e');
+  }
+
+  /* ---------- frame ---------- */
+
+  function draw(game, view) {
+    if (game.dirtyTerrain) { paintTerrain(game); game.dirtyTerrain = false; }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(buffer, 0, 0);
+
+    if (game.season() === 'Winter') {
+      ctx.fillStyle = 'rgba(198,220,240,0.18)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (game.season() === 'Autumn') {
+      ctx.fillStyle = 'rgba(224,160,60,0.08)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // warmth radius of campfires, so winter planning is visible
+    if (game.season() === 'Winter') {
+      for (const b of game.buildings) {
+        if (!b || !b.built) continue;
+        const def = HF.BUILDINGS[b.type];
+        if (!def.warmth) continue;
+        const grd = ctx.createRadialGradient(
+          b.x * T + T / 2, b.y * T + T / 2, T,
+          b.x * T + T / 2, b.y * T + T / 2, def.warmth * T
+        );
+        grd.addColorStop(0, 'rgba(255,180,80,0.18)');
+        grd.addColorStop(1, 'rgba(255,180,80,0)');
+        ctx.fillStyle = grd;
+        ctx.fillRect((b.x - def.warmth) * T, (b.y - def.warmth) * T,
+                     def.warmth * 2 * T, def.warmth * 2 * T);
+      }
+    }
+
+    for (const b of game.buildings) if (b) drawBuilding(ctx, game, b);
+    for (const k in game.designations) drawDesignation(ctx, game.designations[k]);
+
+    // path of the selected colonist
+    const sel = view.selectedId != null ? game.colonistById(view.selectedId) : null;
+    if (sel && sel.task && sel.task.path && sel.task.path.length) {
+      ctx.strokeStyle = 'rgba(240,194,90,0.75)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(sel.x * T + T / 2, sel.y * T + T / 2);
+      for (const p of sel.task.path) ctx.lineTo(p.x * T + T / 2, p.y * T + T / 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    for (const c of game.colonists) if (!c.dead) drawColonist(ctx, game, c, sel && sel.id === c.id);
+    for (const r of game.raiders) if (!r.dead) drawRaider(ctx, r);
+
+    // hover / drag preview
+    if (view.drag) {
+      const x0 = Math.min(view.drag.x0, view.drag.x1), x1 = Math.max(view.drag.x0, view.drag.x1);
+      const y0 = Math.min(view.drag.y0, view.drag.y1), y1 = Math.max(view.drag.y0, view.drag.y1);
+      ctx.fillStyle = 'rgba(240,194,90,0.18)';
+      ctx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T);
+      ctx.strokeStyle = '#f0c25a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x0 * T + 1, y0 * T + 1, (x1 - x0 + 1) * T - 2, (y1 - y0 + 1) * T - 2);
+    } else if (view.hover) {
+      const hx = view.hover.x * T, hy = view.hover.y * T;
+      let ok = true;
+      if (view.mode && view.mode.kind === 'build') {
+        ok = HF.Build.canPlace(game, view.mode.id, view.hover.x, view.hover.y).ok;
+      } else if (view.mode && view.mode.kind === 'order') {
+        const tile = HF.Map.at(game, view.hover.x, view.hover.y);
+        ok = tile && HF.ORDERS[view.mode.id].valid(tile) && tile.building == null;
+      }
+      ctx.strokeStyle = ok ? 'rgba(255,255,255,0.85)' : 'rgba(217,88,79,0.9)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(hx + 1, hy + 1, T - 2, T - 2);
+    }
+  }
+
+  return { init: init, draw: draw, TILE: T };
+})();
+
+/* ===== js/ui.js ===== */
+/* DOM panels and input handling.
+
+   Everything the player can do goes through a single "mode" (none / order /
+   build / cancel) applied to a tile or a dragged rectangle of tiles. Input is
+   pointer-based so mouse and touch share one path: with a tool selected a drag
+   paints, with no tool a drag pans, and two fingers always pinch-zoom. */
+window.HF = window.HF || {};
+
+HF.UI = (function () {
+  let game = null;
+  let canvas = null;
+  let stage = null;
+  const view = { hover: null, selectedId: null, mode: { kind: 'none', id: null }, drag: null };
+
+  const el = {};
+  function $(id) { return document.getElementById(id); }
+  function isNarrow() { return window.innerWidth < 900; }
+
+  /* ---------- setup ---------- */
+
+  function init(g) {
+    game = g;
+    canvas = $('board');
+    stage = $('stage');
+    HF.Render.init(canvas);
+    HF.Camera.init(canvas, stage);
+
+    el.stats = $('stats');
+    el.calendar = $('calendar');
+    el.colonists = $('colonist-panel');
+    el.log = $('log');
+    el.tooltip = $('tooltip');
+    el.banner = $('banner');
+    el.orders = $('orders');
+    el.builds = $('builds');
+    el.sidebar = $('sidebar');
+
+    buildToolbar();
+    bindPointer();
+    bindButtons();
+    bindKeys();
+
+    resetCamera();
+    window.addEventListener('resize', function () { HF.Camera.refresh(); });
+
+    refresh();
+    requestAnimationFrame(frame);
+  }
+
+  function resetCamera() {
+    const c = game.colonyCentre();
+    if (isNarrow()) HF.Camera.centerOn(c.x, c.y, HF.Camera.scaleForTilesAcross(15));
+    else HF.Camera.fit();
+  }
+
+  function setGame(g) {
+    game = g;
+    view.selectedId = null;
+    view.drag = null;
+    setMode('none', null);
+    game.dirtyTerrain = true;
+    resetCamera();
+    refresh();
+  }
+
+  function frame() {
+    HF.Render.draw(game, view);
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- toolbar ---------- */
+
+  function buildToolbar() {
+    el.orders.innerHTML = '<span class="group-label">Orders</span>';
+    for (const id in HF.ORDERS) {
+      const o = HF.ORDERS[id];
+      if (!o.key) continue;                       // harvest is issued by the farm itself
+      const b = document.createElement('button');
+      b.className = 'tool';
+      b.dataset.mode = 'order';
+      b.dataset.id = id;
+      b.innerHTML = '<span class="swatch ' + id + '"></span>' + o.label + '<kbd>' + o.key + '</kbd>';
+      b.title = o.hint;
+      b.addEventListener('click', function () { setMode('order', id); });
+      el.orders.appendChild(b);
+    }
+    const cancel = document.createElement('button');
+    cancel.className = 'tool danger';
+    cancel.dataset.mode = 'cancel';
+    cancel.innerHTML = 'Cancel<kbd>X</kbd>';
+    cancel.title = 'Remove work orders and buildings. Finished buildings refund half.';
+    cancel.addEventListener('click', function () { setMode('cancel', null); });
+    el.orders.appendChild(cancel);
+
+    el.builds.innerHTML = '<span class="group-label">Build</span>';
+    let n = 1;
+    for (const id in HF.BUILDINGS) {
+      const def = HF.BUILDINGS[id];
+      const key = String(n++);
+      const b = document.createElement('button');
+      b.className = 'tool';
+      b.dataset.mode = 'build';
+      b.dataset.id = id;
+      b.innerHTML = def.label + '<span class="cost">' + costText(def) + '</span><kbd>' + key + '</kbd>';
+      b.title = def.desc;
+      b.addEventListener('click', function () { setMode('build', id); });
+      el.builds.appendChild(b);
+    }
+  }
+
+  const RES_ABBR = { wood: 'w', stone: 's', food: 'f' };
+
+  function costText(def) {
+    const parts = [];
+    for (const r in def.cost) parts.push(def.cost[r] + (RES_ABBR[r] || r.charAt(0)));
+    return parts.join(' ');
+  }
+
+  function setMode(kind, id) {
+    if (view.mode.kind === kind && view.mode.id === id) {
+      view.mode = { kind: 'none', id: null };
+    } else {
+      view.mode = { kind: kind, id: id };
+    }
+    for (const b of document.querySelectorAll('.tool')) {
+      b.classList.toggle('active',
+        b.dataset.mode === view.mode.kind && (b.dataset.id || null) === view.mode.id);
+    }
+    stage.classList.toggle('painting', view.mode.kind !== 'none');
+    // A tool is useless behind the colony sheet, so close it when one is picked.
+    if (view.mode.kind !== 'none') closeSheet();
+    updateHint();
+  }
+
+  /* With a tool held, every drag paints instead of panning. The hint says which
+     tool is live and doubles as the way to put it down. */
+  function updateHint() {
+    const hint = $('mode-hint');
+    if (view.mode.kind === 'none') { hint.className = ''; hint.innerHTML = ''; return; }
+    let text;
+    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' - drag over the map';
+    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label;
+    else text = 'Cancel - drag over orders to remove';
+    hint.innerHTML = text + '<span class="clear">&times;</span>';
+    hint.className = 'show';
+  }
+
+  /* ---------- pointer input ---------- */
+
+  function bindPointer() {
+    const pointers = new Map();
+    let gesture = null;        // 'paint' | 'tap' | 'pan' | 'pinch'
+    let pinch = null;
+    let leadPointer = null;
+
+    function spread(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    stage.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('#map-controls') || e.target.closest('#help') ||
+          e.target.closest('#mode-hint')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // Capture keeps a drag alive if the finger leaves the map, but it is not
+      // worth losing all input over if the browser refuses it.
+      try { stage.setPointerCapture(e.pointerId); } catch (err) { /* not fatal */ }
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, moved: 0 });
+
+      if (pointers.size === 2) {
+        // A second finger always means pinch, so abandon any paint in progress.
+        view.drag = null;
+        gesture = 'pinch';
+        const p = Array.from(pointers.values());
+        pinch = { d: spread(p[0], p[1]), mx: (p[0].x + p[1].x) / 2, my: (p[0].y + p[1].y) / 2 };
+        return;
+      }
+      if (pointers.size > 2) return;
+
+      const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+      if (view.mode.kind !== 'none' && t) {
+        gesture = 'paint';
+        view.drag = { x0: t.x, y0: t.y, x1: t.x, y1: t.y };
+      } else {
+        gesture = 'tap';                    // becomes a pan once it moves far enough
+        leadPointer = e.pointerId;
+      }
+    });
+
+    stage.addEventListener('pointermove', function (e) {
+      const p = pointers.get(e.pointerId);
+      if (p) {
+        const dx = e.clientX - p.x, dy = e.clientY - p.y;
+        p.moved += Math.abs(dx) + Math.abs(dy);
+        p.x = e.clientX; p.y = e.clientY;
+
+        if (gesture === 'pinch' && pointers.size === 2) {
+          const pts = Array.from(pointers.values());
+          const d = spread(pts[0], pts[1]);
+          const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
+          if (pinch.d > 0) HF.Camera.zoomBy(d / pinch.d, mx, my);
+          HF.Camera.panBy(mx - pinch.mx, my - pinch.my);
+          pinch = { d: d, mx: mx, my: my };
+          return;
+        }
+        if (gesture === 'paint' && view.drag) {
+          const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+          if (t) { view.drag.x1 = t.x; view.drag.y1 = t.y; }
+        } else if (e.pointerId === leadPointer && (gesture === 'tap' || gesture === 'pan')) {
+          if (gesture === 'tap' && p.moved > 10) gesture = 'pan';
+          if (gesture === 'pan') HF.Camera.panBy(dx, dy);
+        }
+      }
+
+      if (e.pointerType === 'mouse') {
+        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        view.hover = t;
+        showTileInfo(t, e.clientX, e.clientY, false);
+      }
+    });
+
+    function release(e) {
+      const p = pointers.get(e.pointerId);
+      pointers.delete(e.pointerId);
+      if (!p) return;
+
+      if (gesture === 'paint' && pointers.size === 0) {
+        if (view.drag) { applyToRect(view.drag); view.drag = null; refresh(); }
+        gesture = null;
+      } else if (gesture === 'tap' && e.pointerId === leadPointer) {
+        const t = HF.Camera.screenToTile(e.clientX, e.clientY);
+        if (t) handleTap(t, e);
+        gesture = null; leadPointer = null;
+      } else if (pointers.size < 2) {
+        // Coming out of a pinch, ignore the finger still down until it lifts.
+        gesture = null; pinch = null; leadPointer = null;
+      }
+
+      if (pointers.size === 0) { gesture = null; pinch = null; leadPointer = null; view.drag = null; }
+    }
+
+    stage.addEventListener('pointerup', release);
+    stage.addEventListener('pointercancel', release);
+
+    stage.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      HF.Camera.zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+    }, { passive: false });
+
+    stage.addEventListener('pointerleave', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      view.hover = null;
+      el.tooltip.style.display = 'none';
+    });
+
+    stage.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      setMode('none', null);
+    });
+  }
+
+  function handleTap(t, e) {
+    const c = game.colonistAt(t.x, t.y);
+    if (c) {
+      view.selectedId = c.id;
+      renderColonists();
+      return;
+    }
+    view.selectedId = null;
+    renderColonists();
+    // Touch has no hover, so a tap on empty ground is how you inspect a tile.
+    if (e.pointerType !== 'mouse') showTileInfo(t, e.clientX, e.clientY, true);
+  }
+
+  function applyToRect(drag) {
+    const x0 = Math.min(drag.x0, drag.x1), x1 = Math.max(drag.x0, drag.x1);
+    const y0 = Math.min(drag.y0, drag.y1), y1 = Math.max(drag.y0, drag.y1);
+    let placed = 0, failReason = null;
+
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (view.mode.kind === 'order') {
+          if (game.designate(view.mode.id, x, y)) placed++;
+        } else if (view.mode.kind === 'cancel') {
+          if (game.undesignate(x, y)) placed++;
+          if (HF.Build.remove(game, x, y)) placed++;
+        } else if (view.mode.kind === 'build') {
+          const res = HF.Build.place(game, view.mode.id, x, y);
+          if (res.ok) placed++;
+          else failReason = res.reason;
+        }
+      }
+    }
+
+    if (placed === 0 && failReason) toast(failReason);
+    if (placed > 0) game.dirtyTerrain = true;
+  }
+
+  let toastTimer = null;
+  function toast(message) {
+    el.banner.textContent = message;
+    el.banner.className = 'show warn';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.banner.className = ''; }, 2600);
+  }
+
+  let tipTimer = null;
+  function showTileInfo(t, clientX, clientY, sticky) {
+    if (!t) { el.tooltip.style.display = 'none'; return; }
+    const tile = HF.Map.at(game, t.x, t.y);
+    const lines = [HF.TERRAIN[tile.terrain].name];
+    if (tile.feature === 'berries') lines.push('Berry bushes');
+
+    const b = game.buildingAt(t.x, t.y);
+    if (b) {
+      const def = HF.BUILDINGS[b.type];
+      if (b.built) {
+        lines.push(def.label);
+        if (def.farm) {
+          const pct = Math.round(HF.U.clamp(b.growth / HF.FARM.RIPE_AT, 0, 1) * 100);
+          lines.push(pct >= 100 ? 'Ripe - awaiting harvest' : 'Growth ' + pct + '%');
+        }
+        if (def.hp) lines.push('Integrity ' + Math.round(b.hp) + '/' + def.hp);
+      } else {
+        lines.push(def.label + ' (blueprint)');
+        lines.push('Built ' + Math.round(b.workDone / def.work * 100) + '%');
+      }
+    }
+
+    const d = game.designations[HF.U.key(t.x, t.y)];
+    if (d) {
+      lines.push('Order: ' + HF.ORDERS[d.type].label +
+                 ' (' + Math.round(d.workDone / HF.ORDERS[d.type].work * 100) + '%)');
+    }
+
+    const c = game.colonistAt(t.x, t.y);
+    if (c) lines.push(c.name + ' - ' + c.activity);
+
+    const r = game.raiders.find(function (rr) { return !rr.dead && rr.x === t.x && rr.y === t.y; });
+    if (r) lines.push('Raider (' + r.hp + ' hp)');
+
+    el.tooltip.innerHTML = lines.join('<br>');
+    el.tooltip.style.display = 'block';
+
+    const rect = stage.getBoundingClientRect();
+    const w = el.tooltip.offsetWidth, h = el.tooltip.offsetHeight;
+    let left = clientX - rect.left + 14;
+    let top = clientY - rect.top + 14;
+    if (left + w > rect.width - 8) left = clientX - rect.left - w - 14;
+    if (top + h > rect.height - 8) top = clientY - rect.top - h - 14;
+    el.tooltip.style.left = Math.max(6, left) + 'px';
+    el.tooltip.style.top = Math.max(6, top) + 'px';
+
+    clearTimeout(tipTimer);
+    if (sticky) tipTimer = setTimeout(function () { el.tooltip.style.display = 'none'; }, 2800);
+  }
+
+  /* ---------- buttons and keys ---------- */
+
+  function openSheet() { el.sidebar.classList.add('open'); }
+  function closeSheet() { el.sidebar.classList.remove('open'); }
+
+  function bindButtons() {
+    $('btn-endturn').addEventListener('click', endTurn);
+    $('mode-hint').addEventListener('click', function () { setMode('none', null); });
+    $('btn-panel').addEventListener('click', function () { el.sidebar.classList.toggle('open'); });
+    $('sheet-close').addEventListener('click', closeSheet);
+
+    $('zoom-in').addEventListener('click', function () { HF.Camera.zoomBy(1.35); });
+    $('zoom-out').addEventListener('click', function () { HF.Camera.zoomBy(1 / 1.35); });
+    $('recenter').addEventListener('click', function () {
+      const sel = view.selectedId != null ? game.colonistById(view.selectedId) : null;
+      const target = sel && !sel.dead ? sel : game.colonyCentre();
+      HF.Camera.centerOn(target.x, target.y);
+    });
+
+    $('btn-new').addEventListener('click', function () {
+      if (!confirm('Abandon this colony and generate a new map?')) return;
+      setGame(new HF.Game((Math.random() * 0xffffffff) >>> 0));
+    });
+    $('btn-save').addEventListener('click', function () {
+      try {
+        localStorage.setItem('hearthfall.save', game.serialize());
+        toast('Colony saved.');
+      } catch (err) {
+        toast('Could not save: ' + err.message);
+      }
+    });
+    $('btn-load').addEventListener('click', function () {
+      let data = null;
+      try { data = localStorage.getItem('hearthfall.save'); } catch (err) { data = null; }
+      if (!data) { toast('No saved colony found.'); return; }
+      try {
+        setGame(HF.Game.load(data));
+        toast('Colony restored.');
+      } catch (err) {
+        toast('Save file could not be read.');
+      }
+    });
+    $('btn-help').addEventListener('click', function () { $('help').classList.toggle('open'); });
+    $('help-close').addEventListener('click', function () { $('help').classList.remove('open'); });
+  }
+
+  function bindKeys() {
+    const buildKeys = Object.keys(HF.BUILDINGS);
+    window.addEventListener('keydown', function (e) {
+      if (e.target.tagName === 'INPUT') return;
+      const k = e.key.toLowerCase();
+      if (k === ' ' || k === 'enter') { e.preventDefault(); endTurn(); return; }
+      if (k === 'escape') { setMode('none', null); $('help').classList.remove('open'); return; }
+      if (k === 'x') { setMode('cancel', null); return; }
+      if (k === 'h') { $('help').classList.toggle('open'); return; }
+      for (const id in HF.ORDERS) {
+        if (HF.ORDERS[id].key && HF.ORDERS[id].key.toLowerCase() === k) { setMode('order', id); return; }
+      }
+      const n = parseInt(k, 10);
+      if (n >= 1 && n <= buildKeys.length) setMode('build', buildKeys[n - 1]);
+    });
+  }
+
+  function endTurn() {
+    if (game.gameOver) return;
+    game.endTurn();
+    refresh();
+  }
+
+  /* ---------- panels ---------- */
+
+  function refresh() {
+    renderStats();
+    renderColonists();
+    renderLog();
+    renderBanner();
+  }
+
+  function renderStats() {
+    const cap = HF.Build.storageCap(game);
+    const alive = game.aliveColonists().length;
+    const beds = HF.Build.bedCount(game);
+    el.stats.innerHTML =
+      stat('Food', Math.floor(game.res.food) + ' / ' + cap, 'food') +
+      stat('Wood', Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
+      stat('Stone', Math.floor(game.res.stone) + ' / ' + cap, 'stone') +
+      stat('Colonists', alive + '', 'pop') +
+      stat('Beds', beds + '', 'bed');
+    el.calendar.innerHTML =
+      '<div class="season ' + game.season().toLowerCase() + '">' + game.season() + '</div>' +
+      '<div class="date">Year ' + game.year() + ' &middot; Day ' + game.dayOfSeason() +
+      ' &middot; Turn ' + game.turn + '</div>';
+    $('btn-panel').innerHTML = 'Colony <span class="badge">' + alive + '</span>';
+  }
+
+  function stat(label, value, cls) {
+    return '<div class="stat ' + cls + '"><span class="label">' + label +
+           '</span><span class="value">' + value + '</span></div>';
+  }
+
+  function bar(label, value, max, cls) {
+    const pct = HF.U.clamp(value / max * 100, 0, 100);
+    return '<div class="bar ' + cls + '" title="' + label + ' ' + Math.round(value) + '">' +
+           '<div class="fill" style="width:' + pct + '%"></div>' +
+           '<span>' + label + '</span></div>';
+  }
+
+  function renderColonists() {
+    const alive = game.aliveColonists();
+    const beds = HF.Build.bedCount(game);
+    // Beds sit next to the roster because "who has nowhere to sleep" is the
+    // question the roster is being read to answer.
+    let html = '<h2>Colonists <span class="count">' + alive.length + '</span>' +
+               ' &middot; Beds <span class="count' + (beds < alive.length ? ' short' : '') + '">' +
+               beds + '</span></h2>';
+
+    if (alive.length === 0) html += '<p class="empty">No one is left.</p>';
+
+    for (const c of alive) {
+      const selected = view.selectedId === c.id;
+      html += '<div class="colonist' + (selected ? ' selected' : '') + '" data-id="' + c.id + '">';
+      html += '<div class="row-head"><span class="name">' + c.name + '</span>' +
+              '<span class="activity">' + c.activity + '</span></div>';
+      html += '<div class="bars">' +
+              bar('Food', c.needs.food, 100, 'food') +
+              bar('Rest', c.needs.rest, 100, 'rest') +
+              bar('Mood', c.mood, 100, 'mood') +
+              bar('HP', c.hp, c.maxHp, 'hp') +
+              '</div>';
+
+      html += '<div class="works">';
+      for (const wt of HF.WORK_TYPES) {
+        const lvl = HF.Colonists.skillLevel(c, wt.skill);
+        html += '<button class="work' + (c.work[wt.id] ? ' on' : '') +
+                '" data-colonist="' + c.id + '" data-work="' + wt.id + '" title="' +
+                wt.label + ' - skill ' + lvl + '. Tap to toggle.">' +
+                wt.short + '<span class="lvl">' + lvl + '</span></button>';
+      }
+      html += '</div></div>';
+    }
+
+    el.colonists.innerHTML = html;
+
+    for (const node of el.colonists.querySelectorAll('.colonist')) {
+      node.addEventListener('click', function (e) {
+        if (e.target.closest('.work')) return;
+        view.selectedId = parseInt(node.dataset.id, 10);
+        const c = game.colonistById(view.selectedId);
+        if (c) HF.Camera.centerOn(c.x, c.y);
+        renderColonists();
+        if (isNarrow()) closeSheet();      // get out of the way so you can see them
+      });
+    }
+    for (const btn of el.colonists.querySelectorAll('.work')) {
+      btn.addEventListener('click', function () {
+        const c = game.colonistById(parseInt(btn.dataset.colonist, 10));
+        if (!c) return;
+        c.work[btn.dataset.work] = !c.work[btn.dataset.work];
+        // Drop a job the colonist is no longer willing to do.
+        if (c.task && c.task.kind === 'work') {
+          const wt = HF.Jobs.workTypeOf(game, c.task);
+          if (wt && !c.work[wt]) { game.releaseClaims(c.id); c.task = null; }
+        }
+        renderColonists();
+      });
+    }
+  }
+
+  function renderLog() {
+    const recent = game.entries.slice(-40).reverse();
+    el.log.innerHTML = recent.map(function (e) {
+      return '<li class="' + e.kind + '"><span class="turn">' + e.turn + '</span>' + e.message + '</li>';
+    }).join('');
+  }
+
+  function renderBanner() {
+    if (game.gameOver === 'lost') {
+      el.banner.textContent = 'The colony has failed. Turn ' + game.turn + '. Press New to try again.';
+      el.banner.className = 'show bad';
+    } else if (game.milestoneShown && game.turn === HF.CFG.MILESTONE_TURN) {
+      el.banner.textContent = 'Three years endured.';
+      el.banner.className = 'show good';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.banner.className = ''; }, 5000);
+    }
+  }
+
+  return { init: init, setGame: setGame };
+})();
+
+/* ===== js/main.js ===== */
+/* Entry point. Reads an optional ?seed= so a map can be shared or replayed. */
+window.HF = window.HF || {};
+
+(function () {
+  function start() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('seed');
+    const seed = raw !== null && raw !== '' && !isNaN(parseInt(raw, 10))
+      ? parseInt(raw, 10) >>> 0
+      : (Math.random() * 0xffffffff) >>> 0;
+
+    const game = new HF.Game(seed);
+    window.game = game;               // handy when poking at a colony from the console
+    HF.UI.init(game);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+
+</script>
+</body>
+</html>
