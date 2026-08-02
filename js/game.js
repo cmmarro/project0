@@ -291,7 +291,10 @@ HF.Game.prototype = {
     if (this.designations[key]) return false;
     if (tile.building != null) return false;
     if (!HF.ORDERS[type].valid(tile)) return false;
-    this.designations[key] = { type: type, x: x, y: y, workDone: 0, claimedBy: null };
+    this.designations[key] = {
+      type: type, x: x, y: y, workDone: 0, claimedBy: null,
+      work: HF.Map.workFor(this, type, x, y),
+    };
     return true;
   },
 
@@ -355,6 +358,7 @@ HF.Game.prototype = {
     for (const c of this.colonists) {
       if (!c.dead) HF.Jobs.tick(this, c);
     }
+    if (this.dirtyTerrain) HF.Build.settleBlueprints(this);
 
     // Raiders move on a coarser beat than villagers; they are a threat, not a
     // thing to admire, and stepping them every tick made them twitch.
@@ -384,6 +388,7 @@ HF.Game.prototype = {
 
     this.spoiledToday = false;
 
+    HF.Build.settleBlueprints(this);
     HF.Build.tickFarms(this);
     HF.Build.tickRegrowth(this);
     HF.Events.tick(this);

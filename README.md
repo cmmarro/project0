@@ -71,6 +71,7 @@ they decide who does what.
 | Fell Timber | Pine, or bamboo — bamboo pays less but is back inside the year |
 | Quarry Stone | Cuts stone from slopes and mountains |
 | Forage | Whatever is in season: bracken, chestnuts, mushrooms, yam, hemp, herbs |
+| Clear Ground | Trees, bamboo, undergrowth — one brush that leaves bare ground |
 | Set Fish Traps | Steady food from the riverbank that owes nothing to the paddies |
 
 ### The ground
@@ -98,7 +99,7 @@ a shape beyond the rice.
 | Bracken | Spring | Food |
 | Chestnut | Summer, autumn | Food |
 | Mushrooms | Autumn | Food, under the pines |
-| Wild yam | Autumn, winter | Food that is there when nothing else is |
+| Wild yam | Autumn, winter | Food that is there when nothing else is — and real digging |
 | Wild hemp | Summer, autumn | Hemp — useless until woven |
 | Medicinal herbs | Spring to autumn | Herbs — useless until ground |
 | Fish | All year | The one thing the river always gives |
@@ -130,8 +131,16 @@ builds it as the timber comes in — a plan the stores cannot cover waits instea
 of blocking the builder, and gets picked up the moment the materials land. The
 materials come out of the stores when a thing is finished, not when it is drawn.
 
+**Draw straight over trees.** Wooded and overgrown ground counts as buildable:
+placing there raises a clearing order by itself and the blueprint waits for it,
+so you never have to chop, wait, and then come back and draw the same wall
+again. You still get the timber, and nothing is silently erased under a
+blueprint. If one pass doesn't finish it — bracken grows under pine — the
+blueprint simply asks again until the ground is actually bare.
+
 | | |
 | --- | --- |
+| **Clear Ground** (`G`) | One brush for trees, bamboo and undergrowth alike |
 | **Drag a wall** | Fills the *outline* of the box — drag a room, get a room |
 | **Fill** (`R`) | Turns that off, for a solid block |
 | **Cancel** (`X`) | Calls off plans and work orders. Instant; nothing was spent |
@@ -140,8 +149,9 @@ materials come out of the stores when a thing is finished, not when it is drawn.
 
 The chip at the bottom of the map is a live readout: how many tiles the drag
 will take, what they cost, and whether the stores can cover it. On the map
-itself, each tile shows green if it will take and red if it will not — so a
-wall drawn across a river shows you the gap before you let go.
+itself, each tile shows **green** if it will take, **amber** if it has to be
+cleared first, and **red** if it will never take — so a wall drawn across a
+river shows you the gap before you let go.
 
 ### The villagers
 

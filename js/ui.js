@@ -154,6 +154,8 @@ HF.UI = (function () {
         for (const r in plan.cost) parts.push(plan.cost[r] + ' ' + HF.RESOURCES[r].label.toLowerCase());
         warn = !affordable(plan.cost);
         text = def.label + ' &times;' + n + (parts.length ? ' &middot; ' + parts.join(' + ') : '');
+        const clearing = (plan.clearing || []).length;
+        if (clearing) text += ' &middot; ' + clearing + ' to clear first';
         if (warn) text += ' &middot; not in store yet';
       } else if (plan.kind === 'order') {
         text = HF.ORDERS[plan.id].label + ' &times;' + n;
@@ -622,17 +624,20 @@ HF.UI = (function () {
     const kind = view.mode.kind, id = view.mode.id;
     if (kind === 'none') return null;
     const tiles = tilesFor(drag, kind, id);
-    const plan = { kind: kind, id: id, ok: [], bad: [], cost: {}, reason: null };
+    const plan = { kind: kind, id: id, ok: [], bad: [], clearing: [], cost: {}, reason: null };
 
     for (const t of tiles) {
       if (kind === 'order') {
         const tile = HF.Map.at(game, t.x, t.y);
-        const free = tile && !game.designations[HF.U.key(t.x, t.y)] && tile.building == null;
+        const here = game.designations[HF.U.key(t.x, t.y)];
+        const free = tile && !here && tile.building == null;
         (free && HF.ORDERS[id].valid(tile) ? plan.ok : plan.bad).push(t);
       } else if (kind === 'build') {
         const res = HF.Build.canPlace(game, id, t.x, t.y);
-        if (res.ok) plan.ok.push(t);
-        else { plan.bad.push(t); plan.reason = plan.reason || res.reason; }
+        if (res.ok) {
+          plan.ok.push(t);
+          if (res.needsClearing) plan.clearing.push(t);
+        } else { plan.bad.push(t); plan.reason = plan.reason || res.reason; }
       } else if (kind === 'cancel') {
         const b = game.buildingAt(t.x, t.y);
         const hasOrder = !!game.designations[HF.U.key(t.x, t.y)];

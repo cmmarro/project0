@@ -414,6 +414,7 @@ HF.Render = (function () {
 
     if (!b.built) {
       ctx.save();
+      if (b.awaitingClear) ctx.globalAlpha = 0.5;   // the ground is not ready yet
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = 'rgba(198,220,240,0.9)';
       ctx.lineWidth = 1.6;
@@ -811,9 +812,15 @@ HF.Render = (function () {
        every tile the plan actually touches is marked green if it will take and
        red if it will not - so a wall drawn across a river shows you the gap
        before you let go, and a room outline shows as an outline. */
+    const waiting = {};
+    for (const b of game.buildings) {
+      if (b && b.awaitingClear && !b.cancelled) waiting[HF.U.key(b.x, b.y)] = b;
+    }
+
     const ghost = {};
     if (view.plan) {
       for (const t of view.plan.ok) ghost[HF.U.key(t.x, t.y)] = 'ok';
+      for (const t of (view.plan.clearing || [])) ghost[HF.U.key(t.x, t.y)] = 'clear';
       for (const t of view.plan.bad) ghost[HF.U.key(t.x, t.y)] = 'bad';
     }
     const dragRect = view.drag ? {
@@ -848,10 +855,14 @@ HF.Render = (function () {
         const mark = ghost[key];
         if (mark) {
           const tp = I.toScreen(x, y, I.elevOf(game.tiles[y * game.w + x]));
-          ctx.fillStyle = mark === 'ok' ? 'rgba(126,196,106,0.34)' : 'rgba(196,70,47,0.34)';
+          ctx.fillStyle = mark === 'ok' ? 'rgba(126,196,106,0.34)'
+                        : mark === 'clear' ? 'rgba(208,162,74,0.34)'
+                        : 'rgba(196,70,47,0.34)';
           diamond(tp.sx, tp.sy, I.HW - 2, I.HH - 1);
           ctx.fill();
-          ctx.strokeStyle = mark === 'ok' ? 'rgba(160,225,140,0.9)' : 'rgba(230,110,90,0.9)';
+          ctx.strokeStyle = mark === 'ok' ? 'rgba(160,225,140,0.9)'
+                          : mark === 'clear' ? 'rgba(232,196,110,0.95)'
+                          : 'rgba(230,110,90,0.9)';
           ctx.lineWidth = 1.5;
           ctx.stroke();
         } else if (dragRect && x >= dragRect.x0 && x <= dragRect.x1 &&
@@ -878,6 +889,11 @@ HF.Render = (function () {
           const b = game.buildings[tile.building];
           if (b) drawBuilding(game, b, season);
         }
+        // Blueprints waiting for their ground to be cleared do not hold a tile
+        // yet, so they have to be looked up by position or they would be
+        // invisible until the trees came down.
+        const pending = waiting[key];
+        if (pending) drawBuilding(game, pending, season);
 
         const here = byTile[key];
         if (here) {

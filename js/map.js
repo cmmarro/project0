@@ -91,6 +91,42 @@ HF.Map = {
     return g;
   },
 
+  /* What this tile becomes once whatever is growing on it has been taken off.
+     Used both to decide whether a building could ever go here and to know what
+     to leave behind when it is cleared. */
+  clearedTerrain: function (terrain) {
+    return (terrain === 'forest' || terrain === 'bamboo') ? 'grass' : terrain;
+  },
+
+  /* Is there anything standing on this tile that has to come off before it can
+     be built on? */
+  needsClearing: function (g, x, y) {
+    const t = HF.Map.at(g, x, y);
+    if (!t) return false;
+    if (t.terrain === 'forest' || t.terrain === 'bamboo') return true;
+    const pl = HF.PLANTS[t.feature];
+    return !!pl && pl.order === 'forage';
+  },
+
+  /* How much work an order on this tile actually is. Plants carry their own
+     figures - a wild yam is real digging and bracken is not - and they were
+     being ignored in favour of one number for everything foraged. */
+  workFor: function (g, type, x, y) {
+    const t = HF.Map.at(g, x, y);
+    const order = HF.ORDERS[type];
+    if (!t) return order.work;
+    if (type === 'forage' || type === 'fish') {
+      const pl = HF.PLANTS[t.feature];
+      return pl && pl.work ? pl.work : order.work;
+    }
+    if (type === 'clear') {
+      if (t.terrain === 'forest' || t.terrain === 'bamboo') return HF.ORDERS.chop.work;
+      const pl = HF.PLANTS[t.feature];
+      return pl && pl.work ? pl.work : order.work;
+    }
+    return order.work;
+  },
+
   inBounds: function (g, x, y) {
     return x >= 0 && y >= 0 && x < g.w && y < g.h;
   },

@@ -13,12 +13,37 @@ HF.Build = {
     const tile = HF.Map.at(game, x, y);
     if (!tile) return { ok: false, reason: 'Off the map.' };
     if (tile.building != null) return { ok: false, reason: 'Something is already here.' };
-    if (game.designations[HF.U.key(x, y)]) return { ok: false, reason: 'A work order is here.' };
-    if (def.on.indexOf(tile.terrain) === -1) {
+    /* A blueprint waiting for its ground to be cleared does not hold its tile
+       yet, so it has to be looked for by position - otherwise a second
+       blueprint stacks on the same square, one of them claims the tile when
+       the trees come down, and the other is orphaned there forever. */
+    if (HF.Build.pendingAt(game, x, y)) {
+      return { ok: false, reason: 'Something is already planned here.' };
+    }
+    // A clearing order is not in the way - it is the thing that makes room.
+    const standing = game.designations[HF.U.key(x, y)];
+    if (standing && standing.type !== 'clear') {
+      return { ok: false, reason: 'A work order is here.' };
+    }
+    /* Ground with something growing on it counts as buildable, so long as what
+       is underneath would do. Placing here drops a clearing order and the
+       blueprint waits for it - which is the difference between "select chop,
+       drag, wait, select wall, drag again" and just drawing the wall where you
+       want it. */
+    const cleared = HF.Map.clearedTerrain(tile.terrain);
+    if (def.on.indexOf(cleared) === -1) {
       return { ok: false, reason: def.label + ' cannot go on ' +
                HF.TERRAIN[tile.terrain].name.toLowerCase() + '.' };
     }
-    return { ok: true };
+    return { ok: true, needsClearing: HF.Map.needsClearing(game, x, y) };
+  },
+
+  /* A blueprint standing on this tile that has not claimed it yet. */
+  pendingAt: function (game, x, y) {
+    for (const b of game.buildings) {
+      if (b && b.awaitingClear && !b.cancelled && b.x === x && b.y === y) return b;
+    }
+    return null;
   },
 
   /* Can the stores cover this blueprint right now? Builders check it before
@@ -47,9 +72,24 @@ HF.Build = {
       growth: 0,
     };
     game.buildings.push(b);
-    HF.Map.at(game, x, y).building = b.id;
     game.dirtyTerrain = true;
     if (def.encloses) game.roomsDirty = true;
+
+    /* Anything standing here gets a clearing order rather than being silently
+       erased under the blueprint. The tile is only claimed by the building once
+       it is bare, so the pine is felled - and paid out as timber - before the
+       wall goes up on the same spot. */
+    if (HF.Map.needsClearing(game, x, y)) {
+      b.awaitingClear = true;
+      if (!game.designations[HF.U.key(x, y)]) {
+        game.designations[HF.U.key(x, y)] = {
+          type: 'clear', x: x, y: y, workDone: 0, claimedBy: null,
+          work: HF.Map.workFor(game, 'clear', x, y),
+        };
+      }
+    } else {
+      HF.Map.at(game, x, y).building = b.id;
+    }
     return { ok: true, building: b };
   },
 
@@ -57,8 +97,11 @@ HF.Build = {
      nothing to give back; a finished building returns half its materials. */
   remove: function (game, x, y) {
     const tile = HF.Map.at(game, x, y);
-    if (!tile || tile.building == null) return false;
-    const b = game.buildings[tile.building];
+    if (!tile) return false;
+    // A blueprint waiting for the ground to be cleared does not hold its tile
+    // yet, so it has to be found by position rather than through the tile.
+    const b = tile.building != null ? game.buildings[tile.building]
+                                    : HF.Build.pendingAt(game, x, y);
     if (!b) return false;
     const def = HF.BUILDINGS[b.type];
     if (b.built) {
@@ -67,7 +110,7 @@ HF.Build = {
 
     b.cancelled = true;
     game.buildings[b.id] = null;
-    tile.building = null;
+    if (tile.building === b.id) tile.building = null;
     if (def.encloses) game.roomsDirty = true;
     delete game.designations[HF.U.key(x, y)];
     game.releaseClaimsOnBuilding(b.id);
@@ -128,6 +171,34 @@ HF.Build = {
       } else if (what && HF.TERRAIN[what]) {
         if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
+    }
+  },
+
+  /* Blueprints waiting on a clearing order take their tile the moment it is
+     bare. Run once a day and whenever the map changes under them. */
+  settleBlueprints: function (game) {
+    for (const b of game.buildings) {
+      if (!b || !b.awaitingClear || b.cancelled) continue;
+      if (HF.Map.needsClearing(game, b.x, b.y)) {
+        /* Still not bare. One pass does not always finish the job - bracken
+           grows under pine, so felling the tree leaves the undergrowth - so the
+           blueprint simply asks again until the ground is actually clear,
+           rather than waiting forever on an order that has already been done. */
+        const k = HF.U.key(b.x, b.y);
+        if (!game.designations[k]) {
+          game.designations[k] = {
+            type: 'clear', x: b.x, y: b.y, workDone: 0, claimedBy: null,
+            work: HF.Map.workFor(game, 'clear', b.x, b.y),
+          };
+        }
+        continue;
+      }
+      const tile = HF.Map.at(game, b.x, b.y);
+      if (!tile || tile.building != null) continue;
+      b.awaitingClear = false;
+      tile.building = b.id;
+      game.dirtyTerrain = true;
+      if (HF.BUILDINGS[b.type].encloses) game.roomsDirty = true;
     }
   },
 

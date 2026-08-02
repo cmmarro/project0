@@ -291,6 +291,22 @@ HF.ORDERS = {
     hint: 'Trap fish from the bank. Steady food that owes nothing to the paddies - ' +
           'a river valley can eat while the rice goes to the castle.',
   },
+  /* One brush for "make this ground empty". Chopping and foraging both already
+     clear a tile, but only of their own kind, so squaring off a patch to build
+     on meant two tools and two drags over the same ground. This takes whatever
+     is there and does the right thing with it - and it is what a blueprint
+     drops on vegetated ground by itself. */
+  clear: {
+    id: 'clear', label: 'Clear Ground', verb: 'Clearing', key: 'G', work: 8, workType: 'woodcut',
+    color: '#b8a27a',
+    valid: function (t) {
+      if (t.terrain === 'forest' || t.terrain === 'bamboo') return true;
+      const pl = HF.PLANTS[t.feature];
+      return !!pl && pl.order === 'forage';
+    },
+    hint: 'Take down whatever is standing here - trees, bamboo, or whatever is ' +
+          'growing - and leave bare ground. You still get what it was worth.',
+  },
   harvest: {                                   // raised automatically by ripe paddies
     id: 'harvest', label: 'Harvest', verb: 'Harvesting', key: null, work: 8, workType: 'farm',
     color: '#9ac46a',

@@ -1122,14 +1122,19 @@ kbd {
              to zoom, tap a tile to inspect it, tap a villager to select them, tap a bench to set
              its work. While a tool is chosen, dragging paints instead.</p>
           <p class="keys"><b>Building:</b> blueprints cost nothing to place &mdash; draw the whole
-             house and the village builds it as the timber comes in. Walls drag as a
-             <b>room outline</b>; the <b>Fill</b> toggle makes them a solid block. The chip at the
-             bottom of the map counts what you are about to place and what it will cost.
+             house and the village builds it as the timber comes in. <b>Draw straight over trees
+             and undergrowth</b>: the ground gets cleared first on its own, and you still get the
+             timber. Walls drag as a <b>room outline</b>; the <b>Fill</b> toggle makes them a solid
+             block. The chip at the bottom of the map counts what you are about to place, what it
+             will cost, and how much has to be cleared first &mdash; amber tiles need clearing,
+             green are ready, red will never take.</p>
+          <p class="keys"><b>Clear Ground</b> (<kbd>G</kbd>) is the same thing as a brush: one drag
+             takes down trees, bamboo and whatever is growing, and leaves bare ground.
              <b>Cancel</b> calls off plans and work orders; <b>Deconstruct</b> marks something
              already standing to be pulled down for half its materials back.</p>
           <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> pause &middot;
              <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> speed &middot; <kbd>B</kbd> build menu &middot;
-             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot; <kbd>X</kbd> cancel &middot;
+             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd>/<kbd>G</kbd> work orders &middot; <kbd>X</kbd> cancel &middot;
              <kbd>V</kbd> deconstruct &middot; <kbd>R</kbd> fill toggle &middot;
              <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo &middot; <kbd>Esc</kbd> put the tool down &middot;
              <kbd>H</kbd> this page</p>
@@ -1500,6 +1505,22 @@ HF.ORDERS = {
     valid: function (t) { return t.feature === 'fish'; },
     hint: 'Trap fish from the bank. Steady food that owes nothing to the paddies - ' +
           'a river valley can eat while the rice goes to the castle.',
+  },
+  /* One brush for "make this ground empty". Chopping and foraging both already
+     clear a tile, but only of their own kind, so squaring off a patch to build
+     on meant two tools and two drags over the same ground. This takes whatever
+     is there and does the right thing with it - and it is what a blueprint
+     drops on vegetated ground by itself. */
+  clear: {
+    id: 'clear', label: 'Clear Ground', verb: 'Clearing', key: 'G', work: 8, workType: 'woodcut',
+    color: '#b8a27a',
+    valid: function (t) {
+      if (t.terrain === 'forest' || t.terrain === 'bamboo') return true;
+      const pl = HF.PLANTS[t.feature];
+      return !!pl && pl.order === 'forage';
+    },
+    hint: 'Take down whatever is standing here - trees, bamboo, or whatever is ' +
+          'growing - and leave bare ground. You still get what it was worth.',
   },
   harvest: {                                   // raised automatically by ripe paddies
     id: 'harvest', label: 'Harvest', verb: 'Harvesting', key: null, work: 8, workType: 'farm',
@@ -2067,6 +2088,42 @@ HF.Map = {
     }
 
     return g;
+  },
+
+  /* What this tile becomes once whatever is growing on it has been taken off.
+     Used both to decide whether a building could ever go here and to know what
+     to leave behind when it is cleared. */
+  clearedTerrain: function (terrain) {
+    return (terrain === 'forest' || terrain === 'bamboo') ? 'grass' : terrain;
+  },
+
+  /* Is there anything standing on this tile that has to come off before it can
+     be built on? */
+  needsClearing: function (g, x, y) {
+    const t = HF.Map.at(g, x, y);
+    if (!t) return false;
+    if (t.terrain === 'forest' || t.terrain === 'bamboo') return true;
+    const pl = HF.PLANTS[t.feature];
+    return !!pl && pl.order === 'forage';
+  },
+
+  /* How much work an order on this tile actually is. Plants carry their own
+     figures - a wild yam is real digging and bracken is not - and they were
+     being ignored in favour of one number for everything foraged. */
+  workFor: function (g, type, x, y) {
+    const t = HF.Map.at(g, x, y);
+    const order = HF.ORDERS[type];
+    if (!t) return order.work;
+    if (type === 'forage' || type === 'fish') {
+      const pl = HF.PLANTS[t.feature];
+      return pl && pl.work ? pl.work : order.work;
+    }
+    if (type === 'clear') {
+      if (t.terrain === 'forest' || t.terrain === 'bamboo') return HF.ORDERS.chop.work;
+      const pl = HF.PLANTS[t.feature];
+      return pl && pl.work ? pl.work : order.work;
+    }
+    return order.work;
   },
 
   inBounds: function (g, x, y) {
@@ -2713,7 +2770,7 @@ HF.Jobs = {
     }
     if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
-      if (!b || b.cancelled) return false;
+      if (!b || b.cancelled || b.awaitingClear) return false;
       return b.deconstruct ? true : !b.built;
     }
     if (task.targetType === 'station') {
@@ -2763,6 +2820,8 @@ HF.Jobs = {
         if (!b || b.cancelled) continue;
         if (b.claimedBy != null && b.claimedBy !== c.id) continue;
         if (b.built && !b.deconstruct) continue;
+        // Still waiting for the trees on its tile to come down.
+        if (b.awaitingClear) continue;
         // A blueprint the stores cannot cover waits instead of blocking the
         // builder, so drawing a whole house at once is a plan rather than a
         // jam. It gets picked up the moment the timber lands.
@@ -3058,7 +3117,7 @@ HF.Jobs = {
       const d = game.designations[task.targetKey];
       if (!d) { c.task = null; return; }
       d.workDone += amount;
-      if (d.workDone >= HF.ORDERS[d.type].work) HF.Jobs.completeDesignation(game, c, d);
+      if (d.workDone >= (d.work || HF.ORDERS[d.type].work)) HF.Jobs.completeDesignation(game, c, d);
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       if (!b) { c.task = null; return; }
@@ -3134,8 +3193,18 @@ HF.Jobs = {
 
   completeDesignation: function (game, c, d) {
     const tile = HF.Map.at(game, d.x, d.y);
-    const yields = HF.YIELDS[d.type] || {};
+    const key = HF.U.key(d.x, d.y);
     let scale = 1;
+
+    // Clearing does whatever the tile calls for: fell it if it is standing
+    // timber, pick it if it is a plant. Resolved here rather than at
+    // designation time so a tile that changed underneath still does the right
+    // thing.
+    if (d.type === 'clear') {
+      d = Object.assign({}, d, {
+        type: (tile.terrain === 'forest' || tile.terrain === 'bamboo') ? 'chop' : 'forage',
+      });
+    }
 
     if (d.type === 'chop') {
       // Remember what stood here, so bamboo grows back as bamboo and on its own
@@ -3165,9 +3234,11 @@ HF.Jobs = {
       if (farm) farm.growth = 0;
     }
 
+    const yields = HF.YIELDS[d.type] || {};
     for (const r in yields) game.addResource(r, Math.round(yields[r] * scale));
+    // A blueprint may have been waiting on this ground being cleared.
     game.dirtyTerrain = true;
-    delete game.designations[HF.U.key(d.x, d.y)];
+    delete game.designations[key];
     c.task = null;
   },
 
@@ -3204,12 +3275,37 @@ HF.Build = {
     const tile = HF.Map.at(game, x, y);
     if (!tile) return { ok: false, reason: 'Off the map.' };
     if (tile.building != null) return { ok: false, reason: 'Something is already here.' };
-    if (game.designations[HF.U.key(x, y)]) return { ok: false, reason: 'A work order is here.' };
-    if (def.on.indexOf(tile.terrain) === -1) {
+    /* A blueprint waiting for its ground to be cleared does not hold its tile
+       yet, so it has to be looked for by position - otherwise a second
+       blueprint stacks on the same square, one of them claims the tile when
+       the trees come down, and the other is orphaned there forever. */
+    if (HF.Build.pendingAt(game, x, y)) {
+      return { ok: false, reason: 'Something is already planned here.' };
+    }
+    // A clearing order is not in the way - it is the thing that makes room.
+    const standing = game.designations[HF.U.key(x, y)];
+    if (standing && standing.type !== 'clear') {
+      return { ok: false, reason: 'A work order is here.' };
+    }
+    /* Ground with something growing on it counts as buildable, so long as what
+       is underneath would do. Placing here drops a clearing order and the
+       blueprint waits for it - which is the difference between "select chop,
+       drag, wait, select wall, drag again" and just drawing the wall where you
+       want it. */
+    const cleared = HF.Map.clearedTerrain(tile.terrain);
+    if (def.on.indexOf(cleared) === -1) {
       return { ok: false, reason: def.label + ' cannot go on ' +
                HF.TERRAIN[tile.terrain].name.toLowerCase() + '.' };
     }
-    return { ok: true };
+    return { ok: true, needsClearing: HF.Map.needsClearing(game, x, y) };
+  },
+
+  /* A blueprint standing on this tile that has not claimed it yet. */
+  pendingAt: function (game, x, y) {
+    for (const b of game.buildings) {
+      if (b && b.awaitingClear && !b.cancelled && b.x === x && b.y === y) return b;
+    }
+    return null;
   },
 
   /* Can the stores cover this blueprint right now? Builders check it before
@@ -3238,9 +3334,24 @@ HF.Build = {
       growth: 0,
     };
     game.buildings.push(b);
-    HF.Map.at(game, x, y).building = b.id;
     game.dirtyTerrain = true;
     if (def.encloses) game.roomsDirty = true;
+
+    /* Anything standing here gets a clearing order rather than being silently
+       erased under the blueprint. The tile is only claimed by the building once
+       it is bare, so the pine is felled - and paid out as timber - before the
+       wall goes up on the same spot. */
+    if (HF.Map.needsClearing(game, x, y)) {
+      b.awaitingClear = true;
+      if (!game.designations[HF.U.key(x, y)]) {
+        game.designations[HF.U.key(x, y)] = {
+          type: 'clear', x: x, y: y, workDone: 0, claimedBy: null,
+          work: HF.Map.workFor(game, 'clear', x, y),
+        };
+      }
+    } else {
+      HF.Map.at(game, x, y).building = b.id;
+    }
     return { ok: true, building: b };
   },
 
@@ -3248,8 +3359,11 @@ HF.Build = {
      nothing to give back; a finished building returns half its materials. */
   remove: function (game, x, y) {
     const tile = HF.Map.at(game, x, y);
-    if (!tile || tile.building == null) return false;
-    const b = game.buildings[tile.building];
+    if (!tile) return false;
+    // A blueprint waiting for the ground to be cleared does not hold its tile
+    // yet, so it has to be found by position rather than through the tile.
+    const b = tile.building != null ? game.buildings[tile.building]
+                                    : HF.Build.pendingAt(game, x, y);
     if (!b) return false;
     const def = HF.BUILDINGS[b.type];
     if (b.built) {
@@ -3258,7 +3372,7 @@ HF.Build = {
 
     b.cancelled = true;
     game.buildings[b.id] = null;
-    tile.building = null;
+    if (tile.building === b.id) tile.building = null;
     if (def.encloses) game.roomsDirty = true;
     delete game.designations[HF.U.key(x, y)];
     game.releaseClaimsOnBuilding(b.id);
@@ -3319,6 +3433,34 @@ HF.Build = {
       } else if (what && HF.TERRAIN[what]) {
         if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
+    }
+  },
+
+  /* Blueprints waiting on a clearing order take their tile the moment it is
+     bare. Run once a day and whenever the map changes under them. */
+  settleBlueprints: function (game) {
+    for (const b of game.buildings) {
+      if (!b || !b.awaitingClear || b.cancelled) continue;
+      if (HF.Map.needsClearing(game, b.x, b.y)) {
+        /* Still not bare. One pass does not always finish the job - bracken
+           grows under pine, so felling the tree leaves the undergrowth - so the
+           blueprint simply asks again until the ground is actually clear,
+           rather than waiting forever on an order that has already been done. */
+        const k = HF.U.key(b.x, b.y);
+        if (!game.designations[k]) {
+          game.designations[k] = {
+            type: 'clear', x: b.x, y: b.y, workDone: 0, claimedBy: null,
+            work: HF.Map.workFor(game, 'clear', b.x, b.y),
+          };
+        }
+        continue;
+      }
+      const tile = HF.Map.at(game, b.x, b.y);
+      if (!tile || tile.building != null) continue;
+      b.awaitingClear = false;
+      tile.building = b.id;
+      game.dirtyTerrain = true;
+      if (HF.BUILDINGS[b.type].encloses) game.roomsDirty = true;
     }
   },
 
@@ -4072,7 +4214,10 @@ HF.Game.prototype = {
     if (this.designations[key]) return false;
     if (tile.building != null) return false;
     if (!HF.ORDERS[type].valid(tile)) return false;
-    this.designations[key] = { type: type, x: x, y: y, workDone: 0, claimedBy: null };
+    this.designations[key] = {
+      type: type, x: x, y: y, workDone: 0, claimedBy: null,
+      work: HF.Map.workFor(this, type, x, y),
+    };
     return true;
   },
 
@@ -4136,6 +4281,7 @@ HF.Game.prototype = {
     for (const c of this.colonists) {
       if (!c.dead) HF.Jobs.tick(this, c);
     }
+    if (this.dirtyTerrain) HF.Build.settleBlueprints(this);
 
     // Raiders move on a coarser beat than villagers; they are a threat, not a
     // thing to admire, and stepping them every tick made them twitch.
@@ -4165,6 +4311,7 @@ HF.Game.prototype = {
 
     this.spoiledToday = false;
 
+    HF.Build.settleBlueprints(this);
     HF.Build.tickFarms(this);
     HF.Build.tickRegrowth(this);
     HF.Events.tick(this);
@@ -4812,6 +4959,7 @@ HF.Render = (function () {
 
     if (!b.built) {
       ctx.save();
+      if (b.awaitingClear) ctx.globalAlpha = 0.5;   // the ground is not ready yet
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = 'rgba(198,220,240,0.9)';
       ctx.lineWidth = 1.6;
@@ -5209,9 +5357,15 @@ HF.Render = (function () {
        every tile the plan actually touches is marked green if it will take and
        red if it will not - so a wall drawn across a river shows you the gap
        before you let go, and a room outline shows as an outline. */
+    const waiting = {};
+    for (const b of game.buildings) {
+      if (b && b.awaitingClear && !b.cancelled) waiting[HF.U.key(b.x, b.y)] = b;
+    }
+
     const ghost = {};
     if (view.plan) {
       for (const t of view.plan.ok) ghost[HF.U.key(t.x, t.y)] = 'ok';
+      for (const t of (view.plan.clearing || [])) ghost[HF.U.key(t.x, t.y)] = 'clear';
       for (const t of view.plan.bad) ghost[HF.U.key(t.x, t.y)] = 'bad';
     }
     const dragRect = view.drag ? {
@@ -5246,10 +5400,14 @@ HF.Render = (function () {
         const mark = ghost[key];
         if (mark) {
           const tp = I.toScreen(x, y, I.elevOf(game.tiles[y * game.w + x]));
-          ctx.fillStyle = mark === 'ok' ? 'rgba(126,196,106,0.34)' : 'rgba(196,70,47,0.34)';
+          ctx.fillStyle = mark === 'ok' ? 'rgba(126,196,106,0.34)'
+                        : mark === 'clear' ? 'rgba(208,162,74,0.34)'
+                        : 'rgba(196,70,47,0.34)';
           diamond(tp.sx, tp.sy, I.HW - 2, I.HH - 1);
           ctx.fill();
-          ctx.strokeStyle = mark === 'ok' ? 'rgba(160,225,140,0.9)' : 'rgba(230,110,90,0.9)';
+          ctx.strokeStyle = mark === 'ok' ? 'rgba(160,225,140,0.9)'
+                          : mark === 'clear' ? 'rgba(232,196,110,0.95)'
+                          : 'rgba(230,110,90,0.9)';
           ctx.lineWidth = 1.5;
           ctx.stroke();
         } else if (dragRect && x >= dragRect.x0 && x <= dragRect.x1 &&
@@ -5276,6 +5434,11 @@ HF.Render = (function () {
           const b = game.buildings[tile.building];
           if (b) drawBuilding(game, b, season);
         }
+        // Blueprints waiting for their ground to be cleared do not hold a tile
+        // yet, so they have to be looked up by position or they would be
+        // invisible until the trees came down.
+        const pending = waiting[key];
+        if (pending) drawBuilding(game, pending, season);
 
         const here = byTile[key];
         if (here) {
@@ -5450,6 +5613,8 @@ HF.UI = (function () {
         for (const r in plan.cost) parts.push(plan.cost[r] + ' ' + HF.RESOURCES[r].label.toLowerCase());
         warn = !affordable(plan.cost);
         text = def.label + ' &times;' + n + (parts.length ? ' &middot; ' + parts.join(' + ') : '');
+        const clearing = (plan.clearing || []).length;
+        if (clearing) text += ' &middot; ' + clearing + ' to clear first';
         if (warn) text += ' &middot; not in store yet';
       } else if (plan.kind === 'order') {
         text = HF.ORDERS[plan.id].label + ' &times;' + n;
@@ -5918,17 +6083,20 @@ HF.UI = (function () {
     const kind = view.mode.kind, id = view.mode.id;
     if (kind === 'none') return null;
     const tiles = tilesFor(drag, kind, id);
-    const plan = { kind: kind, id: id, ok: [], bad: [], cost: {}, reason: null };
+    const plan = { kind: kind, id: id, ok: [], bad: [], clearing: [], cost: {}, reason: null };
 
     for (const t of tiles) {
       if (kind === 'order') {
         const tile = HF.Map.at(game, t.x, t.y);
-        const free = tile && !game.designations[HF.U.key(t.x, t.y)] && tile.building == null;
+        const here = game.designations[HF.U.key(t.x, t.y)];
+        const free = tile && !here && tile.building == null;
         (free && HF.ORDERS[id].valid(tile) ? plan.ok : plan.bad).push(t);
       } else if (kind === 'build') {
         const res = HF.Build.canPlace(game, id, t.x, t.y);
-        if (res.ok) plan.ok.push(t);
-        else { plan.bad.push(t); plan.reason = plan.reason || res.reason; }
+        if (res.ok) {
+          plan.ok.push(t);
+          if (res.needsClearing) plan.clearing.push(t);
+        } else { plan.bad.push(t); plan.reason = plan.reason || res.reason; }
       } else if (kind === 'cancel') {
         const b = game.buildingAt(t.x, t.y);
         const hasOrder = !!game.designations[HF.U.key(t.x, t.y)];

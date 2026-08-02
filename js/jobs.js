@@ -28,7 +28,7 @@ HF.Jobs = {
     }
     if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
-      if (!b || b.cancelled) return false;
+      if (!b || b.cancelled || b.awaitingClear) return false;
       return b.deconstruct ? true : !b.built;
     }
     if (task.targetType === 'station') {
@@ -78,6 +78,8 @@ HF.Jobs = {
         if (!b || b.cancelled) continue;
         if (b.claimedBy != null && b.claimedBy !== c.id) continue;
         if (b.built && !b.deconstruct) continue;
+        // Still waiting for the trees on its tile to come down.
+        if (b.awaitingClear) continue;
         // A blueprint the stores cannot cover waits instead of blocking the
         // builder, so drawing a whole house at once is a plan rather than a
         // jam. It gets picked up the moment the timber lands.
@@ -373,7 +375,7 @@ HF.Jobs = {
       const d = game.designations[task.targetKey];
       if (!d) { c.task = null; return; }
       d.workDone += amount;
-      if (d.workDone >= HF.ORDERS[d.type].work) HF.Jobs.completeDesignation(game, c, d);
+      if (d.workDone >= (d.work || HF.ORDERS[d.type].work)) HF.Jobs.completeDesignation(game, c, d);
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       if (!b) { c.task = null; return; }
@@ -449,8 +451,18 @@ HF.Jobs = {
 
   completeDesignation: function (game, c, d) {
     const tile = HF.Map.at(game, d.x, d.y);
-    const yields = HF.YIELDS[d.type] || {};
+    const key = HF.U.key(d.x, d.y);
     let scale = 1;
+
+    // Clearing does whatever the tile calls for: fell it if it is standing
+    // timber, pick it if it is a plant. Resolved here rather than at
+    // designation time so a tile that changed underneath still does the right
+    // thing.
+    if (d.type === 'clear') {
+      d = Object.assign({}, d, {
+        type: (tile.terrain === 'forest' || tile.terrain === 'bamboo') ? 'chop' : 'forage',
+      });
+    }
 
     if (d.type === 'chop') {
       // Remember what stood here, so bamboo grows back as bamboo and on its own
@@ -480,9 +492,11 @@ HF.Jobs = {
       if (farm) farm.growth = 0;
     }
 
+    const yields = HF.YIELDS[d.type] || {};
     for (const r in yields) game.addResource(r, Math.round(yields[r] * scale));
+    // A blueprint may have been waiting on this ground being cleared.
     game.dirtyTerrain = true;
-    delete game.designations[HF.U.key(d.x, d.y)];
+    delete game.designations[key];
     c.task = null;
   },
 
