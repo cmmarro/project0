@@ -130,6 +130,12 @@ kbd {
 .stat.food  .value { color: var(--rice); }
 .stat.wood  .value { color: var(--timber); }
 .stat.stone .value { color: var(--stone); }
+.stat.hemp  .value { color: #9fae72; }
+.stat.herb  .value { color: #7fb08a; }
+.stat.cloth .value { color: #cfc0a8; }
+.stat.med   .value { color: #c98fa8; }
+/* Crafted stores are narrower - they have no cap to show. */
+.stat.minor { min-width: 0; }
 
 /* The levy clock. It escalates in colour as it comes due, and turns vermilion
    when the granary cannot cover it. */
@@ -446,6 +452,68 @@ kbd {
 .bar.rest .fill { background: #3a5a72; }
 .bar.mood .fill { background: #7a5c2c; }
 .bar.hp   .fill { background: #7a3a2f; }
+
+/* ---------- the clock and the speed control ---------- */
+
+#clock { flex-shrink: 0; text-align: right; min-width: 62px; }
+.clock-time {
+  font: 600 15px/1.15 var(--display);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.clock-phase {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.clock-phase.day   { color: #d9c14a; }
+.clock-phase.dawn  { color: #e0a06a; }
+.clock-phase.dusk  { color: #c98a6a; }
+.clock-phase.night { color: #7f92c6; }
+
+#speed { display: flex; gap: 4px; flex: 1; }
+#speed button {
+  flex: 1;
+  min-width: 44px;
+  padding: 9px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--ink-dim);
+  font: 600 13px/1.2 var(--ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+#speed button:hover { background: #2a3242; }
+#speed button.on {
+  border-color: var(--gold);
+  background: #2a2416;
+  color: var(--gold);
+}
+
+/* ---------- grouped build list ---------- */
+
+.pick-group {
+  padding: 13px 15px 5px;
+  border-top: 1px solid var(--line);
+}
+.pick-group:first-child { border-top: 0; }
+.pick-group-name {
+  display: block;
+  font: 600 10px/1 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.pick-group-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+.pick.chosen { border-color: var(--gold); background: #221d12; }
 
 /* ---------- choosing how hard the world presses ---------- */
 
@@ -835,12 +903,17 @@ kbd {
 .pick:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .pick-mark { width: 12px; height: 12px; border-radius: 3px; background: var(--ink-dim); }
-.pick-mark.build.house      { background: #b59660; }
-.pick-mark.build.storehouse { background: #ded7c4; }
+.pick-mark.build.wall       { background: #8a6f4a; }
+.pick-mark.build.door       { background: #8d6a45; }
+.pick-mark.build.ishigaki   { background: #9b958a; }
+.pick-mark.build.futon      { background: #cfc0a8; }
+.pick-mark.build.hearth     { background: #d9702a; }
+.pick-mark.build.table      { background: #a37f52; }
+.pick-mark.build.chest      { background: #8a6a45; }
 .pick-mark.build.farm       { background: #4d7a72; }
-.pick-mark.build.campfire   { background: #d9702a; }
+.pick-mark.build.bench      { background: #9a7a4e; }
+.pick-mark.build.storehouse { background: #ded7c4; }
 .pick-mark.build.tower      { background: #8a6c4c; }
-.pick-mark.build.wall       { background: #9b958a; }
 
 .pick-name { display: block; font: 600 14px/1.3 var(--display); }
 .pick-name em { font-style: normal; font-size: 11px; color: var(--ink-dim); }
@@ -986,6 +1059,7 @@ kbd {
       <div class="brand"><span class="mark">百姓</span><span class="name">Hyakushō</span></div>
       <div id="stats"></div>
       <div id="levy"></div>
+      <div id="clock"></div>
       <div id="calendar"></div>
     </header>
 
@@ -1006,44 +1080,43 @@ kbd {
       <div id="help">
         <div class="sheet">
           <h2>How to hold a village together</h2>
-          <p class="lede">Four peasants, one valley, four years. Nothing happens until you end
-             the turn, so there is no hurry &mdash; only consequences.</p>
+          <p class="lede">Four peasants and a valley. The clock runs on its own &mdash;
+             set the speed at the bottom, or pause with <kbd>Space</kbd> and take as long
+             as you like.</p>
           <ol class="steps">
-            <li><b>Your first year is nearly free.</b> Newly opened land is taxed lightly, so the
-                first levy asks only 18 koku. Use the year to learn the valley. The asking then
-                climbs: 55, then 100, then 155.</li>
-            <li><b>Standing, not strikes.</b> Falling short costs the castle's regard in
-                proportion to how far short you fall &mdash; a few koku is a note in a ledger,
-                half the demand is a mark against the village. Run it to nothing and the village
-                is broken up. Tap the levy chip to read the ledger.</li>
-            <li><b>There is more than one way to pay.</b> Traders come up the valley with a single
-                offer &mdash; timber for rice, rice for stone, take it or leave it. A village that
-                cuts bamboo or traps fish can buy its way to the levy without a paddy in sight.</li>
-            <li><b>The ground decides the harvest.</b> Paddies ripen half again as fast on
-                <b>reed marsh</b>, slowly on dry <b>moor</b>. <b>Bamboo</b> pays less than pine but
-                grows back inside the year. Read the valley before you plan it.</li>
-            <li><b>Build shelter before winter.</b> A <b>Minka</b> sleeps two; villagers without a
-                bed lose heart. A <b>Hearth Fire</b> keeps anyone within five tiles alive through
-                the cold. A <b>Kura</b> raises how much you can store &mdash; everything over the
-                cap rots.</li>
-            <li><b>You give orders, not commands.</b> Choose a work order or a building, then drag
-                across the map. Villagers pick up the nearest job they are willing to do; the
-                toggles under each name in <b>Village</b> decide what that is.</li>
-            <li><b>Bandits come from year two.</b> Villagers fight automatically when one gets
-                close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
-                waste turns breaking through.</li>
-            <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is not a mood
-                dial &mdash; it is a list of reasons, each one named and counted. Fix the reasons
-                and the number follows. Tap their name to call them something of your own.</li>
+            <li><b>Days pass, and people sleep.</b> A day is forty seconds at 1&times;. Villagers
+                work from dawn, go to bed around nine, and get up at first light. Watch the
+                valley go dark and the hearths come on.</li>
+            <li><b>Build a room, not a house.</b> There is no pre-fab hut. Raise
+                <b>timber walls</b> in a ring, hang a <b>door</b>, and lay a <b>futon</b>
+                inside. Anywhere fully enclosed counts as indoors: warm through winter, and
+                the only place anyone sleeps properly.</li>
+            <li><b>Furnish it.</b> An <b>irori</b> hearth keeps a room alive through the cold
+                and lights it after dark. A <b>chest</b> holds more stores. A <b>low table</b>
+                is somewhere to eat that is not the floor.</li>
+            <li><b>The valley grows more than rice.</b> Bracken in spring; hemp and chestnuts
+                through summer; mushrooms and wild yam in autumn. Each is only worth taking in
+                its own season. <b>Herbs</b> and <b>hemp</b> are useless raw.</li>
+            <li><b>Make things.</b> Build a <b>work bench</b> and tap it to set what it makes:
+                hemp into cloth, herbs into medicine, or a glut of rice dried into more than
+                you started with. Villagers come and work it on their own.</li>
+            <li><b>You give orders, not commands.</b> Choose a work order or a building, then
+                drag across the map. Villagers pick up the nearest job they are willing to do;
+                the toggles under each name in <b>Village</b> decide what that is.</li>
+            <li><b>The levy, if you want one.</b> The daimyō's collectors come each autumn:
+                18 koku, then 55, then 100, then 155. Falling short costs standing in
+                proportion. Tap the levy chip to read the ledger.</li>
+            <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is a list of
+                named reasons, not a dial. Fix the reasons and the number follows. Tap their
+                name to call them something of your own.</li>
           </ol>
           <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
-             to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
-             chosen, dragging paints instead &mdash; tap the chip at the bottom of the map to put
-             it down.</p>
-          <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> end turn &middot; <kbd>B</kbd> build
-             menu &middot; <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot;
-             <kbd>X</kbd> cancel tool &middot; <kbd>Esc</kbd> put the tool down &middot;
-             <kbd>H</kbd> this page</p>
+             to zoom, tap a tile to inspect it, tap a villager to select them, tap a bench to set
+             its work. While a tool is chosen, dragging paints instead.</p>
+          <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> pause &middot;
+             <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> speed &middot; <kbd>B</kbd> build menu &middot;
+             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot; <kbd>X</kbd> cancel tool
+             &middot; <kbd>Esc</kbd> put the tool down &middot; <kbd>H</kbd> this page</p>
           <h3 class="pick-head">How hard should the world press?</h3>
           <div id="scenario-pick"></div>
           <button id="help-close">Begin</button>
@@ -1094,7 +1167,12 @@ kbd {
       </div>
       <div class="tool-row pinned">
         <button id="btn-panel" class="plain">Village</button>
-        <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
+        <div id="speed" role="group" aria-label="Speed">
+          <button data-speed="0" title="Pause (Space)" aria-label="Pause">&#10073;&#10073;</button>
+          <button data-speed="1" class="on" title="Normal speed">1&times;</button>
+          <button data-speed="2" title="Fast">2&times;</button>
+          <button data-speed="3" title="Fastest">4&times;</button>
+        </div>
       </div>
     </footer>
 
@@ -1124,34 +1202,60 @@ HF.CFG = {
   MAP_H: 28,
 
   START_COLONISTS: 4,
-  START_RES: { food: 55, wood: 45, stone: 12 },
+  /* Enough rice to reach the first harvest. A paddy takes a fortnight to come
+     in and four people eat about four koku a day, so anything less than this
+     is a village that starves before its first crop through no fault of the
+     player's. */
+  START_RES: { food: 95, wood: 60, stone: 12, cloth: 6 },
   BASE_STORAGE: 150,
 
-  MOVE_BUDGET: 3,          // movement points per villager per turn
-  TURNS_PER_SEASON: 10,
   SEASONS: ['Spring', 'Summer', 'Autumn', 'Winter'],
 
-  FOOD_DECAY: 1.7,
-  REST_DECAY: 2.0,
-  EAT_THRESHOLD: 34,
-  SLEEP_THRESHOLD: 24,
-  WAKE_AT: 92,
+  /* ---------- rates, all per tick ----------
+     A tick is a tenth of an in-game hour. These were per-turn numbers when a
+     turn was a keystroke; every one of them has been divided down so that a
+     villager gets through roughly the same day, but does it in front of you. */
+  TICKS_PER_TILE: 5,       // on cost-1 ground, before terrain cost
+  WORK_PER_TICK: 0.26,     // multiplied by the villager's work rate
+
+  FOOD_DECAY: 0.21,        // full to empty in a bit over two days
+
+  /* Rest is tuned so the cycle closes on twenty-four hours. Awake from six to
+     nine is fifteen hours and costs about seventy-five; a night on a futon
+     puts it back. Get this wrong by a little and sleep slowly walks around the
+     clock until the village is napping at noon - which is exactly what the
+     first pass did. */
+  /* A fifteen-hour day costs 57 rest. A night on a futon puts back 76 and
+     tops out; a night on the ground puts back 45, so sleeping rough loses
+     about twelve a day and degrades over a week rather than immediately. That
+     margin is the whole point: it has to be bad enough to make beds urgent and
+     survivable enough that the first week is not spent napping in a field. */
+  REST_DECAY: 0.38,
+  EAT_THRESHOLD: 38,
+  SLEEP_THRESHOLD: 22,
+  WAKE_AT: 88,
   MEAL_FOOD: 1,
   MEAL_RESTORE: 46,
-  BED_REST: 13,
-  GROUND_REST: 6,
+  BED_REST: 0.85,          // a futon: a night's sleep fills the bar and no more
+  ROOM_REST_BONUS: 0.25,   // indoors and out of the weather
+  GROUND_REST: 0.5,        // sleeping rough slowly loses ground
 
+  /* Health, per tick. These were the last numbers still carrying their
+     per-turn values, which at 240 ticks a day meant an empty stomach killed
+     somebody in seventeen hours and a winter afternoon outdoors cost half
+     their health. Both are meant to be problems you get a few days to solve. */
   COLONIST_HP: 60,
-  STARVE_DAMAGE: 3,
-  COLD_DAMAGE: 1,
-  REGEN: 1,
+  STARVE_DAMAGE: 0.075,    // about three days from full health to dead
+  COLD_DAMAGE: 0.037,      // a week of winter nights outdoors
+  REGEN: 0.058,            // fed and warm, back to full in four days
 
   GRIEF_CAP: 12,           // ceiling on the village-wide mourning thought
 
-  RAID_START_TURN: 42,
-  RAID_MIN_GAP: 24,
-  RAID_MAX_GAP: 38,
-  MIGRANT_GAP: 26,
+  /* Everything scheduled is now counted in days rather than turns. */
+  RAID_START_DAY: 50,
+  RAID_MIN_GAP: 28,
+  RAID_MAX_GAP: 44,
+  MIGRANT_GAP: 30,
 
   /* The spine of the game. The daimyo's collectors come after each harvest,
      before winter, and they do not care whether you can spare it.
@@ -1162,10 +1266,10 @@ HF.CFG = {
      roughly doubles each autumn, so the difficulty arrives as a ramp instead of
      a wall. */
   LEVY: {
-    turns: [40, 80, 120, 160],
+    days: [36, 84, 132, 180],   // after each autumn harvest, before winter
     demands: [18, 55, 100, 155],
     laterIncrease: 60,      // per year beyond the fourth
-    warnAhead: 10,
+    warnAhead: 9,           // days of notice
   },
 
   /* Standing is what the castle thinks of the village, and it replaced a
@@ -1187,12 +1291,12 @@ HF.CFG = {
     walkOutBelow: 22,       // desperate villages start losing people
   },
 
-  VICTORY_TURN: 160,        // end of the fourth year
+  VICTORY_DAY: 192,         // end of the fourth year
 
   /* Merchants come up the valley with a single offer, take it or leave it.
      This is the freedom valve: it is what makes a timber village or a fishing
      village viable when the castle only ever asks for rice. */
-  MERCHANT: { firstTurn: 14, gap: [10, 16], standFor: 4 },
+  MERCHANT: { firstDay: 12, gap: [9, 15], standFor: 4 },   // days
 
   SKILL_MAX: 10,
   XP_PER_LEVEL: 14,
@@ -1222,11 +1326,96 @@ HF.SCENARIOS = {
 };
 HF.DEFAULT_SCENARIO = 'quiet';
 
-/* What the player calls each resource. */
+/* What the player calls each resource. Hemp and herbs come off the land and are
+   useless until worked; cloth and medicine are what a villager makes of them at
+   a bench. Keeping the crafted pair small is deliberate - a longer chain would
+   be more to explain and no more to decide. */
 HF.RESOURCES = {
-  food:  { label: 'Rice',   unit: 'koku', color: '#d8c26a' },
-  wood:  { label: 'Timber', unit: '',     color: '#c69a63' },
-  stone: { label: 'Stone',  unit: '',     color: '#a8b0bb' },
+  food:  { label: 'Rice',     unit: 'koku', color: '#d8c26a', short: 'Rice' },
+  wood:  { label: 'Timber',   unit: '',     color: '#c69a63', short: 'Timber' },
+  stone: { label: 'Stone',    unit: '',     color: '#a8b0bb', short: 'Stone' },
+  hemp:  { label: 'Hemp',     unit: '',     color: '#9fae72', short: 'Hemp' },
+  herb:  { label: 'Herbs',    unit: '',     color: '#7fb08a', short: 'Herbs' },
+  cloth: { label: 'Cloth',    unit: '',     color: '#cfc0a8', short: 'Cloth' },
+  med:   { label: 'Medicine', unit: '',     color: '#c98fa8', short: 'Med' },
+};
+
+/* ---------- what grows wild ----------
+   Each is a tile feature with a season it can be taken in, so the year has a
+   shape beyond the rice: bracken in spring, mushrooms after the autumn rain,
+   hemp standing through the summer. Foraging used to be one bush that did the
+   same thing all year. */
+HF.PLANTS = {
+  chestnut: {
+    id: 'chestnut', label: 'Chestnut', order: 'forage',
+    yields: { food: 8 }, work: 6, regrow: [22, 34],
+    seasons: ['Summer', 'Autumn'],
+    on: ['grass', 'moor'], chance: 0.05,
+    note: 'Food, in autumn especially.',
+  },
+  bracken: {
+    id: 'bracken', label: 'Bracken', order: 'forage',
+    yields: { food: 5 }, work: 4, regrow: [14, 22],
+    seasons: ['Spring'],
+    on: ['grass', 'moor', 'forest'], chance: 0.05,
+    note: 'Warabi shoots. Only worth taking in spring.',
+  },
+  mushroom: {
+    id: 'mushroom', label: 'Mushrooms', order: 'forage',
+    yields: { food: 7 }, work: 4, regrow: [12, 20],
+    seasons: ['Autumn'],
+    on: ['forest', 'bamboo'], chance: 0.07,
+    note: 'Under the pines, after the autumn rain.',
+  },
+  yam: {
+    id: 'yam', label: 'Wild Yam', order: 'forage',
+    yields: { food: 11 }, work: 9, regrow: [30, 46],
+    seasons: ['Autumn', 'Winter'],
+    on: ['forest', 'hill', 'moor'], chance: 0.035,
+    note: 'Hard digging, but it keeps, and it is there in winter.',
+  },
+  hemp: {
+    id: 'hemp', label: 'Wild Hemp', order: 'forage',
+    yields: { hemp: 9 }, work: 7, regrow: [24, 36],
+    seasons: ['Summer', 'Autumn'],
+    on: ['grass', 'moor', 'marsh'], chance: 0.05,
+    note: 'Asa. Worthless until it is woven.',
+  },
+  herb: {
+    id: 'herb', label: 'Medicinal Herbs', order: 'forage',
+    yields: { herb: 6 }, work: 5, regrow: [26, 40],
+    seasons: ['Spring', 'Summer', 'Autumn'],
+    on: ['grass', 'marsh', 'forest', 'hill'], chance: 0.035,
+    note: 'No use raw. Ground at a bench it becomes medicine.',
+  },
+  fish: {
+    id: 'fish', label: 'Fish', order: 'fish',
+    yields: { food: 7 }, work: 13, regrow: [20, 32],
+    seasons: ['Spring', 'Summer', 'Autumn', 'Winter'],
+    on: ['water'], chance: 0.09,
+    note: 'The one thing the river gives all year.',
+  },
+};
+
+/* Recipes worked at a bench. The player turns one on and villagers keep at it
+   while the materials last. */
+HF.RECIPES = {
+  cloth: {
+    id: 'cloth', label: 'Weave Cloth', station: 'bench',
+    cost: { hemp: 6 }, yields: { cloth: 3 }, work: 22, skill: 'construction',
+    note: 'Hemp into cloth. A futon needs it, and so does anyone cold.',
+  },
+  medicine: {
+    id: 'medicine', label: 'Grind Medicine', station: 'bench',
+    cost: { herb: 5 }, yields: { med: 2 }, work: 18, skill: 'farming',
+    note: 'Herbs into medicine. The injured mend far faster with it to hand.',
+  },
+  preserve: {
+    id: 'preserve', label: 'Dry and Salt', station: 'bench',
+    cost: { food: 14 }, yields: { food: 20 }, work: 26, skill: 'farming',
+    note: 'Slow work that turns a glut into more than you started with. ' +
+          'Only worth doing when the kura is full and the levy is far off.',
+  },
 };
 
 /* ---------- terrain ----------
@@ -1277,10 +1466,14 @@ HF.ORDERS = {
     hint: 'Cut stone from slopes and mountains. Mountains are worked from an adjacent tile.',
   },
   forage: {
-    id: 'forage', label: 'Gather Chestnuts', verb: 'Gathering', key: 'F', work: 6, workType: 'farm',
+    id: 'forage', label: 'Forage', verb: 'Gathering', key: 'F', work: 6, workType: 'farm',
     color: '#c9738a',
-    valid: function (t) { return t.feature === 'chestnut'; },
-    hint: 'Gather chestnuts for the stores. They ripen again, but never in winter.',
+    valid: function (t) {
+      const pl = HF.PLANTS[t.feature];
+      return !!pl && pl.order === 'forage';
+    },
+    hint: 'Take whatever is growing: bracken in spring, hemp and chestnuts in ' +
+          'summer, mushrooms and yam in autumn. Out of season it is not worth the walk.',
   },
   fish: {
     id: 'fish', label: 'Set Fish Traps', verb: 'Fishing', key: 'T', work: 13, workType: 'farm',
@@ -1297,72 +1490,131 @@ HF.ORDERS = {
   },
 };
 
-/* ---------- buildings ---------- */
+/* ---------- what you can put on a tile ----------
+   Three categories, because they answer different questions. Structures make a
+   room; furniture makes it worth being in; works are the things that produce.
+
+   A minka used to be a single stamp that was a house, two beds and shelter all
+   at once. Now you build the walls, hang a door, and lay futons inside - and
+   the room being enclosed is what makes it warm and the sleep worth having. */
+HF.BUILD_CATEGORIES = [
+  { id: 'structure', label: 'Structure', note: 'Walls and doors. Enclose a space and it becomes a room.' },
+  { id: 'furniture', label: 'Furniture', note: 'What makes a room worth sleeping in.' },
+  { id: 'works',     label: 'Works',     note: 'Paddies, benches, and the rest of the working village.' },
+];
+
 HF.BUILDINGS = {
-  house: {
-    id: 'house', label: 'Minka', sub: 'farmhouse',
-    cost: { wood: 22 }, work: 26, beds: 2,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'A thatched farmhouse. Sleeps two. Villagers with a bed work harder and keep their spirits.',
+  /* ---- structure ---- */
+  wall: {
+    id: 'wall', label: 'Timber Wall', sub: '', cat: 'structure',
+    cost: { wood: 4 }, work: 7, blocks: true, encloses: true, hp: 55,
+    adjacentWork: true,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Quick to raise. Enclose a space with these and what is inside is a room.',
   },
-  storehouse: {
-    id: 'storehouse', label: 'Kura', sub: 'granary',
-    cost: { wood: 28 }, work: 24, storage: 150,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'A plastered granary. Raises the cap on every store by 150. Anything over the cap rots.',
+  door: {
+    id: 'door', label: 'Door', sub: '', cat: 'structure',
+    cost: { wood: 5 }, work: 8, encloses: true, hp: 35,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Seals a room but lets people through. A room with no door is a box.',
   },
+  ishigaki: {
+    id: 'ishigaki', label: 'Ishigaki', sub: 'stone rampart', cat: 'structure',
+    cost: { stone: 6 }, work: 12, blocks: true, encloses: true, hp: 80,
+    adjacentWork: true,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Impassable and slow to break. Bandits must come through it.',
+  },
+
+  /* ---- furniture ---- */
+  futon: {
+    id: 'futon', label: 'Futon', sub: 'bed', cat: 'furniture',
+    cost: { wood: 3, cloth: 2 }, work: 9, beds: 1,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'One person sleeps here. Indoors and near a hearth, they sleep properly.',
+  },
+  hearth: {
+    id: 'hearth', label: 'Irori', sub: 'hearth', cat: 'furniture',
+    cost: { stone: 4, wood: 6 }, work: 10, warmth: 5,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'A sunken hearth. Keeps anyone within five tiles alive through winter, ' +
+          'and lights the room after dark.',
+  },
+  table: {
+    id: 'table', label: 'Low Table', sub: '', cat: 'furniture',
+    cost: { wood: 8 }, work: 12, social: 4,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Somewhere to eat that is not the floor. Anyone eating near one is the ' +
+          'better for it.',
+  },
+  chest: {
+    id: 'chest', label: 'Storage Chest', sub: '', cat: 'furniture',
+    cost: { wood: 10 }, work: 11, storage: 70,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Raises what the village can hold by 70. Cheaper than a kura, and fits inside.',
+  },
+
+  /* ---- works ---- */
   farm: {
-    id: 'farm', label: 'Rice Paddy', sub: '',
+    id: 'farm', label: 'Rice Paddy', sub: '', cat: 'works',
     cost: { wood: 5 }, work: 12, farm: true,
     on: ['grass', 'marsh', 'moor'],
-    desc: 'Floods, ripens, and asks to be harvested. Ripens half again as fast on reed marsh, ' +
-          'and slowly on dry moor - where you put it matters more than how many you have.',
+    desc: 'Floods, ripens, and asks to be harvested. Half again as fast on reed ' +
+          'marsh, and slow on dry moor.',
   },
-  campfire: {
-    id: 'campfire', label: 'Hearth Fire', sub: '',
-    cost: { wood: 12 }, work: 8, warmth: 5,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'Keeps anyone within five tiles alive through the winter cold.',
+  bench: {
+    id: 'bench', label: 'Work Bench', sub: 'craft', cat: 'works',
+    cost: { wood: 14 }, work: 16, station: 'bench',
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Weaves hemp into cloth, grinds herbs into medicine, dries a glut of ' +
+          'rice into more than you started with. Tap it to choose the work.',
+  },
+  storehouse: {
+    id: 'storehouse', label: 'Kura', sub: 'granary', cat: 'works',
+    cost: { wood: 28, stone: 6 }, work: 24, storage: 150,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'A plastered granary. Raises the cap on every store by 150. Anything ' +
+          'over the cap rots.',
   },
   tower: {
-    id: 'tower', label: 'Yagura', sub: 'watchtower',
+    id: 'tower', label: 'Yagura', sub: 'watchtower', cat: 'works',
     cost: { wood: 16, stone: 8 }, work: 22, guard: 6, guardBonus: 4,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'Villagers fighting within six tiles strike harder. Bandits are the price of a full granary.',
-  },
-  wall: {
-    id: 'wall', label: 'Ishigaki', sub: 'stone rampart',
-    cost: { stone: 6 }, work: 10, blocks: true, hp: 80,
-    adjacentWork: true,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'Impassable. Bandits must break it down, which costs them turns you can use.',
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Villagers fighting within six tiles strike harder.',
   },
 };
 
 HF.FARM = {
-  RIPE_AT: 20,
+  RIPE_AT: 14,              // days, at spring growth on ordinary ground
   YIELD: 13,
   GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 },
   /* Where a paddy sits is a real decision: wet ground is worth walking to. */
   SOIL: { marsh: 1.5, grass: 1.0, moor: 0.6 },
 };
 
+/* Chopping is the only order whose yield still lives here; everything foraged
+   or trapped reads its own numbers off HF.PLANTS, so adding a plant is one
+   entry and no edits anywhere else. */
 HF.YIELDS = {
   chop:    { wood: 12 },
   mine:    { stone: 10 },
-  forage:  { food: 8 },
-  fish:    { food: 7 },
   harvest: { food: HF.FARM.YIELD },
 };
 
-/* How long a stripped tile takes to come back, and as what. Bamboo is the
-   point of the pair: it yields less per cut than pine but returns inside a
-   year, so a bamboo valley can be logged over and over. */
+/* How long a felled grove takes to come back, and as what. Bamboo is the point
+   of the pair: less per cut than pine, but back inside the year, so a bamboo
+   valley can be logged over and over. Plants carry their own regrow times. */
 HF.REGROW = {
-  forest: { turns: [55, 85], yieldScale: 1 },
-  bamboo: { turns: [16, 26], yieldScale: 0.6 },
-  chestnut: { turns: [22, 34] },
-  fish: { turns: [20, 32] },
+  forest: { regrow: [55, 85], yieldScale: 1 },
+  bamboo: { regrow: [16, 26], yieldScale: 0.6 },
+};
+
+/* Is this plant worth taking right now? Out of season it is still standing
+   there - it just yields nothing worth the walk, which is what gives the year
+   its shape. */
+HF.plantInSeason = function (plantId, season) {
+  const pl = HF.PLANTS[plantId];
+  return !!pl && pl.seasons.indexOf(season) !== -1;
 };
 
 /* ---------- character ----------
@@ -1380,7 +1632,7 @@ HF.ORIGINS = [
   'is a third child, and will inherit nothing',
   'carried baggage behind an army and thought better of it',
   'was sold to a silk house as a child and walked home',
-  'lost a husband to a lord’s quarrel and never learned which one',
+  'lost a husband to a lord\u2019s quarrel and never learned which one',
   'has worked this valley since before the wars',
   'deserted an ashigaru levy and does not speak of it',
   'held a spear for a house that no longer exists',
@@ -1408,12 +1660,12 @@ HF.MARKS = [
 /* One mechanical hook each, and every hook shows up by name in the villager's
    thoughts - a trait the player cannot see the effect of is not a trait. */
 HF.TRAITS = {
-  steady:     { label: 'Steady',    note: 'Hardship lands lighter than it does on others.' },
-  sullen:     { label: 'Sullen',    note: 'Takes everything harder than it is.' },
-  devout:     { label: 'Devout',    note: 'Finds meaning where others find only work.' },
-  homesick:   { label: 'Homesick',  note: 'This is not home yet. A village of five buildings might be.' },
-  tough:      { label: 'Tough',     note: 'Harder to kill than they look.' },
-  diligent:   { label: 'Diligent',  note: 'Works faster at everything, and always has.' },
+  steady:   { label: 'Steady',   note: 'Hardship lands lighter than it does on others.' },
+  sullen:   { label: 'Sullen',   note: 'Takes everything harder than it is.' },
+  devout:   { label: 'Devout',   note: 'Finds meaning where others find only work.' },
+  homesick: { label: 'Homesick', note: 'This is not home yet. A village of five buildings might be.' },
+  tough:    { label: 'Tough',    note: 'Harder to kill than they look.' },
+  diligent: { label: 'Diligent', note: 'Works faster at everything, and always has.' },
 };
 
 HF.TRAIT_TUNING = {
@@ -1435,16 +1687,16 @@ HF.TRAIT_TUNING = {
    raised alongside Y". */
 HF.BONDS = ['kin to', 'the oldest friend of', 'a childhood companion of', 'in the debt of'];
 
-/* Thoughts that fade. Events leave a mark for a while and then stop mattering,
-   which is what lets a paid levy feel like relief and a missed one like a
-   shadow over the next few seasons. */
+/* Thoughts that fade, counted in days. Events leave a mark for a while and
+   then stop mattering, which is what lets a paid levy feel like relief and a
+   missed one like a shadow over the next few seasons. */
 HF.MEMORIES = {
-  levyPaid:    { label: 'The levy was paid',            delta: 8,   turns: 12 },
-  levyShort:   { label: 'The collectors took everything', delta: -10, turns: 15 },
-  levyStripped:{ label: 'The collectors stripped us bare', delta: -16, turns: 20 },
-  bondLost:    { label: 'Lost ',                        delta: -18, turns: 30 },
-  raidBroken:  { label: 'The raid was broken',          delta: 6,   turns: 8 },
-  buriedSomeone:{ label: 'A death in the village',      delta: -6,  turns: 12 },
+  levyPaid:     { label: 'The levy was paid',               delta: 8,   days: 10 },
+  levyShort:    { label: 'The collectors took everything',  delta: -10, days: 14 },
+  levyStripped: { label: 'The collectors stripped us bare', delta: -16, days: 18 },
+  bondLost:     { label: 'Lost ',                           delta: -18, days: 26 },
+  raidBroken:   { label: 'The raid was broken',             delta: 6,   days: 7 },
+  buriedSomeone:{ label: 'A death in the village',          delta: -6,  days: 11 },
 };
 
 /* ---------- names ----------
@@ -1543,6 +1795,85 @@ HF.U = {
 
     for (let i = 0; i < out.length; i++) out[i] /= total;
     return out;
+  },
+};
+
+/* ===== js/time.js ===== */
+/* The clock.
+
+   The game used to advance only when the player pressed a button, which meant
+   a day was a keystroke and nothing ever happened while you watched. Now it
+   runs on its own and the player sets the speed - so the unit of play is a
+   village going about its day rather than a turn being spent.
+
+   Everything downstream is expressed in ticks. A tick is the smallest thing
+   the simulation does; a day is TICKS_PER_DAY of them, and the seasons and the
+   levy are counted in days. Nothing here touches the DOM, so the whole clock
+   runs headlessly in a test. */
+window.HF = window.HF || {};
+
+HF.Time = {
+  TICKS_PER_HOUR: 10,
+  HOURS_PER_DAY: 24,
+  get TICKS_PER_DAY() { return this.TICKS_PER_HOUR * this.HOURS_PER_DAY; },   // 240
+
+  DAYS_PER_SEASON: 12,
+  get DAYS_PER_YEAR() { return this.DAYS_PER_SEASON * 4; },                   // 48
+
+  /* Sim ticks per real second at 1x. A day is about forty seconds, which is
+     long enough to watch somebody walk somewhere and short enough that a
+     season is not a chore. */
+  BASE_TPS: 6,
+  SPEEDS: [0, 1, 2, 4],
+  SPEED_LABELS: ['Paused', '1x', '2x', '4x'],
+
+  /* ---------- reading the clock ---------- */
+
+  day: function (tick) { return Math.floor(tick / HF.Time.TICKS_PER_DAY); },
+  tickOfDay: function (tick) { return tick % HF.Time.TICKS_PER_DAY; },
+  hour: function (tick) { return HF.Time.tickOfDay(tick) / HF.Time.TICKS_PER_HOUR; },
+
+  clockString: function (tick) {
+    const h = Math.floor(HF.Time.hour(tick));
+    const m = Math.floor((HF.Time.hour(tick) - h) * 60);
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  },
+
+  /* ---------- light ----------
+     One number from 0 (deep night) to 1 (full day), plus a name for it. The
+     renderer turns this into a single tint over the whole scene rather than
+     recolouring every tile, which is what makes a live day/night cycle cheap
+     enough to run at sixty frames on a phone. */
+  DAWN: 5, SUNUP: 7, SUNDOWN: 17.5, DUSK: 19.5,
+
+  light: function (tick) {
+    const h = HF.Time.hour(tick);
+    const T = HF.Time;
+    if (h >= T.SUNUP && h <= T.SUNDOWN) return 1;
+    if (h >= T.DUSK || h < T.DAWN) return 0;
+    if (h < T.SUNUP) return (h - T.DAWN) / (T.SUNUP - T.DAWN);
+    return 1 - (h - T.SUNDOWN) / (T.DUSK - T.SUNDOWN);
+  },
+
+  phase: function (tick) {
+    const h = HF.Time.hour(tick);
+    const T = HF.Time;
+    if (h >= T.SUNUP && h <= T.SUNDOWN) return 'day';
+    if (h >= T.DUSK || h < T.DAWN) return 'night';
+    return h < T.SUNUP ? 'dawn' : 'dusk';
+  },
+
+  isNight: function (tick) {
+    const h = HF.Time.hour(tick);
+    return h >= HF.Time.DUSK || h < HF.Time.DAWN;
+  },
+
+  /* Waking hours, used to decide whether somebody should be looking for a bed
+     rather than a job. Villagers still work through the night if they have to,
+     they just resent it. */
+  isSleepTime: function (tick) {
+    const h = HF.Time.hour(tick);
+    return h >= 21 || h < 6;
   },
 };
 
@@ -1666,8 +1997,15 @@ HF.Map = {
         else if (m < 0.40 && g < 0.50) terrain = 'moor';         // high and dry
         else terrain = 'grass';
 
-        if ((terrain === 'grass' || terrain === 'moor') && m > 0.4 && rng.chance(0.07)) {
-          feature = 'chestnut';
+        // Everything that grows wild is scattered from one table, so the mix
+        // of a valley follows from its ground rather than being hand-placed.
+        for (const id in HF.PLANTS) {
+          const pl = HF.PLANTS[id];
+          if (id === 'fish') continue;              // placed below, bank-side only
+          if (pl.on.indexOf(terrain) === -1) continue;
+          if (!rng.chance(pl.chance)) continue;
+          feature = id;
+          break;
         }
 
         tiles[i] = {
@@ -1694,7 +2032,7 @@ HF.Map = {
           const n = HF.Map.at(g, x + d[0], y + d[1]);
           if (n && HF.TERRAIN[n.terrain].passable) { bank = true; break; }
         }
-        if (bank && rng.chance(0.09)) t.feature = 'fish';
+        if (bank && rng.chance(HF.PLANTS.fish.chance)) t.feature = 'fish';
       }
     }
 
@@ -2066,8 +2404,8 @@ HF.Colonists = {
     if (!m) return;
     const label = m.label + (suffix || '');
     const existing = c.memories.find(function (o) { return o.label === label; });
-    if (existing) { existing.left = m.turns; return; }
-    c.memories.push({ label: label, delta: m.delta, left: m.turns });
+    if (existing) { existing.left = m.days; return; }
+    c.memories.push({ label: label, delta: m.delta, left: m.days });
   },
 
   rememberAll: function (game, key, suffix) {
@@ -2102,6 +2440,9 @@ HF.Colonists = {
   },
 
   isWarm: function (game, c) {
+    // A sealed room holds its own heat. This is the reason to build walls
+    // rather than scatter hearths across a field.
+    if (HF.Build.indoorsAt(game, c.x, c.y)) return true;
     for (const b of game.buildings) {
       if (!b || !b.built) continue;
       const def = HF.BUILDINGS[b.type];
@@ -2170,8 +2511,12 @@ HF.Colonists = {
     else if (n.rest < 20) add('Dead on their feet', -16);
     else if (n.rest < 40) add('Short of sleep', -7);
 
-    if (HF.Colonists.freeBed(game, c) || c.asleep) add('A bed to sleep in', 8);
-    else add('Sleeping on bare earth', -8);
+    if (HF.Colonists.freeBed(game, c) || c.asleep) {
+      add('A bed to sleep in', 8);
+      if (HF.Build.indoorsAt(game, c.x, c.y)) add('Four walls and a roof', 6);
+    } else {
+      add('Nowhere to sleep but the ground', -8);
+    }
 
     if (game.season() === 'Winter') {
       if (HF.Colonists.isWarm(game, c)) add('Warm by the hearth', 4);
@@ -2181,8 +2526,9 @@ HF.Colonists = {
     if (game.res.food > 90) add('The kura is full', 5);
     if (game.res.food <= 0) add('Nothing left in the kura', -10);
 
-    const houses = Math.min(8, game.builtCount('house') * 3);
-    if (houses) add('A village taking shape', houses);
+    const built = game.buildings.filter(function (b) { return b && b.built; }).length;
+    const village = Math.min(8, Math.floor(built / 3));
+    if (village) add('A village taking shape', village);
 
     // Capped, because whoever was tied to the dead already carries a named
     // thought for them. This is the rest of the village being subdued, and it
@@ -2208,38 +2554,47 @@ HF.Colonists = {
     let target = 55;
     for (const t of HF.Colonists.thoughts(game, c)) target += t.delta;
 
-    for (let i = c.memories.length - 1; i >= 0; i--) {
-      if (--c.memories[i].left <= 0) c.memories.splice(i, 1);
-    }
-
-    c.mood = HF.U.clamp(c.mood + (target - c.mood) * 0.4, 0, 100);
+    // Eased slowly because this now runs many times a day rather than once.
+    c.mood = HF.U.clamp(c.mood + (target - c.mood) * 0.12, 0, 100);
 
     if (c.mood < 22) c.lowMoodTurns++;
     else c.lowMoodTurns = Math.max(0, c.lowMoodTurns - 1);
 
     if (c.lowMoodTurns >= 4 && c.breakdown <= 0) {
-      c.breakdown = 3;
+      c.breakdown = HF.Time.TICKS_PER_HOUR * 4;   // sits out four hours
       c.lowMoodTurns = 0;
       c.task = null;
       // A village in a bad way breaks down again the moment it recovers, and
       // logging every relapse buries everything else under the same three
       // lines. Say it once, then let the spirit bar carry it.
-      if (game.turn - (c.lastBreakdownLog || -99) >= 15) {
-        c.lastBreakdownLog = game.turn;
+      if (game.day() - (c.lastBreakdownLog || -99) >= 4) {
+        c.lastBreakdownLog = game.day();
         game.log(c.name + ' has sat down in the dirt and will not be moved.', 'bad');
       }
     }
   },
 
+  /* Per tick. How well somebody sleeps is now the payoff for having built a
+     room around the futon rather than dropping it in a field: a bed is worth
+     three times the bare ground, and a bed under a roof better still. */
   decayNeeds: function (game, c) {
     const n = c.needs;
     n.food = HF.U.clamp(n.food - HF.CFG.FOOD_DECAY, 0, 100);
     if (c.asleep) {
-      const inBed = game.buildingAt(c.x, c.y) &&
-                    HF.BUILDINGS[game.buildingAt(c.x, c.y).type].beds;
-      n.rest = HF.U.clamp(n.rest + (inBed ? HF.CFG.BED_REST : HF.CFG.GROUND_REST), 0, 100);
+      const b = game.buildingAt(c.x, c.y);
+      const inBed = b && HF.BUILDINGS[b.type].beds;
+      let rate = inBed ? HF.CFG.BED_REST : HF.CFG.GROUND_REST;
+      if (inBed && HF.Build.indoorsAt(game, c.x, c.y)) rate += HF.CFG.ROOM_REST_BONUS;
+      n.rest = HF.U.clamp(n.rest + rate, 0, 100);
     } else {
       n.rest = HF.U.clamp(n.rest - HF.CFG.REST_DECAY, 0, 100);
+    }
+  },
+
+  /* Once-a-day bookkeeping: memories fade on a day clock, not a tick clock. */
+  newDay: function (game, c) {
+    for (let i = c.memories.length - 1; i >= 0; i--) {
+      if (--c.memories[i].left <= 0) c.memories.splice(i, 1);
     }
   },
 
@@ -2323,7 +2678,7 @@ HF.Jobs = {
     if (task.targetType === 'designation') {
       return HF.Map.workStands(game, task.tx, task.ty, false);
     }
-    if (task.targetType === 'building') {
+    if (task.targetType === 'building' || task.targetType === 'station') {
       const b = game.buildings[task.targetKey];
       if (!b) return [];
       return HF.Map.workStands(game, b.x, b.y, !!HF.BUILDINGS[b.type].adjacentWork);
@@ -2340,6 +2695,10 @@ HF.Jobs = {
     if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       return !!b && !b.built && !b.cancelled;
+    }
+    if (task.targetType === 'station') {
+      const b = game.buildings[task.targetKey];
+      return !!b && b.built && !!HF.RECIPES[game.recipes[b.id]];
     }
     if (task.targetType === 'raider') {
       const r = game.raiderById(task.targetKey);
@@ -2391,6 +2750,27 @@ HF.Jobs = {
       }
     }
 
+    // A bench with work set on it is a job like any other. It used to be tried
+    // only when nothing else was going, which meant a village with any standing
+    // orders never wove a thread.
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.station) continue;
+      if (b.claimedBy != null && b.claimedBy !== c.id) continue;
+      const recipe = HF.RECIPES[game.recipes[b.id]];
+      if (!recipe) continue;
+      if (!c.work[recipe.skill === 'construction' ? 'build' : 'farm']) continue;
+      let can = true;
+      for (const r in recipe.cost) if (game.res[r] < recipe.cost[r]) can = false;
+      if (!can) continue;
+      candidates.push({
+        targetType: 'station', targetKey: b.id, tx: b.x, ty: b.y,
+        skill: recipe.skill === 'construction' ? 'build' : 'farm',
+        d: HF.U.dist(c.x, c.y, b.x, b.y),
+      });
+    }
+
     if (candidates.length === 0) return null;
 
     // Nearest first, with a nudge towards jobs this colonist is good at so the
@@ -2422,6 +2802,16 @@ HF.Jobs = {
     return null;
   },
 
+  /* Villagers go to bed at night, not merely when the bar bottoms out. That is
+     the whole point of having a clock: the village should empty at dusk and
+     fill again at dawn, rather than people dropping wherever exhaustion
+     happens to catch them. They will still work through the night if they are
+     wide awake, and still collapse in the afternoon if they are wrecked. */
+  wantsBed: function (game, c) {
+    if (c.needs.rest < HF.CFG.SLEEP_THRESHOLD) return true;
+    return HF.Time.isSleepTime(game.tick) && c.needs.rest < 78;
+  },
+
   nearestRaider: function (game, c, radius) {
     let best = null, bestD = Infinity;
     for (const r of game.raiders) {
@@ -2434,15 +2824,28 @@ HF.Jobs = {
 
   /* ---------- the per-colonist turn ---------- */
 
-  takeTurn: function (game, c) {
+  tick: function (game, c) {
     if (c.dead) return;
 
     HF.Colonists.decayNeeds(game, c);
-    HF.Colonists.updateMood(game, c);
+    // Mood is a sum over a dozen conditions and a flood fill or two; running it
+    // every tick for every villager is the single most expensive thing in the
+    // loop and nothing about it changes in a tenth of an hour.
+    if ((game.tick + c.id) % 10 === 0) HF.Colonists.updateMood(game, c);
 
     // Waking up takes priority over everything: a colonist at full rest gets up.
     if (c.asleep) {
-      if (c.needs.rest >= HF.CFG.WAKE_AT || HF.Jobs.nearestRaider(game, c, 4)) {
+      /* Rested and it is morning, or the morning is over regardless.
+
+         Without that second clause anyone sleeping rough never gets up: the
+         bare ground restores less per night than a day costs, so they can
+         never reach the wake threshold and simply lie there until noon. You
+         can have a bad night here; you cannot spend the day in bed. */
+      const rested = c.needs.rest >= HF.CFG.WAKE_AT;
+      const morning = !HF.Time.isSleepTime(game.tick);
+      const lateEnough = game.hour() >= 8;
+      if ((morning && (rested || lateEnough)) || c.needs.rest >= 99.5 ||
+          HF.Jobs.nearestRaider(game, c, 4)) {
         c.asleep = false;
         c.task = null;
       } else {
@@ -2453,7 +2856,7 @@ HF.Jobs = {
     }
 
     if (c.breakdown > 0) {
-      c.breakdown--;
+      c.breakdown--;      // counted in ticks
       game.releaseClaims(c.id);
       c.task = null;
       c.activity = 'Wandering (low mood)';
@@ -2475,7 +2878,7 @@ HF.Jobs = {
     if (threat) {
       game.releaseClaims(c.id);
       c.task = { kind: 'fight', targetType: 'raider', targetKey: threat.id, tx: threat.x, ty: threat.y, path: null };
-    } else if (c.needs.rest < HF.CFG.SLEEP_THRESHOLD && (!c.task || c.task.kind !== 'sleep')) {
+    } else if (HF.Jobs.wantsBed(game, c) && (!c.task || c.task.kind !== 'sleep')) {
       game.releaseClaims(c.id);
       const bed = HF.Colonists.freeBed(game, c);
       c.task = bed
@@ -2565,37 +2968,64 @@ HF.Jobs = {
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
+    } else if (task.targetType === 'station') {
+      const b = game.buildings[task.targetKey];
+      const recipe = b && HF.RECIPES[game.recipes[b.id]];
+      what = recipe ? recipe.label : 'At the bench';
     }
     return travelling ? 'Walking to ' + what.toLowerCase() : what;
   },
 
+  /* Movement is one tile at a time and takes several ticks to cross, which is
+     what turns a teleporting counter into somebody walking. The logical
+     position is the tile being moved *to*; `from` and `stepT` are only for the
+     renderer to interpolate between, so the simulation stays on the grid and
+     the pathfinder never has to think in fractions. */
+  stepTo: function (game, c, nx, ny) {
+    const diagonal = nx !== c.x && ny !== c.y;
+    const cost = HF.Map.moveCost(game, nx, ny) * (diagonal ? 1.4 : 1);
+    c.fromX = c.x; c.fromY = c.y;
+    c.x = nx; c.y = ny;
+    c.stepT = 0;
+    c.stepLen = Math.max(1, Math.round(HF.CFG.TICKS_PER_TILE * cost));
+  },
+
+  /* True once the villager has finished crossing into the tile they are on. */
+  settled: function (c) {
+    return !c.stepLen || c.stepT >= c.stepLen;
+  },
+
+  advance: function (c) {
+    if (c.stepLen && c.stepT < c.stepLen) c.stepT++;
+  },
+
   move: function (game, c, task) {
-    let budget = HF.CFG.MOVE_BUDGET;
-    let moved = 0;
-    while (task.path && task.path.length > 0) {
-      const next = task.path[0];
-      if (!HF.Map.passable(game, next.x, next.y)) { task.path = null; return; }
-      const diagonal = next.x !== c.x && next.y !== c.y;
-      const cost = HF.Map.moveCost(game, next.x, next.y) * (diagonal ? 1.4 : 1);
-      if (cost > budget && moved > 0) break;
-      budget -= cost;
-      c.x = next.x; c.y = next.y;
-      task.path.shift();
-      moved++;
-      if (budget <= 0) break;
-    }
+    HF.Jobs.advance(c);
+    if (!HF.Jobs.settled(c)) return;          // still crossing the last tile
+    if (!task.path || task.path.length === 0) return;
+
+    const next = task.path[0];
+    if (!HF.Map.passable(game, next.x, next.y)) { task.path = null; return; }
+    HF.Jobs.stepTo(game, c, next.x, next.y);
+    task.path.shift();
   },
 
   wander: function (game, c) {
-    if (!game.rng.chance(0.4)) return;
+    HF.Jobs.advance(c);
+    if (!HF.Jobs.settled(c)) return;
+    if (!game.rng.chance(0.06)) return;
     const d = game.rng.pick(HF.U.NEIGHBORS);
-    if (HF.Map.passable(game, c.x + d[0], c.y + d[1])) { c.x += d[0]; c.y += d[1]; }
+    if (HF.Map.passable(game, c.x + d[0], c.y + d[1])) {
+      HF.Jobs.stepTo(game, c, c.x + d[0], c.y + d[1]);
+    }
   },
 
   applyWork: function (game, c, task) {
+    if (task.targetType === 'station') return HF.Jobs.applyCraft(game, c, task);
+
     const workType = HF.Jobs.workTypeOf(game, task);
     const skill = HF.Jobs.skillFor(workType);
-    const amount = HF.Colonists.workRate(c, skill);
+    const amount = HF.Colonists.workRate(c, skill) * HF.CFG.WORK_PER_TICK;
     HF.Colonists.gainXp(game, c, skill, amount);
 
     if (task.targetType === 'designation') {
@@ -2608,6 +3038,32 @@ HF.Jobs = {
       if (!b) { c.task = null; return; }
       b.workDone += amount;
       if (b.workDone >= HF.BUILDINGS[b.type].work) HF.Jobs.completeBuilding(game, c, b);
+    }
+  },
+
+  /* Working a bench. Materials are only taken when the batch finishes, so a
+     villager who is pulled off the job halfway does not quietly eat the hemp. */
+  applyCraft: function (game, c, task) {
+    const b = game.buildings[task.targetKey];
+    const recipeId = b && game.recipes[b.id];
+    const recipe = recipeId && HF.RECIPES[recipeId];
+    if (!recipe) { if (b) b.claimedBy = null; c.task = null; return; }
+
+    for (const r in recipe.cost) {
+      if (game.res[r] < recipe.cost[r]) { b.claimedBy = null; c.task = null; return; }
+    }
+
+    const amount = HF.Colonists.workRate(c, recipe.skill) * HF.CFG.WORK_PER_TICK;
+    HF.Colonists.gainXp(game, c, recipe.skill, amount);
+    b.craftDone = (b.craftDone || 0) + amount;
+    c.activity = recipe.label;
+
+    if (b.craftDone >= recipe.work) {
+      b.craftDone = 0;
+      for (const r in recipe.cost) game.res[r] -= recipe.cost[r];
+      for (const r in recipe.yields) game.addResource(r, recipe.yields[r]);
+      b.claimedBy = null;
+      c.task = null;
     }
   },
 
@@ -2640,7 +3096,7 @@ HF.Jobs = {
     if (c.trait === 'diligent') options.push('Looking for something to do');
 
     // Stable per villager per turn rather than flickering every repaint.
-    return options[(c.id * 7 + game.turn * 3) % options.length];
+    return options[(c.id * 7 + Math.floor(game.tick / 40)) % options.length];
   },
 
   completeDesignation: function (game, c, d) {
@@ -2656,14 +3112,21 @@ HF.Jobs = {
       scale = spec.yieldScale;
       tile.terrain = 'grass';
       tile.regrowTo = was;
-      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
+      tile.regrow = game.day() + game.rng.int(spec.regrow[0], spec.regrow[1]);
     } else if (d.type === 'mine') {
       tile.terrain = tile.terrain === 'mountain' ? 'hill' : 'grass';
     } else if (d.type === 'forage' || d.type === 'fish') {
-      const spec = HF.REGROW[d.type === 'fish' ? 'fish' : 'chestnut'];
+      const plant = HF.PLANTS[tile.feature];
+      if (plant) {
+        for (const r in plant.yields) {
+          // Out of season it is still there to pick; it is just barely worth it.
+          const inSeason = HF.plantInSeason(plant.id, game.season());
+          game.addResource(r, Math.max(1, Math.round(plant.yields[r] * (inSeason ? 1 : 0.3))));
+        }
+        tile.regrowTo = plant.id;
+        tile.regrow = game.day() + game.rng.int(plant.regrow[0], plant.regrow[1]);
+      }
       tile.feature = null;
-      tile.regrowTo = d.type === 'fish' ? 'fish' : 'chestnut';
-      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
     } else if (d.type === 'harvest') {
       const farm = game.buildingAt(d.x, d.y);
       if (farm) farm.growth = 0;
@@ -2731,6 +3194,7 @@ HF.Build = {
     game.buildings.push(b);
     HF.Map.at(game, x, y).building = b.id;
     game.dirtyTerrain = true;
+    if (def.encloses) game.roomsDirty = true;
     return { ok: true, building: b };
   },
 
@@ -2747,6 +3211,7 @@ HF.Build = {
     b.cancelled = true;
     game.buildings[b.id] = null;
     tile.building = null;
+    if (def.encloses) game.roomsDirty = true;
     delete game.designations[HF.U.key(x, y)];
     game.releaseClaimsOnBuilding(b.id);
     game.dirtyTerrain = true;
@@ -2789,7 +3254,7 @@ HF.Build = {
     if (game.season() === 'Winter') return;
     for (let i = 0; i < game.tiles.length; i++) {
       const t = game.tiles[i];
-      if (!t.regrow || t.regrow > game.turn) continue;
+      if (!t.regrow || t.regrow > game.day()) continue;
       t.regrow = 0;
       if (t.building != null) continue;
       const x = i % game.w, y = (i / game.w) | 0;
@@ -2798,14 +3263,78 @@ HF.Build = {
       // Whatever was taken from this tile is what comes back to it.
       const what = t.regrowTo;
       t.regrowTo = null;
-      if (what === 'fish') {
-        if (t.terrain === 'water' && !t.feature) { t.feature = 'fish'; game.dirtyTerrain = true; }
-      } else if (what === 'chestnut') {
-        if (!t.feature) { t.feature = 'chestnut'; game.dirtyTerrain = true; }
+      if (HF.PLANTS[what]) {
+        if (!t.feature && HF.PLANTS[what].on.indexOf(t.terrain) !== -1) {
+          t.feature = what;
+          game.dirtyTerrain = true;
+        }
       } else if (what && HF.TERRAIN[what]) {
         if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
     }
+  },
+
+  /* ---------- rooms ----------
+     A tile is indoors when you cannot walk from it to the edge of the map
+     without crossing something that encloses. That is the whole definition -
+     no roofs to place, no room objects to keep in sync - and it is what makes
+     a ring of walls worth building rather than decorative.
+
+     Recomputed only when something that encloses is built or lost, and cached
+     on the game, because it is a full-map flood fill. */
+  refreshRooms: function (game) {
+    const w = game.w, h = game.h;
+    const outside = new Uint8Array(w * h);
+    const seals = new Uint8Array(w * h);
+
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      if (HF.BUILDINGS[b.type].encloses) seals[b.y * w + b.x] = 1;
+    }
+
+    // Flood in from every edge tile. Anything the flood never reaches, and
+    // which is not itself a wall, is enclosed.
+    const queue = [];
+    function push(x, y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      const i = y * w + x;
+      if (outside[i] || seals[i]) return;
+      outside[i] = 1;
+      queue.push(i);
+    }
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+    for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+
+    for (let qi = 0; qi < queue.length; qi++) {
+      const i = queue[qi];
+      const x = i % w, y = (i / w) | 0;
+      // Orthogonal only: a diagonal gap between two wall corners is not a way
+      // out of a room, and treating it as one would make small huts leak.
+      push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+    }
+
+    const inside = new Uint8Array(w * h);
+    for (let i = 0; i < inside.length; i++) inside[i] = (!outside[i] && !seals[i]) ? 1 : 0;
+    game.indoors = inside;
+    game.roomsDirty = false;
+    return inside;
+  },
+
+  indoorsAt: function (game, x, y) {
+    if (!game.indoors || game.roomsDirty) HF.Build.refreshRooms(game);
+    if (x < 0 || y < 0 || x >= game.w || y >= game.h) return false;
+    return !!game.indoors[y * game.w + x];
+  },
+
+  /* Every finished building of a kind, nearest first from a point. */
+  nearestBuilt: function (game, x, y, pred) {
+    let best = null, bestD = Infinity;
+    for (const b of game.buildings) {
+      if (!b || !b.built || !pred(b)) continue;
+      const d = HF.U.dist(x, y, b.x, b.y);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
   },
 
   storageCap: function (game) {
@@ -2834,7 +3363,7 @@ HF.Events = {
   /* ---------- raiders ---------- */
 
   spawnRaid: function (game) {
-    const count = 1 + Math.floor(game.turn / 55) + (game.rng.chance(0.35) ? 1 : 0);
+    const count = 1 + Math.floor(game.day() / 60) + (game.rng.chance(0.35) ? 1 : 0);
     const anchor = game.aliveColonists()[0];
     if (!anchor) return;
     const centre = game.colonyCentre();
@@ -2869,14 +3398,14 @@ HF.Events = {
         hp: 26, maxHp: 26,
         dead: false,
         withdrew: false,
-        spawnTurn: game.turn,
+        spawnDay: game.day(),
         lost: 0,
       });
     }
     game.log(count + ' bandit' + (count > 1 ? 's' : '') + ' sighted to the ' +
              HF.Events.compass(spawn, centre) + '.', 'bad');
     const gap = game.scenario().raidGapScale || 1;
-    game.nextRaidTurn = game.turn +
+    game.nextRaidDay = game.day() +
       Math.round(game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP) * gap);
   },
 
@@ -2939,7 +3468,7 @@ HF.Events = {
 
     // A raid that has dragged on gives up, so a siege can never become
     // permanent scenery.
-    if (game.turn - (r.spawnTurn || 0) > 45) { r.withdrew = true; return; }
+    if (game.day() - (r.spawnDay || 0) > 25) { r.withdrew = true; return; }
 
     if (HF.U.dist(r.x, r.y, target.x, target.y) <= 1) {
       const dmg = game.rng.int(4, 7);
@@ -3003,24 +3532,24 @@ HF.Events = {
   tick: function (game) {
     const alive = game.aliveColonists();
 
-    if (game.scenario().raids && game.turn >= game.nextRaidTurn && alive.length > 0) {
+    if (game.scenario().raids && game.day() >= game.nextRaidDay && alive.length > 0) {
       HF.Events.spawnRaid(game);
     }
 
     HF.Events.ambient(game);
 
     // An offer left standing too long walks on down the valley.
-    if (game.offer && game.turn > game.offer.until) {
+    if (game.offer && game.day() > game.offer.until) {
       game.log((game.offer.tag || 'The trader') + ' has moved on.', 'info');
       game.offer = null;
     }
-    if (!game.offer && game.turn >= game.nextMerchantTurn && alive.length > 0) {
-      game.nextMerchantTurn = game.turn + game.rng.int(HF.CFG.MERCHANT.gap[0], HF.CFG.MERCHANT.gap[1]);
+    if (!game.offer && game.day() >= game.nextMerchantDay && alive.length > 0) {
+      game.nextMerchantDay = game.day() + game.rng.int(HF.CFG.MERCHANT.gap[0], HF.CFG.MERCHANT.gap[1]);
       HF.Events.makeOffer(game);
     }
 
-    if (game.turn >= game.nextMigrantTurn) {
-      game.nextMigrantTurn = game.turn + HF.CFG.MIGRANT_GAP + game.rng.int(-4, 6);
+    if (game.day() >= game.nextMigrantDay) {
+      game.nextMigrantDay = game.day() + HF.CFG.MIGRANT_GAP + game.rng.int(-4, 6);
       const beds = HF.Build.bedCount(game);
       if (game.res.food > 55 && alive.length > 0 && alive.length < beds + 2) {
         HF.Events.addMigrant(game);
@@ -3109,7 +3638,7 @@ HF.Events = {
       tag: m.tag,
       wants: m.wants, wantAmount: want,
       gives: m.gives, giveAmount: give,
-      until: game.turn + HF.CFG.MERCHANT.standFor,
+      until: game.day() + HF.CFG.MERCHANT.standFor,
     };
     const W = HF.RESOURCES[m.wants], G = HF.RESOURCES[m.gives];
     game.log(m.who + ' will take ' + want + ' ' + W.label.toLowerCase() +
@@ -3186,17 +3715,20 @@ HF.Game = function (seed, scenarioId) {
   this.h = map.h;
   this.tiles = map.tiles;
 
-  this.turn = 1;
+  this.tick = HF.Time.TICKS_PER_HOUR * 7;   // the village wakes at seven
   this.nextId = 1;
   this.colonists = [];
   this.buildings = [];
   this.raiders = [];
   this.designations = {};
-  this.res = Object.assign({}, HF.CFG.START_RES);
+  // Every resource exists from the start, at zero, so nothing has to guard
+  // against an undefined store halfway through a trade.
+  this.res = { food: 0, wood: 0, stone: 0, hemp: 0, herb: 0, cloth: 0, med: 0 };
+  Object.assign(this.res, HF.CFG.START_RES);
   this.entries = [];
   this.grief = 0;
-  this.nextRaidTurn = HF.CFG.RAID_START_TURN + (this.scenario().raidDelay || 0);
-  this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
+  this.nextRaidDay = HF.CFG.RAID_START_DAY + (this.scenario().raidDelay || 0);
+  this.nextMigrantDay = HF.CFG.MIGRANT_GAP;
   this.gameOver = null;
   this.endless = false;
   this.levyIndex = 0;          // how many levies have been collected
@@ -3205,13 +3737,16 @@ HF.Game = function (seed, scenarioId) {
   this.levyGenerous = false;   // press surplus rice on the collectors for credit
   this.levyHistory = [];
   this.offer = null;           // the merchant's standing offer, if one is up
-  this.nextMerchantTurn = HF.CFG.MERCHANT.firstTurn;
+  this.nextMerchantDay = HF.CFG.MERCHANT.firstDay;
   this.tradesMade = 0;
   this.taughtTrade = false;   // the first offer is opened for the player, once
   this.banditsKilled = 0;
   this.dirtyTerrain = true;
-  this.spoiledThisTurn = false;
+  this.spoiledToday = false;
   this.spoilLogged = {};
+  this.roomsDirty = true;
+  this.indoors = null;
+  this.recipes = {};          // which bench work the player has turned on
 
   const site = HF.Map.findStartSite(this, this.rng);
   this.startSite = site;
@@ -3240,19 +3775,28 @@ HF.Game = function (seed, scenarioId) {
 
 HF.Game.prototype = {
 
-  /* ---------- calendar ---------- */
+  /* ---------- calendar ----------
+     Everything reads off the tick counter. `day` is the unit the schedules are
+     written in; `turn` is gone, and with it the idea that time only moves when
+     the player asks it to. */
+
+  day: function () { return HF.Time.day(this.tick); },
+  hour: function () { return HF.Time.hour(this.tick); },
+  clock: function () { return HF.Time.clockString(this.tick); },
+  light: function () { return HF.Time.light(this.tick); },
+  isNight: function () { return HF.Time.isNight(this.tick); },
 
   seasonIndex: function () {
-    return Math.floor((this.turn - 1) / HF.CFG.TURNS_PER_SEASON) % 4;
+    return Math.floor(this.day() / HF.Time.DAYS_PER_SEASON) % 4;
   },
   season: function () {
     return HF.CFG.SEASONS[this.seasonIndex()];
   },
   year: function () {
-    return Math.floor((this.turn - 1) / (HF.CFG.TURNS_PER_SEASON * 4)) + 1;
+    return Math.floor(this.day() / HF.Time.DAYS_PER_YEAR) + 1;
   },
   dayOfSeason: function () {
-    return ((this.turn - 1) % HF.CFG.TURNS_PER_SEASON) + 1;
+    return (this.day() % HF.Time.DAYS_PER_SEASON) + 1;
   },
 
   /* ---------- the levy ----------
@@ -3277,14 +3821,14 @@ HF.Game.prototype = {
     return Math.max(1, Math.round(base * (this.scenario().levyScale || 1)));
   },
 
-  nextLevyTurn: function () {
+  nextLevyDay: function () {
     const L = HF.CFG.LEVY;
-    if (this.levyIndex < L.turns.length) return L.turns[this.levyIndex];
-    const beyond = this.levyIndex - L.turns.length + 1;
-    return L.turns[L.turns.length - 1] + beyond * HF.CFG.TURNS_PER_SEASON * 4;
+    if (this.levyIndex < L.days.length) return L.days[this.levyIndex];
+    const beyond = this.levyIndex - L.days.length + 1;
+    return L.days[L.days.length - 1] + beyond * HF.Time.DAYS_PER_YEAR;
   },
 
-  turnsToLevy: function () { return this.nextLevyTurn() - this.turn; },
+  daysToLevy: function () { return this.nextLevyDay() - this.day(); },
 
   /* How the castle describes the village, in words rather than a number. */
   standingWord: function () {
@@ -3296,17 +3840,18 @@ HF.Game.prototype = {
     return 'close to ruin';
   },
 
+  /* Called once on each day rollover, never mid-day. */
   checkLevy: function () {
     if (!this.scenario().levy) return;
     const S = HF.CFG.STANDING;
-    const due = this.nextLevyTurn();
+    const due = this.nextLevyDay();
     const demand = this.levyDemand(this.levyIndex);
 
-    if (this.turn === due - HF.CFG.LEVY.warnAhead) {
+    if (this.day() === due - HF.CFG.LEVY.warnAhead) {
       this.log('Word from the castle: the collectors come in ' + HF.CFG.LEVY.warnAhead +
-               ' turns for ' + demand + ' koku of rice.', 'levy');
+               ' days for ' + demand + ' koku of rice.', 'levy');
     }
-    if (this.turn < due) return;
+    if (this.day() < due) return;
 
     const have = Math.floor(this.res.food);
     const before = this.standing;
@@ -3427,9 +3972,9 @@ HF.Game.prototype = {
     // player ignores it, and repeating the identical line every few turns
     // buries the levy warnings and the deaths. Say it, then hold off.
     this.spoilLogged = this.spoilLogged || {};
-    if (lost > 0.5 && !this.spoiledThisTurn && this.turn - (this.spoilLogged[r] || -99) >= 12) {
-      this.spoiledThisTurn = true;
-      this.spoilLogged[r] = this.turn;
+    if (lost > 0.5 && !this.spoiledToday && this.day() - (this.spoilLogged[r] || -99) >= 4) {
+      this.spoiledToday = true;
+      this.spoilLogged[r] = this.day();
       const res = HF.RESOURCES[r] || { label: r, unit: '' };
       this.log('Nowhere to put it - ' + Math.round(lost) + ' ' +
                (res.unit ? res.unit + ' of ' : '') + res.label.toLowerCase() +
@@ -3465,7 +4010,7 @@ HF.Game.prototype = {
     if (task.targetType === 'designation') {
       const d = this.designations[task.targetKey];
       if (d) d.claimedBy = colonistId;
-    } else if (task.targetType === 'building') {
+    } else if (task.targetType === 'building' || task.targetType === 'station') {
       const b = this.buildings[task.targetKey];
       if (b) b.claimedBy = colonistId;
     }
@@ -3489,44 +4034,61 @@ HF.Game.prototype = {
   /* ---------- log ---------- */
 
   log: function (message, kind) {
-    this.entries.push({ turn: this.turn, message: message, kind: kind || 'info' });
+    this.entries.push({ day: this.day() + 1, message: message, kind: kind || 'info' });
     if (this.entries.length > 220) this.entries.splice(0, this.entries.length - 220);
   },
 
-  /* ---------- the turn ---------- */
+  /* ---------- the loop ----------
 
-  endTurn: function () {
+     One tick is a tenth of an in-game hour and it does the small, continuous
+     things: people move, work, get hungry. The heavier bookkeeping - crops,
+     regrowth, raids, the levy - happens once when the day rolls over, because
+     doing it 240 times a day would be both slower and no different. */
+
+  step: function () {
     if (this.gameOver) return;
 
-    const seasonBefore = this.season();
-    this.turn++;
-    this.spoiledThisTurn = false;
+    const before = this.tick;
+    this.tick++;
+    const rolled = HF.Time.day(this.tick) !== HF.Time.day(before);
 
-    if (this.season() !== seasonBefore) HF.Events.announceSeason(this);
+    for (const c of this.colonists) {
+      if (!c.dead) HF.Jobs.tick(this, c);
+    }
+
+    // Raiders move on a coarser beat than villagers; they are a threat, not a
+    // thing to admire, and stepping them every tick made them twitch.
+    if ((this.tick % 3) === 0) {
+      for (const r of this.raiders) HF.Events.raiderTurn(this, r);
+      const had = this.raiders.length;
+      const withdrew = this.raiders.filter(function (r) { return r.withdrew; }).length;
+      const killed = this.raiders.filter(function (r) { return r.dead; }).length;
+      if (withdrew > 0) {
+        this.log(withdrew + ' bandit' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.',
+                 'info');
+      }
+      this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
+      if (had > 0 && this.raiders.length === 0 && killed > 0) {
+        this.log('The raid is broken.', 'good');
+        HF.Colonists.rememberAll(this, 'raidBroken');
+      }
+    }
+
+    if (rolled) this.newDay();
+  },
+
+  newDay: function () {
+    const seasonBefore = this.lastSeason;
+    this.lastSeason = this.season();
+    if (seasonBefore && this.lastSeason !== seasonBefore) HF.Events.announceSeason(this);
+
+    this.spoiledToday = false;
 
     HF.Build.tickFarms(this);
     HF.Build.tickRegrowth(this);
-
-    for (const c of this.colonists) {
-      if (!c.dead) HF.Jobs.takeTurn(this, c);
-    }
-
-    for (const r of this.raiders) HF.Events.raiderTurn(this, r);
-    const before = this.raiders.length;
-    const withdrew = this.raiders.filter(function (r) { return r.withdrew; }).length;
-    const killed = this.raiders.filter(function (r) { return r.dead; }).length;
-    if (withdrew > 0) {
-      this.log(withdrew + ' raider' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.', 'info');
-    }
-    this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
-    if (before > 0 && this.raiders.length === 0 && killed > 0) {
-      this.log('The raid is broken.', 'good');
-      HF.Colonists.rememberAll(this, 'raidBroken');
-    }
-
     HF.Events.tick(this);
 
-    // Purge orders that no longer make sense (the tree got chopped, the bush
+    // Purge orders that no longer make sense (the tree got chopped, the plant
     // was picked by someone else, a wall was built over the spot).
     for (const k in this.designations) {
       const d = this.designations[k];
@@ -3542,16 +4104,17 @@ HF.Game.prototype = {
     this.grief = Math.max(0, this.grief - 0.5);
     this.standing = Math.min(HF.CFG.STANDING.max, this.standing + HF.CFG.STANDING.recover);
 
+    for (const c of this.aliveColonists()) HF.Colonists.newDay(this, c);
+
     this.checkLevy();
 
     if (this.aliveColonists().length === 0) {
       this.gameOver = 'lost';
       this.log('The last of the villagers is gone. The valley falls silent.', 'bad');
     } else if (!this.gameOver && !this.endless && this.scenario().levy &&
-               this.turn >= HF.CFG.VICTORY_TURN && this.levyIndex >= HF.CFG.LEVY.turns.length) {
+               this.day() >= HF.CFG.VICTORY_DAY && this.levyIndex >= HF.CFG.LEVY.days.length) {
       // A milestone, not a finish line. The village is the point, so this
-      // stops once to mark four years survived and then gets out of the way -
-      // there is nothing after it that the player has to be protected from.
+      // stops once to mark four years survived and then gets out of the way.
       this.gameOver = 'won';
       this.log('Four years, four levies, and the village still stands.', 'good');
     }
@@ -3572,7 +4135,7 @@ HF.Game.prototype = {
     const counts = {};
     for (const b of built) counts[b.type] = (counts[b.type] || 0) + 1;
     return {
-      turn: this.turn,
+      day: this.day() + 1,
       years: this.year(),
       alive: this.aliveColonists().length,
       lost: this.colonists.filter(function (c) { return c.dead && !c.departed; }).length,
@@ -3596,15 +4159,16 @@ HF.Game.prototype = {
       v: 2,
       seed: this.seed, scenarioId: this.scenarioId, rngState: this.rng.s,
       w: this.w, h: this.h, tiles: this.tiles,
-      turn: this.turn, nextId: this.nextId,
+      tick: this.tick, nextId: this.nextId, lastSeason: this.lastSeason,
       colonists: this.colonists, buildings: this.buildings, raiders: this.raiders,
       designations: this.designations, res: this.res, entries: this.entries,
-      grief: this.grief, nextRaidTurn: this.nextRaidTurn,
-      nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
+      grief: this.grief, nextRaidDay: this.nextRaidDay,
+      nextMigrantDay: this.nextMigrantDay, gameOver: this.gameOver,
+      recipes: this.recipes,
       endless: this.endless, levyIndex: this.levyIndex,
       levyFailures: this.levyFailures, standing: this.standing,
       levyGenerous: this.levyGenerous, levyHistory: this.levyHistory,
-      offer: this.offer, nextMerchantTurn: this.nextMerchantTurn,
+      offer: this.offer, nextMerchantDay: this.nextMerchantDay,
       tradesMade: this.tradesMade, taughtTrade: this.taughtTrade,
       banditsKilled: this.banditsKilled, startSite: this.startSite,
       spoilLogged: this.spoilLogged,
@@ -3619,7 +4183,10 @@ HF.Game.load = function (json) {
   g.rng = new HF.RNG(d.seed);
   g.rng.s = d.rngState >>> 0;
   g.dirtyTerrain = true;
-  g.spoiledThisTurn = false;
+  g.spoiledToday = false;
+  g.roomsDirty = true;
+  g.indoors = null;
+  g.recipes = d.recipes || {};
   g.spoilLogged = d.spoilLogged || {};
   if (g.standing == null) g.standing = HF.CFG.STANDING.start;
   if (!HF.SCENARIOS[g.scenarioId]) g.scenarioId = HF.DEFAULT_SCENARIO;
@@ -4136,7 +4703,61 @@ HF.Render = (function () {
       return;
     }
 
-    if (b.type === 'house') {
+    if (b.type === 'futon') {
+      // A rolled-out futon: a low pale rectangle, and a sleeper when occupied.
+      const sleeper = game.colonists.find(function (c) {
+        return !c.dead && c.asleep && c.x === b.x && c.y === b.y;
+      });
+      ctx.fillStyle = '#cfc0a8';
+      diamond(p.sx, p.sy, 13, 6.5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(60,50,40,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (sleeper) {
+        ctx.fillStyle = '#8d7c62';
+        ctx.beginPath();
+        ctx.ellipse(p.sx, p.sy - 3, 9, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (b.type === 'door') {
+      isoBox(p.sx, p.sy, I.HW - 3, I.HH - 2, 5, '#6a5540', '#54432f', '#3f3325');
+      ctx.fillStyle = '#8d6a45';
+      ctx.fillRect(p.sx - 5, p.sy - 16, 10, 14);
+      ctx.strokeStyle = 'rgba(30,25,20,0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.sx - 5, p.sy - 16, 10, 14);
+    } else if (b.type === 'table') {
+      shadow(p.sx, p.sy + 3, 12);
+      isoBox(p.sx, p.sy, 12, 6, 5, '#a37f52', '#8a6a44', '#6d5335');
+    } else if (b.type === 'chest') {
+      shadow(p.sx, p.sy + 3, 10);
+      isoBox(p.sx, p.sy, 10, 5, 9, '#8a6a45', '#6f5537', '#57422a');
+      ctx.strokeStyle = '#c9a25e';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 10, p.sy - 5); ctx.lineTo(p.sx, p.sy - 10);
+      ctx.lineTo(p.sx + 10, p.sy - 5);
+      ctx.stroke();
+    } else if (b.type === 'bench') {
+      shadow(p.sx, p.sy + 3, 13);
+      isoBox(p.sx, p.sy, 13, 6.5, 7, '#9a7a4e', '#7d6140', '#614a30');
+      // Tools standing in a rack, so a bench reads as a place work happens.
+      ctx.strokeStyle = '#4a4038';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(p.sx - 6 + i * 6, p.sy - 7);
+        ctx.lineTo(p.sx - 5 + i * 6, p.sy - 17 - (i % 2) * 3);
+        ctx.stroke();
+      }
+      if (game.recipes[b.id]) progressPip(p.sx, p.sy - 24,
+        (b.craftDone || 0) / HF.RECIPES[game.recipes[b.id]].work, '#d0a24a');
+    } else if (b.type === 'ishigaki') {
+      shadow(p.sx, p.sy + 3, 14);
+      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 15, '#9b958a', '#7d776d', '#5f5a52');
+      if (def.hp && b.hp < def.hp) progressPip(p.sx, p.sy - 26, b.hp / def.hp, '#d9584f');
+    } else if (b.type === 'house') {
       shadow(p.sx, p.sy + 4, 17);
       isoBox(p.sx, p.sy, 15, 7.5, 9, '#6a5540', '#54432f', '#3f3325');   // walls
       // thatched hipped roof
@@ -4215,7 +4836,7 @@ HF.Render = (function () {
         ctx.arc(p.sx + 15, p.sy - 8, 3, 0, Math.PI * 2);
         ctx.fill();
       }
-    } else if (b.type === 'campfire') {
+    } else if (b.type === 'hearth' || b.type === 'campfire') {
       shadow(p.sx, p.sy + 2, 12);
       ctx.fillStyle = '#5a5347';
       for (let i = 0; i < 5; i++) {
@@ -4253,7 +4874,7 @@ HF.Render = (function () {
       ctx.fill();
     } else if (b.type === 'wall') {
       shadow(p.sx, p.sy + 3, 14);
-      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 15, '#9b958a', '#7d776d', '#5f5a52');
+      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 17, '#8a6f4a', '#6d5738', '#523f28');
       ctx.strokeStyle = 'rgba(40,38,34,0.45)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -4297,9 +4918,21 @@ HF.Render = (function () {
   }
 
   /* A peasant: indigo work clothes and a straw kasa, which reads at any zoom. */
+  /* Where to actually paint somebody: between the tile they left and the tile
+     they are on, by how far through the step they are. The simulation stays
+     firmly on the grid; only the picture is allowed to be between tiles. */
+  function bodyPos(e) {
+    const t = e.stepLen ? Math.min(1, (e.stepT || 0) / e.stepLen) : 1;
+    if (t >= 1 || e.fromX == null) return I.toScreen(e.x, e.y, 0);
+    const a = I.toScreen(e.fromX, e.fromY, 0);
+    const b = I.toScreen(e.x, e.y, 0);
+    return { sx: a.sx + (b.sx - a.sx) * t, sy: a.sy + (b.sy - a.sy) * t };
+  }
+
   function drawVillager(game, c, selected) {
     const tile = game.tiles[c.y * game.w + c.x];
-    const p = I.toScreen(c.x, c.y, I.elevOf(tile));
+    const p = bodyPos(c);
+    p.sy -= I.elevOf(tile) * I.ELEV;
 
     if (selected) {
       ctx.strokeStyle = '#e0b64a';
@@ -4351,7 +4984,8 @@ HF.Render = (function () {
 
   function drawBandit(game, r) {
     const tile = game.tiles[r.y * game.w + r.x];
-    const p = I.toScreen(r.x, r.y, I.elevOf(tile));
+    const p = bodyPos(r);
+    p.sy -= I.elevOf(tile) * I.ELEV;
     shadow(p.sx, p.sy + 1, 8);
     const bodyTop = p.sy - 20, bodyBot = p.sy - 2;
     ctx.fillStyle = '#4a3f3a';
@@ -4378,6 +5012,52 @@ HF.Render = (function () {
   }
 
   /* ---------- frame ---------- */
+
+  /* Night is one translucent wash over the finished scene rather than a
+     recolour of every tile. Recolouring was affordable when a frame was only
+     painted after a keypress; at sixty frames a second it is not, and the wash
+     also lets hearths punch warm holes in the dark for almost nothing. */
+  const NIGHT = [22, 30, 58];
+  const DUSK = [92, 54, 40];
+
+  function drawLight(game) {
+    const l = game.light();
+    if (l >= 1) return;
+    const h = game.hour();
+    const warm = (h > 15 && h < 21) || (h > 4 && h < 8);
+    const tint = warm && l > 0.05 ? DUSK : NIGHT;
+    const strength = (1 - l) * (warm ? 0.42 : 0.66);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgba(' + tint[0] + ',' + tint[1] + ',' + tint[2] + ',' + strength.toFixed(3) + ')';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // Anything that burns throws light. Drawn additively so a hearth reads as
+    // a source rather than a lighter patch of ground.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.warmth) continue;
+      const tile = game.tiles[b.y * game.w + b.x];
+      const p = I.toScreen(b.x, b.y, I.elevOf(tile));
+      // Kept modest on purpose: a wider, brighter pool washed out the walls of
+      // the very room it was meant to be lighting.
+      const r = 58;
+      const g = ctx.createRadialGradient(p.sx, p.sy - 6, 3, p.sx, p.sy - 6, r);
+      const a = (1 - l) * 0.34;
+      g.addColorStop(0, 'rgba(230,150,60,' + a.toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(230,150,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(p.sx, p.sy - 6, r, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
   function draw(game, view, force) {
     if (!dirty && !force) return;
@@ -4459,6 +5139,8 @@ HF.Render = (function () {
         }
       }
     }
+
+    drawLight(game);
   }
 
   return { init: init, draw: draw, invalidate: invalidate };
@@ -4545,9 +5227,25 @@ HF.UI = (function () {
     refresh();
   }
 
-  /* The game is turn-based, so a frame is only painted when something moved. */
-  function frame() {
-    HF.Render.draw(game, view);
+  /* One loop for everything: step the simulation by however much real time has
+     passed, paint, and rebuild the side panels a few times a second. The panels
+     are rebuilt on a timer rather than every frame because they are innerHTML
+     and would otherwise dominate the cost of running at all. */
+  function frame(now) {
+    const dt = lastFrame ? Math.min(0.25, (now - lastFrame) / 1000) : 0;
+    lastFrame = now;
+
+    advance(dt);
+    HF.Render.draw(game, view, HF.Time.SPEEDS[speed] > 0 && !game.gameOver);
+
+    panelCarry += dt;
+    if (panelCarry > 0.35) {
+      panelCarry = 0;
+      renderStats();
+      renderColonists();
+      renderLog();
+      renderEnding();
+    }
     requestAnimationFrame(frame);
   }
 
@@ -4629,17 +5327,24 @@ HF.UI = (function () {
                 '<span class="pick-cost free">free</span></button>';
       }
     } else {
-      for (const id in HF.BUILDINGS) {
-        const b = HF.BUILDINGS[id];
-        const ok = affordable(b.cost);
-        html += '<button class="pick' + (ok ? '' : ' unaffordable') + '" data-kind="build" data-id="' +
-                id + '"' + (ok ? '' : ' disabled') + '>' +
-                '<span class="pick-mark build ' + id + '"></span>' +
-                '<span class="pick-text"><span class="pick-name">' + b.label +
-                (b.sub ? ' <em>' + b.sub + '</em>' : '') + '</span>' +
-                '<span class="pick-desc">' + b.desc + '</span></span>' +
-                '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
-                (ok ? costText(b.cost) : shortfall(b.cost)) + '</span></button>';
+      // Grouped, because there are now three different questions being asked:
+      // what shape is the room, what goes in it, and what does the village work.
+      for (const cat of HF.BUILD_CATEGORIES) {
+        html += '<div class="pick-group"><span class="pick-group-name">' + cat.label +
+                '</span><span class="pick-group-note">' + cat.note + '</span></div>';
+        for (const id in HF.BUILDINGS) {
+          const b = HF.BUILDINGS[id];
+          if (b.cat !== cat.id) continue;
+          const ok = affordable(b.cost);
+          html += '<button class="pick' + (ok ? '' : ' unaffordable') + '" data-kind="build" data-id="' +
+                  id + '"' + (ok ? '' : ' disabled') + '>' +
+                  '<span class="pick-mark build ' + id + '"></span>' +
+                  '<span class="pick-text"><span class="pick-name">' + b.label +
+                  (b.sub ? ' <em>' + b.sub + '</em>' : '') + '</span>' +
+                  '<span class="pick-desc">' + b.desc + '</span></span>' +
+                  '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
+                  (ok ? costText(b.cost) : shortfall(b.cost)) + '</span></button>';
+        }
       }
     }
 
@@ -4654,6 +5359,53 @@ HF.UI = (function () {
   }
 
   function closePicker() { el.picker.classList.remove('open'); }
+
+  /* ---------- a bench ----------
+     Tapping a built bench opens its work list. One recipe at a time, on or
+     off: a queue with counts and priorities would be a second game, and this
+     is the smallest thing that makes hemp and herbs worth picking up. */
+  function openBench(b) {
+    const current = game.recipes[b.id] || null;
+    let h = '<div class="ledger"><p class="who">Choose what this bench is set to. ' +
+            'Villagers who will do the work come and do it whenever the materials ' +
+            'are in the stores.</p></div>';
+    h += '<button class="pick' + (current === null ? ' chosen' : '') +
+         '" data-recipe="" data-bench="' + b.id + '">' +
+         '<span class="pick-mark" style="background:#3a4453"></span>' +
+         '<span class="pick-text"><span class="pick-name">Nothing</span>' +
+         '<span class="pick-desc">Leave the bench idle.</span></span>' +
+         '<span class="pick-cost free">&mdash;</span></button>';
+
+    for (const id in HF.RECIPES) {
+      const r = HF.RECIPES[id];
+      if (r.station !== HF.BUILDINGS[b.type].station) continue;
+      const ok = affordable(r.cost);
+      h += '<button class="pick' + (current === id ? ' chosen' : '') +
+           '" data-recipe="' + id + '" data-bench="' + b.id + '">' +
+           '<span class="pick-mark" style="background:' +
+           (HF.RESOURCES[Object.keys(r.yields)[0]] || {}).color + '"></span>' +
+           '<span class="pick-text"><span class="pick-name">' + esc(r.label) + '</span>' +
+           '<span class="pick-desc">' + esc(r.note) + '</span></span>' +
+           '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
+           costText(r.cost) + ' &rarr; ' + costText(r.yields) + '</span></button>';
+    }
+
+    el.pickerTitle.textContent = HF.BUILDINGS[b.type].label;
+    el.pickerList.innerHTML = h;
+    for (const btn of el.pickerList.querySelectorAll('[data-recipe]')) {
+      btn.addEventListener('click', function () {
+        const id = btn.dataset.recipe;
+        const bid = +btn.dataset.bench;
+        if (id) game.recipes[bid] = id;
+        else delete game.recipes[bid];
+        const target = game.buildings[bid];
+        if (target) target.craftDone = 0;
+        closePicker();
+        refresh();
+      });
+    }
+    el.picker.classList.add('open');
+  }
 
   /* ---------- how hard the world presses ----------
      Offered on the opening sheet rather than buried in a settings menu,
@@ -4701,14 +5453,14 @@ HF.UI = (function () {
     const S = HF.CFG.STANDING;
     const demand = game.levyDemand(game.levyIndex);
     const have = Math.floor(game.res.food);
-    const due = game.turnsToLevy();
+    const due = game.daysToLevy();
     const pct = HF.U.clamp(game.standing, 0, 100);
 
     let h = '<div class="ledger">';
     h += '<div class="standing-bar"><div class="fill" style="width:' + pct + '%"></div>' +
          '<span>Standing &middot; ' + esc(game.standingWord()) + '</span></div>';
     h += '<p class="who">The castle asks <b>' + demand + ' koku</b> ' +
-         (due <= 0 ? '<b>now</b>' : 'in <b>' + due + (due === 1 ? ' turn' : ' turns') + '</b>') +
+         (due <= 0 ? '<b>now</b>' : 'in <b>' + due + (due === 1 ? ' day' : ' days') + '</b>') +
          '. The kura holds <b>' + have + '</b>.</p>';
     h += '<p class="who">Falling short costs standing in proportion to how far short you fall — ' +
          'a few koku is a note in a ledger, half the demand is a mark against the village. ' +
@@ -4764,7 +5516,7 @@ HF.UI = (function () {
     if (!o) return;
     const W = HF.RESOURCES[o.wants], G = HF.RESOURCES[o.gives];
     const canPay = game.res[o.wants] >= o.wantAmount;
-    const leaves = game.turnsToLevy();
+    const leaves = game.daysToLevy();
 
     let h = '<div class="ledger">';
     h += '<p class="who lede">' + esc(o.who) + '.</p>';
@@ -4774,10 +5526,10 @@ HF.UI = (function () {
          '<span class="side get"><b>' + o.giveAmount + '</b>' + esc(G.label) + '</span></div>';
     h += '<p class="who">You hold ' + Math.floor(game.res[o.wants]) + ' ' +
          esc(W.label.toLowerCase()) + '. They will wait ' +
-         Math.max(0, o.until - game.turn) + ' more ' +
-         (o.until - game.turn === 1 ? 'turn' : 'turns') + '.</p>';
+         Math.max(0, o.until - game.day()) + ' more ' +
+         (o.until - game.day() === 1 ? 'day' : 'days') + '.</p>';
     if (o.gives === 'food' && leaves > 0) {
-      h += '<p class="who">The levy falls in ' + leaves + ' turns.</p>';
+      h += '<p class="who">The levy falls in ' + leaves + ' days.</p>';
     }
     h += '<div class="offer-actions">' +
          '<button id="offer-yes" class="primary"' + (canPay ? '' : ' disabled') + '>' +
@@ -4930,6 +5682,10 @@ HF.UI = (function () {
   }
 
   function handleTap(t, e) {
+    // A finished bench is the one thing on the map you operate by tapping it.
+    const b = game.buildingAt(t.x, t.y);
+    if (b && b.built && HF.BUILDINGS[b.type].station) { openBench(b); return; }
+
     const c = game.colonistAt(t.x, t.y);
     if (c) {
       view.selectedId = c.id;
@@ -5035,7 +5791,9 @@ HF.UI = (function () {
   function closeSheet() { el.sidebar.classList.remove('open'); }
 
   function bindButtons() {
-    $('btn-endturn').addEventListener('click', endTurn);
+    for (const btn of document.querySelectorAll('#speed button')) {
+      btn.addEventListener('click', function () { setSpeed(+btn.dataset.speed); });
+    }
     $('mode-hint').addEventListener('click', function () { setMode('none', null); });
     el.levy.addEventListener('click', openLedger);
     $('offer-chip').addEventListener('click', openOffer);
@@ -5098,7 +5856,9 @@ HF.UI = (function () {
     window.addEventListener('keydown', function (e) {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
-      if (k === ' ' || k === 'enter') { e.preventDefault(); endTurn(); return; }
+      // Space is pause, the way it is in every game like this.
+      if (k === ' ') { e.preventDefault(); togglePause(); return; }
+      if (k === '1' || k === '2' || k === '3') { setSpeed(+k); return; }
       if (k === 'escape') {
         setMode('none', null);
         $('help').classList.remove('open');
@@ -5116,15 +5876,46 @@ HF.UI = (function () {
     });
   }
 
-  function endTurn() {
+  /* ---------- the clock ----------
+     The game advances on its own; the player sets the speed. Pause is a real
+     speed rather than a special case, so "stop and think" is always one tap
+     away - which is what makes a live simulation playable rather than frantic. */
+  let speed = 1;
+  let lastFrame = 0;
+  let tickCarry = 0;
+  let panelCarry = 0;
+
+  function setSpeed(n) {
+    speed = HF.U.clamp(n, 0, HF.Time.SPEEDS.length - 1);
+    tickCarry = 0;
+    updateSpeedButtons();
+    HF.Render.invalidate();
+  }
+
+  function togglePause() { setSpeed(speed === 0 ? 1 : 0); }
+
+  function updateSpeedButtons() {
+    for (const btn of document.querySelectorAll('#speed button')) {
+      btn.classList.toggle('on', +btn.dataset.speed === speed);
+    }
+  }
+
+  function advance(dtSeconds) {
     if (game.gameOver) return;
+    const mult = HF.Time.SPEEDS[speed];
+    if (!mult) return;
     const hadOffer = !!game.offer;
-    game.endTurn();
-    refresh();
-    // The first trader gets a nudge rather than a sheet. Opening a modal
-    // unasked put it straight over End Turn, and a village nobody is pressing
-    // should never be interrupted by a box demanding an answer. The chip on the
-    // map is the offer; this just points at it, once, and fades.
+
+    tickCarry += dtSeconds * HF.Time.BASE_TPS * mult;
+    // Cap the catch-up so a backgrounded tab does not come back and run a
+    // week of village history in one frame.
+    let budget = Math.min(Math.floor(tickCarry), 40);
+    tickCarry -= Math.floor(tickCarry);
+    while (budget-- > 0 && !game.gameOver) game.step();
+
+    HF.Render.invalidate();
+    // The first trader gets a nudge rather than a sheet. A village nobody is
+    // pressing should never be interrupted by a box demanding an answer.
     if (!hadOffer && game.offer && !game.taughtTrade) {
       game.taughtTrade = true;
       toast('A trader has come up the valley — tap the chip to hear the offer.', 4200);
@@ -5139,15 +5930,30 @@ HF.UI = (function () {
     renderLog();
     renderEnding();
     updateToolButtons();
+    updateSpeedButtons();
     HF.Render.invalidate();
   }
 
   function renderStats() {
+    /* Seven stores will not fit across a phone, so the three you build with are
+       always shown with their cap and the crafted ones only once the village
+       actually has any. An empty slot for a thing nobody has made yet is just
+       a question the player cannot answer. */
     const cap = HF.Build.storageCap(game);
-    el.stats.innerHTML =
+    let statsHtml =
       stat(HF.RESOURCES.food.label, Math.floor(game.res.food) + ' / ' + cap, 'food') +
       stat(HF.RESOURCES.wood.label, Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
       stat(HF.RESOURCES.stone.label, Math.floor(game.res.stone) + ' / ' + cap, 'stone');
+    for (const r of ['hemp', 'herb', 'cloth', 'med']) {
+      const n = Math.floor(game.res[r] || 0);
+      if (n > 0) statsHtml += stat(HF.RESOURCES[r].short, String(n), r + ' minor');
+    }
+    el.stats.innerHTML = statsHtml;
+
+    $('clock').innerHTML =
+      '<div class="clock-time">' + game.clock() + '</div>' +
+      '<div class="clock-phase ' + HF.Time.phase(game.tick) + '">' +
+      HF.Time.phase(game.tick) + '</div>';
 
     el.calendar.innerHTML =
       '<div class="season ' + game.season().toLowerCase() + '">' + game.season() + '</div>' +
@@ -5165,14 +5971,14 @@ HF.UI = (function () {
         game.aliveColonists().length + '</span>';
       return;
     }
-    const due = game.turnsToLevy();
+    const due = game.daysToLevy();
     const demand = game.levyDemand(game.levyIndex);
     const short = game.res.food < demand;
     el.levy.className = due <= 4 ? (short ? 'urgent' : 'due') : (short ? 'warn' : '');
     el.levy.innerHTML =
       '<div class="levy-label">Next levy &middot; ' + game.standingWord() + '</div>' +
       '<div class="levy-value">' + demand + ' koku &middot; ' +
-      (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' turn' : ' turns')) + '</div>';
+      (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' day' : ' days')) + '</div>';
 
     renderOfferChip();
 
@@ -5332,7 +6138,7 @@ HF.UI = (function () {
   function renderLog() {
     const recent = game.entries.slice(-40).reverse();
     el.log.innerHTML = recent.map(function (e) {
-      return '<li class="' + e.kind + '"><span class="turn">' + e.turn + '</span>' + e.message + '</li>';
+      return '<li class="' + e.kind + '"><span class="turn">' + e.day + '</span>' + e.message + '</li>';
     }).join('');
   }
 

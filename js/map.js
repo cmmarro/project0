@@ -38,8 +38,15 @@ HF.Map = {
         else if (m < 0.40 && g < 0.50) terrain = 'moor';         // high and dry
         else terrain = 'grass';
 
-        if ((terrain === 'grass' || terrain === 'moor') && m > 0.4 && rng.chance(0.07)) {
-          feature = 'chestnut';
+        // Everything that grows wild is scattered from one table, so the mix
+        // of a valley follows from its ground rather than being hand-placed.
+        for (const id in HF.PLANTS) {
+          const pl = HF.PLANTS[id];
+          if (id === 'fish') continue;              // placed below, bank-side only
+          if (pl.on.indexOf(terrain) === -1) continue;
+          if (!rng.chance(pl.chance)) continue;
+          feature = id;
+          break;
         }
 
         tiles[i] = {
@@ -66,7 +73,7 @@ HF.Map = {
           const n = HF.Map.at(g, x + d[0], y + d[1]);
           if (n && HF.TERRAIN[n.terrain].passable) { bank = true; break; }
         }
-        if (bank && rng.chance(0.09)) t.feature = 'fish';
+        if (bank && rng.chance(HF.PLANTS.fish.chance)) t.feature = 'fish';
       }
     }
 

@@ -12,7 +12,7 @@ HF.Jobs = {
     if (task.targetType === 'designation') {
       return HF.Map.workStands(game, task.tx, task.ty, false);
     }
-    if (task.targetType === 'building') {
+    if (task.targetType === 'building' || task.targetType === 'station') {
       const b = game.buildings[task.targetKey];
       if (!b) return [];
       return HF.Map.workStands(game, b.x, b.y, !!HF.BUILDINGS[b.type].adjacentWork);
@@ -29,6 +29,10 @@ HF.Jobs = {
     if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       return !!b && !b.built && !b.cancelled;
+    }
+    if (task.targetType === 'station') {
+      const b = game.buildings[task.targetKey];
+      return !!b && b.built && !!HF.RECIPES[game.recipes[b.id]];
     }
     if (task.targetType === 'raider') {
       const r = game.raiderById(task.targetKey);
@@ -80,6 +84,27 @@ HF.Jobs = {
       }
     }
 
+    // A bench with work set on it is a job like any other. It used to be tried
+    // only when nothing else was going, which meant a village with any standing
+    // orders never wove a thread.
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.station) continue;
+      if (b.claimedBy != null && b.claimedBy !== c.id) continue;
+      const recipe = HF.RECIPES[game.recipes[b.id]];
+      if (!recipe) continue;
+      if (!c.work[recipe.skill === 'construction' ? 'build' : 'farm']) continue;
+      let can = true;
+      for (const r in recipe.cost) if (game.res[r] < recipe.cost[r]) can = false;
+      if (!can) continue;
+      candidates.push({
+        targetType: 'station', targetKey: b.id, tx: b.x, ty: b.y,
+        skill: recipe.skill === 'construction' ? 'build' : 'farm',
+        d: HF.U.dist(c.x, c.y, b.x, b.y),
+      });
+    }
+
     if (candidates.length === 0) return null;
 
     // Nearest first, with a nudge towards jobs this colonist is good at so the
@@ -111,6 +136,16 @@ HF.Jobs = {
     return null;
   },
 
+  /* Villagers go to bed at night, not merely when the bar bottoms out. That is
+     the whole point of having a clock: the village should empty at dusk and
+     fill again at dawn, rather than people dropping wherever exhaustion
+     happens to catch them. They will still work through the night if they are
+     wide awake, and still collapse in the afternoon if they are wrecked. */
+  wantsBed: function (game, c) {
+    if (c.needs.rest < HF.CFG.SLEEP_THRESHOLD) return true;
+    return HF.Time.isSleepTime(game.tick) && c.needs.rest < 78;
+  },
+
   nearestRaider: function (game, c, radius) {
     let best = null, bestD = Infinity;
     for (const r of game.raiders) {
@@ -123,15 +158,28 @@ HF.Jobs = {
 
   /* ---------- the per-colonist turn ---------- */
 
-  takeTurn: function (game, c) {
+  tick: function (game, c) {
     if (c.dead) return;
 
     HF.Colonists.decayNeeds(game, c);
-    HF.Colonists.updateMood(game, c);
+    // Mood is a sum over a dozen conditions and a flood fill or two; running it
+    // every tick for every villager is the single most expensive thing in the
+    // loop and nothing about it changes in a tenth of an hour.
+    if ((game.tick + c.id) % 10 === 0) HF.Colonists.updateMood(game, c);
 
     // Waking up takes priority over everything: a colonist at full rest gets up.
     if (c.asleep) {
-      if (c.needs.rest >= HF.CFG.WAKE_AT || HF.Jobs.nearestRaider(game, c, 4)) {
+      /* Rested and it is morning, or the morning is over regardless.
+
+         Without that second clause anyone sleeping rough never gets up: the
+         bare ground restores less per night than a day costs, so they can
+         never reach the wake threshold and simply lie there until noon. You
+         can have a bad night here; you cannot spend the day in bed. */
+      const rested = c.needs.rest >= HF.CFG.WAKE_AT;
+      const morning = !HF.Time.isSleepTime(game.tick);
+      const lateEnough = game.hour() >= 8;
+      if ((morning && (rested || lateEnough)) || c.needs.rest >= 99.5 ||
+          HF.Jobs.nearestRaider(game, c, 4)) {
         c.asleep = false;
         c.task = null;
       } else {
@@ -142,7 +190,7 @@ HF.Jobs = {
     }
 
     if (c.breakdown > 0) {
-      c.breakdown--;
+      c.breakdown--;      // counted in ticks
       game.releaseClaims(c.id);
       c.task = null;
       c.activity = 'Wandering (low mood)';
@@ -164,7 +212,7 @@ HF.Jobs = {
     if (threat) {
       game.releaseClaims(c.id);
       c.task = { kind: 'fight', targetType: 'raider', targetKey: threat.id, tx: threat.x, ty: threat.y, path: null };
-    } else if (c.needs.rest < HF.CFG.SLEEP_THRESHOLD && (!c.task || c.task.kind !== 'sleep')) {
+    } else if (HF.Jobs.wantsBed(game, c) && (!c.task || c.task.kind !== 'sleep')) {
       game.releaseClaims(c.id);
       const bed = HF.Colonists.freeBed(game, c);
       c.task = bed
@@ -254,37 +302,64 @@ HF.Jobs = {
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
       what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
+    } else if (task.targetType === 'station') {
+      const b = game.buildings[task.targetKey];
+      const recipe = b && HF.RECIPES[game.recipes[b.id]];
+      what = recipe ? recipe.label : 'At the bench';
     }
     return travelling ? 'Walking to ' + what.toLowerCase() : what;
   },
 
+  /* Movement is one tile at a time and takes several ticks to cross, which is
+     what turns a teleporting counter into somebody walking. The logical
+     position is the tile being moved *to*; `from` and `stepT` are only for the
+     renderer to interpolate between, so the simulation stays on the grid and
+     the pathfinder never has to think in fractions. */
+  stepTo: function (game, c, nx, ny) {
+    const diagonal = nx !== c.x && ny !== c.y;
+    const cost = HF.Map.moveCost(game, nx, ny) * (diagonal ? 1.4 : 1);
+    c.fromX = c.x; c.fromY = c.y;
+    c.x = nx; c.y = ny;
+    c.stepT = 0;
+    c.stepLen = Math.max(1, Math.round(HF.CFG.TICKS_PER_TILE * cost));
+  },
+
+  /* True once the villager has finished crossing into the tile they are on. */
+  settled: function (c) {
+    return !c.stepLen || c.stepT >= c.stepLen;
+  },
+
+  advance: function (c) {
+    if (c.stepLen && c.stepT < c.stepLen) c.stepT++;
+  },
+
   move: function (game, c, task) {
-    let budget = HF.CFG.MOVE_BUDGET;
-    let moved = 0;
-    while (task.path && task.path.length > 0) {
-      const next = task.path[0];
-      if (!HF.Map.passable(game, next.x, next.y)) { task.path = null; return; }
-      const diagonal = next.x !== c.x && next.y !== c.y;
-      const cost = HF.Map.moveCost(game, next.x, next.y) * (diagonal ? 1.4 : 1);
-      if (cost > budget && moved > 0) break;
-      budget -= cost;
-      c.x = next.x; c.y = next.y;
-      task.path.shift();
-      moved++;
-      if (budget <= 0) break;
-    }
+    HF.Jobs.advance(c);
+    if (!HF.Jobs.settled(c)) return;          // still crossing the last tile
+    if (!task.path || task.path.length === 0) return;
+
+    const next = task.path[0];
+    if (!HF.Map.passable(game, next.x, next.y)) { task.path = null; return; }
+    HF.Jobs.stepTo(game, c, next.x, next.y);
+    task.path.shift();
   },
 
   wander: function (game, c) {
-    if (!game.rng.chance(0.4)) return;
+    HF.Jobs.advance(c);
+    if (!HF.Jobs.settled(c)) return;
+    if (!game.rng.chance(0.06)) return;
     const d = game.rng.pick(HF.U.NEIGHBORS);
-    if (HF.Map.passable(game, c.x + d[0], c.y + d[1])) { c.x += d[0]; c.y += d[1]; }
+    if (HF.Map.passable(game, c.x + d[0], c.y + d[1])) {
+      HF.Jobs.stepTo(game, c, c.x + d[0], c.y + d[1]);
+    }
   },
 
   applyWork: function (game, c, task) {
+    if (task.targetType === 'station') return HF.Jobs.applyCraft(game, c, task);
+
     const workType = HF.Jobs.workTypeOf(game, task);
     const skill = HF.Jobs.skillFor(workType);
-    const amount = HF.Colonists.workRate(c, skill);
+    const amount = HF.Colonists.workRate(c, skill) * HF.CFG.WORK_PER_TICK;
     HF.Colonists.gainXp(game, c, skill, amount);
 
     if (task.targetType === 'designation') {
@@ -297,6 +372,32 @@ HF.Jobs = {
       if (!b) { c.task = null; return; }
       b.workDone += amount;
       if (b.workDone >= HF.BUILDINGS[b.type].work) HF.Jobs.completeBuilding(game, c, b);
+    }
+  },
+
+  /* Working a bench. Materials are only taken when the batch finishes, so a
+     villager who is pulled off the job halfway does not quietly eat the hemp. */
+  applyCraft: function (game, c, task) {
+    const b = game.buildings[task.targetKey];
+    const recipeId = b && game.recipes[b.id];
+    const recipe = recipeId && HF.RECIPES[recipeId];
+    if (!recipe) { if (b) b.claimedBy = null; c.task = null; return; }
+
+    for (const r in recipe.cost) {
+      if (game.res[r] < recipe.cost[r]) { b.claimedBy = null; c.task = null; return; }
+    }
+
+    const amount = HF.Colonists.workRate(c, recipe.skill) * HF.CFG.WORK_PER_TICK;
+    HF.Colonists.gainXp(game, c, recipe.skill, amount);
+    b.craftDone = (b.craftDone || 0) + amount;
+    c.activity = recipe.label;
+
+    if (b.craftDone >= recipe.work) {
+      b.craftDone = 0;
+      for (const r in recipe.cost) game.res[r] -= recipe.cost[r];
+      for (const r in recipe.yields) game.addResource(r, recipe.yields[r]);
+      b.claimedBy = null;
+      c.task = null;
     }
   },
 
@@ -329,7 +430,7 @@ HF.Jobs = {
     if (c.trait === 'diligent') options.push('Looking for something to do');
 
     // Stable per villager per turn rather than flickering every repaint.
-    return options[(c.id * 7 + game.turn * 3) % options.length];
+    return options[(c.id * 7 + Math.floor(game.tick / 40)) % options.length];
   },
 
   completeDesignation: function (game, c, d) {
@@ -345,14 +446,21 @@ HF.Jobs = {
       scale = spec.yieldScale;
       tile.terrain = 'grass';
       tile.regrowTo = was;
-      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
+      tile.regrow = game.day() + game.rng.int(spec.regrow[0], spec.regrow[1]);
     } else if (d.type === 'mine') {
       tile.terrain = tile.terrain === 'mountain' ? 'hill' : 'grass';
     } else if (d.type === 'forage' || d.type === 'fish') {
-      const spec = HF.REGROW[d.type === 'fish' ? 'fish' : 'chestnut'];
+      const plant = HF.PLANTS[tile.feature];
+      if (plant) {
+        for (const r in plant.yields) {
+          // Out of season it is still there to pick; it is just barely worth it.
+          const inSeason = HF.plantInSeason(plant.id, game.season());
+          game.addResource(r, Math.max(1, Math.round(plant.yields[r] * (inSeason ? 1 : 0.3))));
+        }
+        tile.regrowTo = plant.id;
+        tile.regrow = game.day() + game.rng.int(plant.regrow[0], plant.regrow[1]);
+      }
       tile.feature = null;
-      tile.regrowTo = d.type === 'fish' ? 'fish' : 'chestnut';
-      tile.regrow = game.turn + game.rng.int(spec.turns[0], spec.turns[1]);
     } else if (d.type === 'harvest') {
       const farm = game.buildingAt(d.x, d.y);
       if (farm) farm.growth = 0;

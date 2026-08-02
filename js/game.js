@@ -15,17 +15,20 @@ HF.Game = function (seed, scenarioId) {
   this.h = map.h;
   this.tiles = map.tiles;
 
-  this.turn = 1;
+  this.tick = HF.Time.TICKS_PER_HOUR * 7;   // the village wakes at seven
   this.nextId = 1;
   this.colonists = [];
   this.buildings = [];
   this.raiders = [];
   this.designations = {};
-  this.res = Object.assign({}, HF.CFG.START_RES);
+  // Every resource exists from the start, at zero, so nothing has to guard
+  // against an undefined store halfway through a trade.
+  this.res = { food: 0, wood: 0, stone: 0, hemp: 0, herb: 0, cloth: 0, med: 0 };
+  Object.assign(this.res, HF.CFG.START_RES);
   this.entries = [];
   this.grief = 0;
-  this.nextRaidTurn = HF.CFG.RAID_START_TURN + (this.scenario().raidDelay || 0);
-  this.nextMigrantTurn = HF.CFG.MIGRANT_GAP;
+  this.nextRaidDay = HF.CFG.RAID_START_DAY + (this.scenario().raidDelay || 0);
+  this.nextMigrantDay = HF.CFG.MIGRANT_GAP;
   this.gameOver = null;
   this.endless = false;
   this.levyIndex = 0;          // how many levies have been collected
@@ -34,13 +37,16 @@ HF.Game = function (seed, scenarioId) {
   this.levyGenerous = false;   // press surplus rice on the collectors for credit
   this.levyHistory = [];
   this.offer = null;           // the merchant's standing offer, if one is up
-  this.nextMerchantTurn = HF.CFG.MERCHANT.firstTurn;
+  this.nextMerchantDay = HF.CFG.MERCHANT.firstDay;
   this.tradesMade = 0;
   this.taughtTrade = false;   // the first offer is opened for the player, once
   this.banditsKilled = 0;
   this.dirtyTerrain = true;
-  this.spoiledThisTurn = false;
+  this.spoiledToday = false;
   this.spoilLogged = {};
+  this.roomsDirty = true;
+  this.indoors = null;
+  this.recipes = {};          // which bench work the player has turned on
 
   const site = HF.Map.findStartSite(this, this.rng);
   this.startSite = site;
@@ -69,19 +75,28 @@ HF.Game = function (seed, scenarioId) {
 
 HF.Game.prototype = {
 
-  /* ---------- calendar ---------- */
+  /* ---------- calendar ----------
+     Everything reads off the tick counter. `day` is the unit the schedules are
+     written in; `turn` is gone, and with it the idea that time only moves when
+     the player asks it to. */
+
+  day: function () { return HF.Time.day(this.tick); },
+  hour: function () { return HF.Time.hour(this.tick); },
+  clock: function () { return HF.Time.clockString(this.tick); },
+  light: function () { return HF.Time.light(this.tick); },
+  isNight: function () { return HF.Time.isNight(this.tick); },
 
   seasonIndex: function () {
-    return Math.floor((this.turn - 1) / HF.CFG.TURNS_PER_SEASON) % 4;
+    return Math.floor(this.day() / HF.Time.DAYS_PER_SEASON) % 4;
   },
   season: function () {
     return HF.CFG.SEASONS[this.seasonIndex()];
   },
   year: function () {
-    return Math.floor((this.turn - 1) / (HF.CFG.TURNS_PER_SEASON * 4)) + 1;
+    return Math.floor(this.day() / HF.Time.DAYS_PER_YEAR) + 1;
   },
   dayOfSeason: function () {
-    return ((this.turn - 1) % HF.CFG.TURNS_PER_SEASON) + 1;
+    return (this.day() % HF.Time.DAYS_PER_SEASON) + 1;
   },
 
   /* ---------- the levy ----------
@@ -106,14 +121,14 @@ HF.Game.prototype = {
     return Math.max(1, Math.round(base * (this.scenario().levyScale || 1)));
   },
 
-  nextLevyTurn: function () {
+  nextLevyDay: function () {
     const L = HF.CFG.LEVY;
-    if (this.levyIndex < L.turns.length) return L.turns[this.levyIndex];
-    const beyond = this.levyIndex - L.turns.length + 1;
-    return L.turns[L.turns.length - 1] + beyond * HF.CFG.TURNS_PER_SEASON * 4;
+    if (this.levyIndex < L.days.length) return L.days[this.levyIndex];
+    const beyond = this.levyIndex - L.days.length + 1;
+    return L.days[L.days.length - 1] + beyond * HF.Time.DAYS_PER_YEAR;
   },
 
-  turnsToLevy: function () { return this.nextLevyTurn() - this.turn; },
+  daysToLevy: function () { return this.nextLevyDay() - this.day(); },
 
   /* How the castle describes the village, in words rather than a number. */
   standingWord: function () {
@@ -125,17 +140,18 @@ HF.Game.prototype = {
     return 'close to ruin';
   },
 
+  /* Called once on each day rollover, never mid-day. */
   checkLevy: function () {
     if (!this.scenario().levy) return;
     const S = HF.CFG.STANDING;
-    const due = this.nextLevyTurn();
+    const due = this.nextLevyDay();
     const demand = this.levyDemand(this.levyIndex);
 
-    if (this.turn === due - HF.CFG.LEVY.warnAhead) {
+    if (this.day() === due - HF.CFG.LEVY.warnAhead) {
       this.log('Word from the castle: the collectors come in ' + HF.CFG.LEVY.warnAhead +
-               ' turns for ' + demand + ' koku of rice.', 'levy');
+               ' days for ' + demand + ' koku of rice.', 'levy');
     }
-    if (this.turn < due) return;
+    if (this.day() < due) return;
 
     const have = Math.floor(this.res.food);
     const before = this.standing;
@@ -256,9 +272,9 @@ HF.Game.prototype = {
     // player ignores it, and repeating the identical line every few turns
     // buries the levy warnings and the deaths. Say it, then hold off.
     this.spoilLogged = this.spoilLogged || {};
-    if (lost > 0.5 && !this.spoiledThisTurn && this.turn - (this.spoilLogged[r] || -99) >= 12) {
-      this.spoiledThisTurn = true;
-      this.spoilLogged[r] = this.turn;
+    if (lost > 0.5 && !this.spoiledToday && this.day() - (this.spoilLogged[r] || -99) >= 4) {
+      this.spoiledToday = true;
+      this.spoilLogged[r] = this.day();
       const res = HF.RESOURCES[r] || { label: r, unit: '' };
       this.log('Nowhere to put it - ' + Math.round(lost) + ' ' +
                (res.unit ? res.unit + ' of ' : '') + res.label.toLowerCase() +
@@ -294,7 +310,7 @@ HF.Game.prototype = {
     if (task.targetType === 'designation') {
       const d = this.designations[task.targetKey];
       if (d) d.claimedBy = colonistId;
-    } else if (task.targetType === 'building') {
+    } else if (task.targetType === 'building' || task.targetType === 'station') {
       const b = this.buildings[task.targetKey];
       if (b) b.claimedBy = colonistId;
     }
@@ -318,44 +334,61 @@ HF.Game.prototype = {
   /* ---------- log ---------- */
 
   log: function (message, kind) {
-    this.entries.push({ turn: this.turn, message: message, kind: kind || 'info' });
+    this.entries.push({ day: this.day() + 1, message: message, kind: kind || 'info' });
     if (this.entries.length > 220) this.entries.splice(0, this.entries.length - 220);
   },
 
-  /* ---------- the turn ---------- */
+  /* ---------- the loop ----------
 
-  endTurn: function () {
+     One tick is a tenth of an in-game hour and it does the small, continuous
+     things: people move, work, get hungry. The heavier bookkeeping - crops,
+     regrowth, raids, the levy - happens once when the day rolls over, because
+     doing it 240 times a day would be both slower and no different. */
+
+  step: function () {
     if (this.gameOver) return;
 
-    const seasonBefore = this.season();
-    this.turn++;
-    this.spoiledThisTurn = false;
+    const before = this.tick;
+    this.tick++;
+    const rolled = HF.Time.day(this.tick) !== HF.Time.day(before);
 
-    if (this.season() !== seasonBefore) HF.Events.announceSeason(this);
+    for (const c of this.colonists) {
+      if (!c.dead) HF.Jobs.tick(this, c);
+    }
+
+    // Raiders move on a coarser beat than villagers; they are a threat, not a
+    // thing to admire, and stepping them every tick made them twitch.
+    if ((this.tick % 3) === 0) {
+      for (const r of this.raiders) HF.Events.raiderTurn(this, r);
+      const had = this.raiders.length;
+      const withdrew = this.raiders.filter(function (r) { return r.withdrew; }).length;
+      const killed = this.raiders.filter(function (r) { return r.dead; }).length;
+      if (withdrew > 0) {
+        this.log(withdrew + ' bandit' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.',
+                 'info');
+      }
+      this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
+      if (had > 0 && this.raiders.length === 0 && killed > 0) {
+        this.log('The raid is broken.', 'good');
+        HF.Colonists.rememberAll(this, 'raidBroken');
+      }
+    }
+
+    if (rolled) this.newDay();
+  },
+
+  newDay: function () {
+    const seasonBefore = this.lastSeason;
+    this.lastSeason = this.season();
+    if (seasonBefore && this.lastSeason !== seasonBefore) HF.Events.announceSeason(this);
+
+    this.spoiledToday = false;
 
     HF.Build.tickFarms(this);
     HF.Build.tickRegrowth(this);
-
-    for (const c of this.colonists) {
-      if (!c.dead) HF.Jobs.takeTurn(this, c);
-    }
-
-    for (const r of this.raiders) HF.Events.raiderTurn(this, r);
-    const before = this.raiders.length;
-    const withdrew = this.raiders.filter(function (r) { return r.withdrew; }).length;
-    const killed = this.raiders.filter(function (r) { return r.dead; }).length;
-    if (withdrew > 0) {
-      this.log(withdrew + ' raider' + (withdrew > 1 ? 's' : '') + ' lost the trail and withdrew.', 'info');
-    }
-    this.raiders = this.raiders.filter(function (r) { return !r.dead && !r.withdrew; });
-    if (before > 0 && this.raiders.length === 0 && killed > 0) {
-      this.log('The raid is broken.', 'good');
-      HF.Colonists.rememberAll(this, 'raidBroken');
-    }
-
     HF.Events.tick(this);
 
-    // Purge orders that no longer make sense (the tree got chopped, the bush
+    // Purge orders that no longer make sense (the tree got chopped, the plant
     // was picked by someone else, a wall was built over the spot).
     for (const k in this.designations) {
       const d = this.designations[k];
@@ -371,16 +404,17 @@ HF.Game.prototype = {
     this.grief = Math.max(0, this.grief - 0.5);
     this.standing = Math.min(HF.CFG.STANDING.max, this.standing + HF.CFG.STANDING.recover);
 
+    for (const c of this.aliveColonists()) HF.Colonists.newDay(this, c);
+
     this.checkLevy();
 
     if (this.aliveColonists().length === 0) {
       this.gameOver = 'lost';
       this.log('The last of the villagers is gone. The valley falls silent.', 'bad');
     } else if (!this.gameOver && !this.endless && this.scenario().levy &&
-               this.turn >= HF.CFG.VICTORY_TURN && this.levyIndex >= HF.CFG.LEVY.turns.length) {
+               this.day() >= HF.CFG.VICTORY_DAY && this.levyIndex >= HF.CFG.LEVY.days.length) {
       // A milestone, not a finish line. The village is the point, so this
-      // stops once to mark four years survived and then gets out of the way -
-      // there is nothing after it that the player has to be protected from.
+      // stops once to mark four years survived and then gets out of the way.
       this.gameOver = 'won';
       this.log('Four years, four levies, and the village still stands.', 'good');
     }
@@ -401,7 +435,7 @@ HF.Game.prototype = {
     const counts = {};
     for (const b of built) counts[b.type] = (counts[b.type] || 0) + 1;
     return {
-      turn: this.turn,
+      day: this.day() + 1,
       years: this.year(),
       alive: this.aliveColonists().length,
       lost: this.colonists.filter(function (c) { return c.dead && !c.departed; }).length,
@@ -425,15 +459,16 @@ HF.Game.prototype = {
       v: 2,
       seed: this.seed, scenarioId: this.scenarioId, rngState: this.rng.s,
       w: this.w, h: this.h, tiles: this.tiles,
-      turn: this.turn, nextId: this.nextId,
+      tick: this.tick, nextId: this.nextId, lastSeason: this.lastSeason,
       colonists: this.colonists, buildings: this.buildings, raiders: this.raiders,
       designations: this.designations, res: this.res, entries: this.entries,
-      grief: this.grief, nextRaidTurn: this.nextRaidTurn,
-      nextMigrantTurn: this.nextMigrantTurn, gameOver: this.gameOver,
+      grief: this.grief, nextRaidDay: this.nextRaidDay,
+      nextMigrantDay: this.nextMigrantDay, gameOver: this.gameOver,
+      recipes: this.recipes,
       endless: this.endless, levyIndex: this.levyIndex,
       levyFailures: this.levyFailures, standing: this.standing,
       levyGenerous: this.levyGenerous, levyHistory: this.levyHistory,
-      offer: this.offer, nextMerchantTurn: this.nextMerchantTurn,
+      offer: this.offer, nextMerchantDay: this.nextMerchantDay,
       tradesMade: this.tradesMade, taughtTrade: this.taughtTrade,
       banditsKilled: this.banditsKilled, startSite: this.startSite,
       spoilLogged: this.spoilLogged,
@@ -448,7 +483,10 @@ HF.Game.load = function (json) {
   g.rng = new HF.RNG(d.seed);
   g.rng.s = d.rngState >>> 0;
   g.dirtyTerrain = true;
-  g.spoiledThisTurn = false;
+  g.spoiledToday = false;
+  g.roomsDirty = true;
+  g.indoors = null;
+  g.recipes = d.recipes || {};
   g.spoilLogged = d.spoilLogged || {};
   if (g.standing == null) g.standing = HF.CFG.STANDING.start;
   if (!HF.SCENARIOS[g.scenarioId]) g.scenarioId = HF.DEFAULT_SCENARIO;

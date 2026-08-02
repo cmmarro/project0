@@ -386,7 +386,61 @@ HF.Render = (function () {
       return;
     }
 
-    if (b.type === 'house') {
+    if (b.type === 'futon') {
+      // A rolled-out futon: a low pale rectangle, and a sleeper when occupied.
+      const sleeper = game.colonists.find(function (c) {
+        return !c.dead && c.asleep && c.x === b.x && c.y === b.y;
+      });
+      ctx.fillStyle = '#cfc0a8';
+      diamond(p.sx, p.sy, 13, 6.5);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(60,50,40,0.5)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      if (sleeper) {
+        ctx.fillStyle = '#8d7c62';
+        ctx.beginPath();
+        ctx.ellipse(p.sx, p.sy - 3, 9, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (b.type === 'door') {
+      isoBox(p.sx, p.sy, I.HW - 3, I.HH - 2, 5, '#6a5540', '#54432f', '#3f3325');
+      ctx.fillStyle = '#8d6a45';
+      ctx.fillRect(p.sx - 5, p.sy - 16, 10, 14);
+      ctx.strokeStyle = 'rgba(30,25,20,0.6)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.sx - 5, p.sy - 16, 10, 14);
+    } else if (b.type === 'table') {
+      shadow(p.sx, p.sy + 3, 12);
+      isoBox(p.sx, p.sy, 12, 6, 5, '#a37f52', '#8a6a44', '#6d5335');
+    } else if (b.type === 'chest') {
+      shadow(p.sx, p.sy + 3, 10);
+      isoBox(p.sx, p.sy, 10, 5, 9, '#8a6a45', '#6f5537', '#57422a');
+      ctx.strokeStyle = '#c9a25e';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 10, p.sy - 5); ctx.lineTo(p.sx, p.sy - 10);
+      ctx.lineTo(p.sx + 10, p.sy - 5);
+      ctx.stroke();
+    } else if (b.type === 'bench') {
+      shadow(p.sx, p.sy + 3, 13);
+      isoBox(p.sx, p.sy, 13, 6.5, 7, '#9a7a4e', '#7d6140', '#614a30');
+      // Tools standing in a rack, so a bench reads as a place work happens.
+      ctx.strokeStyle = '#4a4038';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.moveTo(p.sx - 6 + i * 6, p.sy - 7);
+        ctx.lineTo(p.sx - 5 + i * 6, p.sy - 17 - (i % 2) * 3);
+        ctx.stroke();
+      }
+      if (game.recipes[b.id]) progressPip(p.sx, p.sy - 24,
+        (b.craftDone || 0) / HF.RECIPES[game.recipes[b.id]].work, '#d0a24a');
+    } else if (b.type === 'ishigaki') {
+      shadow(p.sx, p.sy + 3, 14);
+      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 15, '#9b958a', '#7d776d', '#5f5a52');
+      if (def.hp && b.hp < def.hp) progressPip(p.sx, p.sy - 26, b.hp / def.hp, '#d9584f');
+    } else if (b.type === 'house') {
       shadow(p.sx, p.sy + 4, 17);
       isoBox(p.sx, p.sy, 15, 7.5, 9, '#6a5540', '#54432f', '#3f3325');   // walls
       // thatched hipped roof
@@ -465,7 +519,7 @@ HF.Render = (function () {
         ctx.arc(p.sx + 15, p.sy - 8, 3, 0, Math.PI * 2);
         ctx.fill();
       }
-    } else if (b.type === 'campfire') {
+    } else if (b.type === 'hearth' || b.type === 'campfire') {
       shadow(p.sx, p.sy + 2, 12);
       ctx.fillStyle = '#5a5347';
       for (let i = 0; i < 5; i++) {
@@ -503,7 +557,7 @@ HF.Render = (function () {
       ctx.fill();
     } else if (b.type === 'wall') {
       shadow(p.sx, p.sy + 3, 14);
-      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 15, '#9b958a', '#7d776d', '#5f5a52');
+      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 17, '#8a6f4a', '#6d5738', '#523f28');
       ctx.strokeStyle = 'rgba(40,38,34,0.45)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -547,9 +601,21 @@ HF.Render = (function () {
   }
 
   /* A peasant: indigo work clothes and a straw kasa, which reads at any zoom. */
+  /* Where to actually paint somebody: between the tile they left and the tile
+     they are on, by how far through the step they are. The simulation stays
+     firmly on the grid; only the picture is allowed to be between tiles. */
+  function bodyPos(e) {
+    const t = e.stepLen ? Math.min(1, (e.stepT || 0) / e.stepLen) : 1;
+    if (t >= 1 || e.fromX == null) return I.toScreen(e.x, e.y, 0);
+    const a = I.toScreen(e.fromX, e.fromY, 0);
+    const b = I.toScreen(e.x, e.y, 0);
+    return { sx: a.sx + (b.sx - a.sx) * t, sy: a.sy + (b.sy - a.sy) * t };
+  }
+
   function drawVillager(game, c, selected) {
     const tile = game.tiles[c.y * game.w + c.x];
-    const p = I.toScreen(c.x, c.y, I.elevOf(tile));
+    const p = bodyPos(c);
+    p.sy -= I.elevOf(tile) * I.ELEV;
 
     if (selected) {
       ctx.strokeStyle = '#e0b64a';
@@ -601,7 +667,8 @@ HF.Render = (function () {
 
   function drawBandit(game, r) {
     const tile = game.tiles[r.y * game.w + r.x];
-    const p = I.toScreen(r.x, r.y, I.elevOf(tile));
+    const p = bodyPos(r);
+    p.sy -= I.elevOf(tile) * I.ELEV;
     shadow(p.sx, p.sy + 1, 8);
     const bodyTop = p.sy - 20, bodyBot = p.sy - 2;
     ctx.fillStyle = '#4a3f3a';
@@ -628,6 +695,52 @@ HF.Render = (function () {
   }
 
   /* ---------- frame ---------- */
+
+  /* Night is one translucent wash over the finished scene rather than a
+     recolour of every tile. Recolouring was affordable when a frame was only
+     painted after a keypress; at sixty frames a second it is not, and the wash
+     also lets hearths punch warm holes in the dark for almost nothing. */
+  const NIGHT = [22, 30, 58];
+  const DUSK = [92, 54, 40];
+
+  function drawLight(game) {
+    const l = game.light();
+    if (l >= 1) return;
+    const h = game.hour();
+    const warm = (h > 15 && h < 21) || (h > 4 && h < 8);
+    const tint = warm && l > 0.05 ? DUSK : NIGHT;
+    const strength = (1 - l) * (warm ? 0.42 : 0.66);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = 'rgba(' + tint[0] + ',' + tint[1] + ',' + tint[2] + ',' + strength.toFixed(3) + ')';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+
+    // Anything that burns throws light. Drawn additively so a hearth reads as
+    // a source rather than a lighter patch of ground.
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      const def = HF.BUILDINGS[b.type];
+      if (!def.warmth) continue;
+      const tile = game.tiles[b.y * game.w + b.x];
+      const p = I.toScreen(b.x, b.y, I.elevOf(tile));
+      // Kept modest on purpose: a wider, brighter pool washed out the walls of
+      // the very room it was meant to be lighting.
+      const r = 58;
+      const g = ctx.createRadialGradient(p.sx, p.sy - 6, 3, p.sx, p.sy - 6, r);
+      const a = (1 - l) * 0.34;
+      g.addColorStop(0, 'rgba(230,150,60,' + a.toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(230,150,60,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(p.sx, p.sy - 6, r, r * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
 
   function draw(game, view, force) {
     if (!dirty && !force) return;
@@ -709,6 +822,8 @@ HF.Render = (function () {
         }
       }
     }
+
+    drawLight(game);
   }
 
   return { init: init, draw: draw, invalidate: invalidate };

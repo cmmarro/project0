@@ -41,6 +41,7 @@ HF.Build = {
     game.buildings.push(b);
     HF.Map.at(game, x, y).building = b.id;
     game.dirtyTerrain = true;
+    if (def.encloses) game.roomsDirty = true;
     return { ok: true, building: b };
   },
 
@@ -57,6 +58,7 @@ HF.Build = {
     b.cancelled = true;
     game.buildings[b.id] = null;
     tile.building = null;
+    if (def.encloses) game.roomsDirty = true;
     delete game.designations[HF.U.key(x, y)];
     game.releaseClaimsOnBuilding(b.id);
     game.dirtyTerrain = true;
@@ -99,7 +101,7 @@ HF.Build = {
     if (game.season() === 'Winter') return;
     for (let i = 0; i < game.tiles.length; i++) {
       const t = game.tiles[i];
-      if (!t.regrow || t.regrow > game.turn) continue;
+      if (!t.regrow || t.regrow > game.day()) continue;
       t.regrow = 0;
       if (t.building != null) continue;
       const x = i % game.w, y = (i / game.w) | 0;
@@ -108,14 +110,78 @@ HF.Build = {
       // Whatever was taken from this tile is what comes back to it.
       const what = t.regrowTo;
       t.regrowTo = null;
-      if (what === 'fish') {
-        if (t.terrain === 'water' && !t.feature) { t.feature = 'fish'; game.dirtyTerrain = true; }
-      } else if (what === 'chestnut') {
-        if (!t.feature) { t.feature = 'chestnut'; game.dirtyTerrain = true; }
+      if (HF.PLANTS[what]) {
+        if (!t.feature && HF.PLANTS[what].on.indexOf(t.terrain) !== -1) {
+          t.feature = what;
+          game.dirtyTerrain = true;
+        }
       } else if (what && HF.TERRAIN[what]) {
         if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
     }
+  },
+
+  /* ---------- rooms ----------
+     A tile is indoors when you cannot walk from it to the edge of the map
+     without crossing something that encloses. That is the whole definition -
+     no roofs to place, no room objects to keep in sync - and it is what makes
+     a ring of walls worth building rather than decorative.
+
+     Recomputed only when something that encloses is built or lost, and cached
+     on the game, because it is a full-map flood fill. */
+  refreshRooms: function (game) {
+    const w = game.w, h = game.h;
+    const outside = new Uint8Array(w * h);
+    const seals = new Uint8Array(w * h);
+
+    for (const b of game.buildings) {
+      if (!b || !b.built) continue;
+      if (HF.BUILDINGS[b.type].encloses) seals[b.y * w + b.x] = 1;
+    }
+
+    // Flood in from every edge tile. Anything the flood never reaches, and
+    // which is not itself a wall, is enclosed.
+    const queue = [];
+    function push(x, y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      const i = y * w + x;
+      if (outside[i] || seals[i]) return;
+      outside[i] = 1;
+      queue.push(i);
+    }
+    for (let x = 0; x < w; x++) { push(x, 0); push(x, h - 1); }
+    for (let y = 0; y < h; y++) { push(0, y); push(w - 1, y); }
+
+    for (let qi = 0; qi < queue.length; qi++) {
+      const i = queue[qi];
+      const x = i % w, y = (i / w) | 0;
+      // Orthogonal only: a diagonal gap between two wall corners is not a way
+      // out of a room, and treating it as one would make small huts leak.
+      push(x + 1, y); push(x - 1, y); push(x, y + 1); push(x, y - 1);
+    }
+
+    const inside = new Uint8Array(w * h);
+    for (let i = 0; i < inside.length; i++) inside[i] = (!outside[i] && !seals[i]) ? 1 : 0;
+    game.indoors = inside;
+    game.roomsDirty = false;
+    return inside;
+  },
+
+  indoorsAt: function (game, x, y) {
+    if (!game.indoors || game.roomsDirty) HF.Build.refreshRooms(game);
+    if (x < 0 || y < 0 || x >= game.w || y >= game.h) return false;
+    return !!game.indoors[y * game.w + x];
+  },
+
+  /* Every finished building of a kind, nearest first from a point. */
+  nearestBuilt: function (game, x, y, pred) {
+    let best = null, bestD = Infinity;
+    for (const b of game.buildings) {
+      if (!b || !b.built || !pred(b)) continue;
+      const d = HF.U.dist(x, y, b.x, b.y);
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
   },
 
   storageCap: function (game) {

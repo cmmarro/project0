@@ -1,8 +1,8 @@
 # Hyakushō 百姓
 
-An isometric, turn-based village game set in Sengoku-era Japan. Civilization-style
-tiles and turns; RimWorld-style villagers who have their own skills, needs and
-moods and decide for themselves which of your work orders to pick up.
+A live, isometric village simulation set in Sengoku-era Japan. The clock runs
+on its own: villagers work from dawn, go to bed at nine, and get up at first
+light, and you set the speed or pause and take as long as you like.
 
 No build step, no dependencies. Open `index.html` in a browser and play.
 
@@ -27,8 +27,13 @@ much pressure you want.
 Chosen on the opening sheet, remembered between sessions, and shareable as
 `?mode=open`.
 
-Nothing happens until you press **End Turn**, so there is no time pressure while
-you plan.
+### Time
+
+A day is 240 ticks and about forty seconds at 1×. Ten hours of daylight, a dusk,
+and a night the hearths have to get you through. Twelve days to a season,
+forty-eight to a year.
+
+`Space` pauses. `1` `2` `3` set the speed. Nothing is lost by stopping to think.
 
 ### The levy
 
@@ -49,7 +54,7 @@ Tap the levy chip to read the ledger.
 
 The castle only ever asks for rice, so there has to be a way to turn other
 things into it. Traders come up the valley with a **single offer** — timber for
-rice, rice for stone, take it or leave it, and gone in four turns. A village
+rice, rice for stone, take it or leave it, and gone in four days. A village
 that cuts bamboo or traps fish can buy its way to the levy without a paddy in
 sight.
 
@@ -65,7 +70,7 @@ they decide who does what.
 | --- | --- |
 | Fell Timber | Pine, or bamboo — bamboo pays less but is back inside the year |
 | Quarry Stone | Cuts stone from slopes and mountains |
-| Gather Chestnuts | A little food, wherever chestnuts grow |
+| Forage | Whatever is in season: bracken, chestnuts, mushrooms, yam, hemp, herbs |
 | Set Fish Traps | Steady food from the riverbank that owes nothing to the paddies |
 
 ### The ground
@@ -77,32 +82,59 @@ Where you build matters more than how much you build.
 | **Reed Marsh** | Paddies ripen half again as fast. Nothing else will stand on it |
 | **Meadow** | Ordinary. Paddies, houses, anything |
 | **Susuki Moor** | Open and buildable, but paddies barely work — dry ground |
-| **Pine Grove** | Timber, back in sixty turns or so |
+| **Pine Grove** | Timber, back in a couple of months |
 | **Bamboo Grove** | Less timber per cut, back inside the year — logged over and over |
 
 Villages are sited near marsh where there is any, so the good ground is
 something you actually meet.
 
-| Building | Cost | Purpose |
-| --- | --- | --- |
-| Minka | 22 timber | Farmhouse, sleeps two |
-| Kura | 28 timber | Granary; +150 to every storage cap |
-| Rice Paddy | 5 timber | Rice. Fast on marsh, slow on moor |
-| Hearth Fire | 12 timber | Keeps anyone within five tiles alive through winter |
-| Yagura | 16 timber, 8 stone | Watchtower; villagers nearby fight harder |
-| Ishigaki | 6 stone | Stone rampart; bandits must break through it |
+### What grows wild
 
-Drag to paint an order or a row of buildings across an area.
+Each plant is only worth taking in its own season, which is what gives the year
+a shape beyond the rice.
+
+| Plant | Season | Gives |
+| --- | --- | --- |
+| Bracken | Spring | Food |
+| Chestnut | Summer, autumn | Food |
+| Mushrooms | Autumn | Food, under the pines |
+| Wild yam | Autumn, winter | Food that is there when nothing else is |
+| Wild hemp | Summer, autumn | Hemp — useless until woven |
+| Medicinal herbs | Spring to autumn | Herbs — useless until ground |
+| Fish | All year | The one thing the river always gives |
+
+### Rooms, furniture and crafting
+
+There is no pre-fab hut. Raise **timber walls** in a ring, hang a **door**, and
+lay a **futon** inside. Any tile you cannot walk from to the edge of the map is
+indoors — that one rule is the whole room system, and it is what makes walls
+worth building: indoors is warm through winter, and the only place anyone
+sleeps properly.
+
+An **irori** hearth keeps a room alive through the cold and lights it after
+dark. A **chest** holds more stores. A **low table** is somewhere to eat that
+is not the floor.
+
+Build a **work bench** and tap it to set what it makes:
+
+| Recipe | Takes | Gives |
+| --- | --- | --- |
+| Weave Cloth | 6 hemp | 3 cloth — a futon needs it |
+| Grind Medicine | 5 herbs | 2 medicine |
+| Dry and Salt | 14 rice | 20 rice — slow, and only worth it on a glut |
+
+Drag to paint an order or a row of walls across an area.
 
 ### The villagers
 
 Each has four skills (forestry, quarrying, carpentry, farming) that improve with
 use, and four needs that don't care how busy you are:
 
-- **Food** falls every turn. Below about a third they stop and eat from the
-  shared stores. With nothing in the kura they starve.
-- **Rest** falls every turn. Below about a quarter they sleep — in a bed if a
-  minka has one free, otherwise on the ground, which wrecks morale.
+- **Food** falls all day. Below about a third they stop and eat from the shared
+  stores. With nothing in the kura they starve, over about three days.
+- **Rest** falls while they are awake. They go to bed around nine and get up at
+  first light — on a futon indoors they wake full; on bare ground they lose a
+  little every night until it starts to tell.
 - **Spirit** is the sum of everything they are currently thinking. Tap a villager
   to read the list.
 - **Health** regenerates when fed, drains when starving or caught out in the cold.
@@ -123,13 +155,13 @@ Lost Toshi of Shirakawa · fading   -25
 The collectors stripped us bare    -22
 No hearth in this cold             -20
 Nothing left in the kura           -14
-Sleeping on bare earth             -11
+Nowhere to sleep but the ground    -11
 Well rested                         +6
 ```
 
-Some are conditions you can fix this turn — build a minka, light a hearth. Some
-are memories that fade over ten to thirty turns, which is what makes a paid levy
-feel like relief and a missed one hang over the next two seasons. A **Sullen**
+Some are conditions you can fix today — put up walls, light a hearth. Some are
+memories that fade over one to four weeks, which is what makes a paid levy feel
+like relief and a missed one hang over the next two seasons. A **Sullen**
 villager takes every bad thought 40% harder and a **Steady** one 40% lighter, so
 the same winter reads differently down the roster.
 
@@ -137,10 +169,10 @@ A villager who stays miserable long enough sits down and stops working.
 
 ### The year
 
-Ten turns per season, forty per year. Rice grows fastest in summer, slowly in
-autumn, and not at all in winter — when anyone more than five tiles from a hearth
-loses health every turn. The levy falls after the autumn harvest, so you pay
-first and face winter on what's left.
+Twelve days per season, forty-eight per year. Rice grows fastest in summer,
+slowly in autumn, and not at all in winter — when anyone outdoors and away from
+a hearth loses health. The levy falls after the autumn harvest, so you pay first
+and face winter on what's left.
 
 Bandits start arriving in year two — later and rarer in a Quiet Province, and
 never in an Open Valley. Villagers within seven tiles of one drop what they're
@@ -159,14 +191,15 @@ filesystem.
 | --- | --- |
 | `js/config.js` | All balance numbers, terrain / building / order definitions |
 | `js/util.js` | Seeded RNG (mulberry32) and value-noise generator |
+| `js/time.js` | The clock: ticks, days, seasons, and the light curve |
 | `js/iso.js` | Isometric projection and elevation-aware tile picking |
 | `js/map.js` | Terrain generation, tile queries, reachability flood fill |
 | `js/path.js` | 8-way A\* over a set of acceptable goal tiles |
 | `js/colonists.js` | Needs, spirit, skills, health, melee |
-| `js/jobs.js` | What a villager decides to do each turn, and doing it |
-| `js/buildings.js` | Placement, refunds, crop growth, regrowth |
+| `js/jobs.js` | What a villager decides to do each tick, and doing it |
+| `js/buildings.js` | Placement, refunds, crop growth, regrowth, room detection |
 | `js/events.js` | Bandit raids, arrivals, blight, seasons |
-| `js/game.js` | Game state, turn resolution, the levy, save/load |
+| `js/game.js` | Game state, the tick loop, day rollover, the levy, save/load |
 | `js/camera.js` | Pan and zoom over a fixed-size canvas |
 | `js/render.js` | Isometric drawing, painted back to front |
 | `js/ui.js` | Panels, tool pickers, pointer and keyboard input |
@@ -174,12 +207,18 @@ filesystem.
 
 The simulation files touch no DOM, so the whole game can be run headlessly in
 Node for testing — load `config` through `game` into a context whose `window` is
-the global object, then call `endTurn()` in a loop. That is how the levy was
-balanced.
+the global object, then call `step()` in a loop. That is how the sleep cycle was
+tuned and the levy balanced.
 
-Rendering is on demand: the game is turn-based, so a frame is only painted when
-something actually changed, and the visible tile range is solved for rather than
-tested tile by tile.
+The simulation costs about 7 µs a tick with four villagers and a hundred
+standing orders, so even 4× speed is well under a fifth of one core. Night is a
+single translucent wash over the finished scene rather than a recolour of every
+tile — that is what makes a live day/night cycle affordable at sixty frames on
+a phone.
+
+The visible tile range is solved for analytically rather than tested tile by
+tile. Villagers are simulated firmly on the grid — only the picture is allowed
+to be between tiles, interpolated from the tile they left.
 
 Save and load use `localStorage`. A save is the whole game state as JSON,
 including the RNG's internal state, so a restored village continues on exactly
@@ -207,7 +246,7 @@ back. Traits get exactly one hook each, and every hook is legible in the
 thoughts list.
 
 **Story-richness.** Skill-ups aren't logged, breakdowns log once per villager
-per fifteen turns, and spoilage once per twelve — bookkeeping crowds out the
+per four days, and spoilage once per four — bookkeeping crowds out the
 lines that are about something. What survives in the Record names an actor and
 has something at stake.
 
@@ -225,5 +264,7 @@ Drag with no tool chosen to pan; pinch or scroll to zoom; tap a tile to inspect
 it, or a villager to select them. With a tool chosen, dragging paints instead —
 the chip at the bottom of the map says which tool is live and clears it.
 
-`Space` end turn · `B` build menu · `C`/`M`/`F` work orders · `X` cancel tool ·
-`Esc` put the tool down · `H` help
+`Space` pause · `1`/`2`/`3` speed · `B` build menu · `C`/`M`/`F` work orders ·
+`X` cancel tool · `Esc` put the tool down · `H` help
+
+Tap a bench to set what it makes.

@@ -93,8 +93,8 @@ HF.Colonists = {
     if (!m) return;
     const label = m.label + (suffix || '');
     const existing = c.memories.find(function (o) { return o.label === label; });
-    if (existing) { existing.left = m.turns; return; }
-    c.memories.push({ label: label, delta: m.delta, left: m.turns });
+    if (existing) { existing.left = m.days; return; }
+    c.memories.push({ label: label, delta: m.delta, left: m.days });
   },
 
   rememberAll: function (game, key, suffix) {
@@ -129,6 +129,9 @@ HF.Colonists = {
   },
 
   isWarm: function (game, c) {
+    // A sealed room holds its own heat. This is the reason to build walls
+    // rather than scatter hearths across a field.
+    if (HF.Build.indoorsAt(game, c.x, c.y)) return true;
     for (const b of game.buildings) {
       if (!b || !b.built) continue;
       const def = HF.BUILDINGS[b.type];
@@ -197,8 +200,12 @@ HF.Colonists = {
     else if (n.rest < 20) add('Dead on their feet', -16);
     else if (n.rest < 40) add('Short of sleep', -7);
 
-    if (HF.Colonists.freeBed(game, c) || c.asleep) add('A bed to sleep in', 8);
-    else add('Sleeping on bare earth', -8);
+    if (HF.Colonists.freeBed(game, c) || c.asleep) {
+      add('A bed to sleep in', 8);
+      if (HF.Build.indoorsAt(game, c.x, c.y)) add('Four walls and a roof', 6);
+    } else {
+      add('Nowhere to sleep but the ground', -8);
+    }
 
     if (game.season() === 'Winter') {
       if (HF.Colonists.isWarm(game, c)) add('Warm by the hearth', 4);
@@ -208,8 +215,9 @@ HF.Colonists = {
     if (game.res.food > 90) add('The kura is full', 5);
     if (game.res.food <= 0) add('Nothing left in the kura', -10);
 
-    const houses = Math.min(8, game.builtCount('house') * 3);
-    if (houses) add('A village taking shape', houses);
+    const built = game.buildings.filter(function (b) { return b && b.built; }).length;
+    const village = Math.min(8, Math.floor(built / 3));
+    if (village) add('A village taking shape', village);
 
     // Capped, because whoever was tied to the dead already carries a named
     // thought for them. This is the rest of the village being subdued, and it
@@ -235,38 +243,47 @@ HF.Colonists = {
     let target = 55;
     for (const t of HF.Colonists.thoughts(game, c)) target += t.delta;
 
-    for (let i = c.memories.length - 1; i >= 0; i--) {
-      if (--c.memories[i].left <= 0) c.memories.splice(i, 1);
-    }
-
-    c.mood = HF.U.clamp(c.mood + (target - c.mood) * 0.4, 0, 100);
+    // Eased slowly because this now runs many times a day rather than once.
+    c.mood = HF.U.clamp(c.mood + (target - c.mood) * 0.12, 0, 100);
 
     if (c.mood < 22) c.lowMoodTurns++;
     else c.lowMoodTurns = Math.max(0, c.lowMoodTurns - 1);
 
     if (c.lowMoodTurns >= 4 && c.breakdown <= 0) {
-      c.breakdown = 3;
+      c.breakdown = HF.Time.TICKS_PER_HOUR * 4;   // sits out four hours
       c.lowMoodTurns = 0;
       c.task = null;
       // A village in a bad way breaks down again the moment it recovers, and
       // logging every relapse buries everything else under the same three
       // lines. Say it once, then let the spirit bar carry it.
-      if (game.turn - (c.lastBreakdownLog || -99) >= 15) {
-        c.lastBreakdownLog = game.turn;
+      if (game.day() - (c.lastBreakdownLog || -99) >= 4) {
+        c.lastBreakdownLog = game.day();
         game.log(c.name + ' has sat down in the dirt and will not be moved.', 'bad');
       }
     }
   },
 
+  /* Per tick. How well somebody sleeps is now the payoff for having built a
+     room around the futon rather than dropping it in a field: a bed is worth
+     three times the bare ground, and a bed under a roof better still. */
   decayNeeds: function (game, c) {
     const n = c.needs;
     n.food = HF.U.clamp(n.food - HF.CFG.FOOD_DECAY, 0, 100);
     if (c.asleep) {
-      const inBed = game.buildingAt(c.x, c.y) &&
-                    HF.BUILDINGS[game.buildingAt(c.x, c.y).type].beds;
-      n.rest = HF.U.clamp(n.rest + (inBed ? HF.CFG.BED_REST : HF.CFG.GROUND_REST), 0, 100);
+      const b = game.buildingAt(c.x, c.y);
+      const inBed = b && HF.BUILDINGS[b.type].beds;
+      let rate = inBed ? HF.CFG.BED_REST : HF.CFG.GROUND_REST;
+      if (inBed && HF.Build.indoorsAt(game, c.x, c.y)) rate += HF.CFG.ROOM_REST_BONUS;
+      n.rest = HF.U.clamp(n.rest + rate, 0, 100);
     } else {
       n.rest = HF.U.clamp(n.rest - HF.CFG.REST_DECAY, 0, 100);
+    }
+  },
+
+  /* Once-a-day bookkeeping: memories fade on a day clock, not a tick clock. */
+  newDay: function (game, c) {
+    for (let i = c.memories.length - 1; i >= 0; i--) {
+      if (--c.memories[i].left <= 0) c.memories.splice(i, 1);
     }
   },
 

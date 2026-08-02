@@ -6,7 +6,7 @@ HF.Events = {
   /* ---------- raiders ---------- */
 
   spawnRaid: function (game) {
-    const count = 1 + Math.floor(game.turn / 55) + (game.rng.chance(0.35) ? 1 : 0);
+    const count = 1 + Math.floor(game.day() / 60) + (game.rng.chance(0.35) ? 1 : 0);
     const anchor = game.aliveColonists()[0];
     if (!anchor) return;
     const centre = game.colonyCentre();
@@ -41,14 +41,14 @@ HF.Events = {
         hp: 26, maxHp: 26,
         dead: false,
         withdrew: false,
-        spawnTurn: game.turn,
+        spawnDay: game.day(),
         lost: 0,
       });
     }
     game.log(count + ' bandit' + (count > 1 ? 's' : '') + ' sighted to the ' +
              HF.Events.compass(spawn, centre) + '.', 'bad');
     const gap = game.scenario().raidGapScale || 1;
-    game.nextRaidTurn = game.turn +
+    game.nextRaidDay = game.day() +
       Math.round(game.rng.int(HF.CFG.RAID_MIN_GAP, HF.CFG.RAID_MAX_GAP) * gap);
   },
 
@@ -111,7 +111,7 @@ HF.Events = {
 
     // A raid that has dragged on gives up, so a siege can never become
     // permanent scenery.
-    if (game.turn - (r.spawnTurn || 0) > 45) { r.withdrew = true; return; }
+    if (game.day() - (r.spawnDay || 0) > 25) { r.withdrew = true; return; }
 
     if (HF.U.dist(r.x, r.y, target.x, target.y) <= 1) {
       const dmg = game.rng.int(4, 7);
@@ -175,24 +175,24 @@ HF.Events = {
   tick: function (game) {
     const alive = game.aliveColonists();
 
-    if (game.scenario().raids && game.turn >= game.nextRaidTurn && alive.length > 0) {
+    if (game.scenario().raids && game.day() >= game.nextRaidDay && alive.length > 0) {
       HF.Events.spawnRaid(game);
     }
 
     HF.Events.ambient(game);
 
     // An offer left standing too long walks on down the valley.
-    if (game.offer && game.turn > game.offer.until) {
+    if (game.offer && game.day() > game.offer.until) {
       game.log((game.offer.tag || 'The trader') + ' has moved on.', 'info');
       game.offer = null;
     }
-    if (!game.offer && game.turn >= game.nextMerchantTurn && alive.length > 0) {
-      game.nextMerchantTurn = game.turn + game.rng.int(HF.CFG.MERCHANT.gap[0], HF.CFG.MERCHANT.gap[1]);
+    if (!game.offer && game.day() >= game.nextMerchantDay && alive.length > 0) {
+      game.nextMerchantDay = game.day() + game.rng.int(HF.CFG.MERCHANT.gap[0], HF.CFG.MERCHANT.gap[1]);
       HF.Events.makeOffer(game);
     }
 
-    if (game.turn >= game.nextMigrantTurn) {
-      game.nextMigrantTurn = game.turn + HF.CFG.MIGRANT_GAP + game.rng.int(-4, 6);
+    if (game.day() >= game.nextMigrantDay) {
+      game.nextMigrantDay = game.day() + HF.CFG.MIGRANT_GAP + game.rng.int(-4, 6);
       const beds = HF.Build.bedCount(game);
       if (game.res.food > 55 && alive.length > 0 && alive.length < beds + 2) {
         HF.Events.addMigrant(game);
@@ -281,7 +281,7 @@ HF.Events = {
       tag: m.tag,
       wants: m.wants, wantAmount: want,
       gives: m.gives, giveAmount: give,
-      until: game.turn + HF.CFG.MERCHANT.standFor,
+      until: game.day() + HF.CFG.MERCHANT.standFor,
     };
     const W = HF.RESOURCES[m.wants], G = HF.RESOURCES[m.gives];
     game.log(m.who + ' will take ' + want + ' ' + W.label.toLowerCase() +

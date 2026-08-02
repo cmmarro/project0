@@ -122,6 +122,12 @@ kbd {
 .stat.food  .value { color: var(--rice); }
 .stat.wood  .value { color: var(--timber); }
 .stat.stone .value { color: var(--stone); }
+.stat.hemp  .value { color: #9fae72; }
+.stat.herb  .value { color: #7fb08a; }
+.stat.cloth .value { color: #cfc0a8; }
+.stat.med   .value { color: #c98fa8; }
+/* Crafted stores are narrower - they have no cap to show. */
+.stat.minor { min-width: 0; }
 
 /* The levy clock. It escalates in colour as it comes due, and turns vermilion
    when the granary cannot cover it. */
@@ -438,6 +444,68 @@ kbd {
 .bar.rest .fill { background: #3a5a72; }
 .bar.mood .fill { background: #7a5c2c; }
 .bar.hp   .fill { background: #7a3a2f; }
+
+/* ---------- the clock and the speed control ---------- */
+
+#clock { flex-shrink: 0; text-align: right; min-width: 62px; }
+.clock-time {
+  font: 600 15px/1.15 var(--display);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.clock-phase {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.clock-phase.day   { color: #d9c14a; }
+.clock-phase.dawn  { color: #e0a06a; }
+.clock-phase.dusk  { color: #c98a6a; }
+.clock-phase.night { color: #7f92c6; }
+
+#speed { display: flex; gap: 4px; flex: 1; }
+#speed button {
+  flex: 1;
+  min-width: 44px;
+  padding: 9px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--ink-dim);
+  font: 600 13px/1.2 var(--ui);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+#speed button:hover { background: #2a3242; }
+#speed button.on {
+  border-color: var(--gold);
+  background: #2a2416;
+  color: var(--gold);
+}
+
+/* ---------- grouped build list ---------- */
+
+.pick-group {
+  padding: 13px 15px 5px;
+  border-top: 1px solid var(--line);
+}
+.pick-group:first-child { border-top: 0; }
+.pick-group-name {
+  display: block;
+  font: 600 10px/1 var(--ui);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.pick-group-note {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+.pick.chosen { border-color: var(--gold); background: #221d12; }
 
 /* ---------- choosing how hard the world presses ---------- */
 
@@ -827,12 +895,17 @@ kbd {
 .pick:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .pick-mark { width: 12px; height: 12px; border-radius: 3px; background: var(--ink-dim); }
-.pick-mark.build.house      { background: #b59660; }
-.pick-mark.build.storehouse { background: #ded7c4; }
+.pick-mark.build.wall       { background: #8a6f4a; }
+.pick-mark.build.door       { background: #8d6a45; }
+.pick-mark.build.ishigaki   { background: #9b958a; }
+.pick-mark.build.futon      { background: #cfc0a8; }
+.pick-mark.build.hearth     { background: #d9702a; }
+.pick-mark.build.table      { background: #a37f52; }
+.pick-mark.build.chest      { background: #8a6a45; }
 .pick-mark.build.farm       { background: #4d7a72; }
-.pick-mark.build.campfire   { background: #d9702a; }
+.pick-mark.build.bench      { background: #9a7a4e; }
+.pick-mark.build.storehouse { background: #ded7c4; }
 .pick-mark.build.tower      { background: #8a6c4c; }
-.pick-mark.build.wall       { background: #9b958a; }
 
 .pick-name { display: block; font: 600 14px/1.3 var(--display); }
 .pick-name em { font-style: normal; font-size: 11px; color: var(--ink-dim); }

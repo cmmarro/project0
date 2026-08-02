@@ -78,9 +78,25 @@ HF.UI = (function () {
     refresh();
   }
 
-  /* The game is turn-based, so a frame is only painted when something moved. */
-  function frame() {
-    HF.Render.draw(game, view);
+  /* One loop for everything: step the simulation by however much real time has
+     passed, paint, and rebuild the side panels a few times a second. The panels
+     are rebuilt on a timer rather than every frame because they are innerHTML
+     and would otherwise dominate the cost of running at all. */
+  function frame(now) {
+    const dt = lastFrame ? Math.min(0.25, (now - lastFrame) / 1000) : 0;
+    lastFrame = now;
+
+    advance(dt);
+    HF.Render.draw(game, view, HF.Time.SPEEDS[speed] > 0 && !game.gameOver);
+
+    panelCarry += dt;
+    if (panelCarry > 0.35) {
+      panelCarry = 0;
+      renderStats();
+      renderColonists();
+      renderLog();
+      renderEnding();
+    }
     requestAnimationFrame(frame);
   }
 
@@ -162,17 +178,24 @@ HF.UI = (function () {
                 '<span class="pick-cost free">free</span></button>';
       }
     } else {
-      for (const id in HF.BUILDINGS) {
-        const b = HF.BUILDINGS[id];
-        const ok = affordable(b.cost);
-        html += '<button class="pick' + (ok ? '' : ' unaffordable') + '" data-kind="build" data-id="' +
-                id + '"' + (ok ? '' : ' disabled') + '>' +
-                '<span class="pick-mark build ' + id + '"></span>' +
-                '<span class="pick-text"><span class="pick-name">' + b.label +
-                (b.sub ? ' <em>' + b.sub + '</em>' : '') + '</span>' +
-                '<span class="pick-desc">' + b.desc + '</span></span>' +
-                '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
-                (ok ? costText(b.cost) : shortfall(b.cost)) + '</span></button>';
+      // Grouped, because there are now three different questions being asked:
+      // what shape is the room, what goes in it, and what does the village work.
+      for (const cat of HF.BUILD_CATEGORIES) {
+        html += '<div class="pick-group"><span class="pick-group-name">' + cat.label +
+                '</span><span class="pick-group-note">' + cat.note + '</span></div>';
+        for (const id in HF.BUILDINGS) {
+          const b = HF.BUILDINGS[id];
+          if (b.cat !== cat.id) continue;
+          const ok = affordable(b.cost);
+          html += '<button class="pick' + (ok ? '' : ' unaffordable') + '" data-kind="build" data-id="' +
+                  id + '"' + (ok ? '' : ' disabled') + '>' +
+                  '<span class="pick-mark build ' + id + '"></span>' +
+                  '<span class="pick-text"><span class="pick-name">' + b.label +
+                  (b.sub ? ' <em>' + b.sub + '</em>' : '') + '</span>' +
+                  '<span class="pick-desc">' + b.desc + '</span></span>' +
+                  '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
+                  (ok ? costText(b.cost) : shortfall(b.cost)) + '</span></button>';
+        }
       }
     }
 
@@ -187,6 +210,53 @@ HF.UI = (function () {
   }
 
   function closePicker() { el.picker.classList.remove('open'); }
+
+  /* ---------- a bench ----------
+     Tapping a built bench opens its work list. One recipe at a time, on or
+     off: a queue with counts and priorities would be a second game, and this
+     is the smallest thing that makes hemp and herbs worth picking up. */
+  function openBench(b) {
+    const current = game.recipes[b.id] || null;
+    let h = '<div class="ledger"><p class="who">Choose what this bench is set to. ' +
+            'Villagers who will do the work come and do it whenever the materials ' +
+            'are in the stores.</p></div>';
+    h += '<button class="pick' + (current === null ? ' chosen' : '') +
+         '" data-recipe="" data-bench="' + b.id + '">' +
+         '<span class="pick-mark" style="background:#3a4453"></span>' +
+         '<span class="pick-text"><span class="pick-name">Nothing</span>' +
+         '<span class="pick-desc">Leave the bench idle.</span></span>' +
+         '<span class="pick-cost free">&mdash;</span></button>';
+
+    for (const id in HF.RECIPES) {
+      const r = HF.RECIPES[id];
+      if (r.station !== HF.BUILDINGS[b.type].station) continue;
+      const ok = affordable(r.cost);
+      h += '<button class="pick' + (current === id ? ' chosen' : '') +
+           '" data-recipe="' + id + '" data-bench="' + b.id + '">' +
+           '<span class="pick-mark" style="background:' +
+           (HF.RESOURCES[Object.keys(r.yields)[0]] || {}).color + '"></span>' +
+           '<span class="pick-text"><span class="pick-name">' + esc(r.label) + '</span>' +
+           '<span class="pick-desc">' + esc(r.note) + '</span></span>' +
+           '<span class="pick-cost' + (ok ? '' : ' short') + '">' +
+           costText(r.cost) + ' &rarr; ' + costText(r.yields) + '</span></button>';
+    }
+
+    el.pickerTitle.textContent = HF.BUILDINGS[b.type].label;
+    el.pickerList.innerHTML = h;
+    for (const btn of el.pickerList.querySelectorAll('[data-recipe]')) {
+      btn.addEventListener('click', function () {
+        const id = btn.dataset.recipe;
+        const bid = +btn.dataset.bench;
+        if (id) game.recipes[bid] = id;
+        else delete game.recipes[bid];
+        const target = game.buildings[bid];
+        if (target) target.craftDone = 0;
+        closePicker();
+        refresh();
+      });
+    }
+    el.picker.classList.add('open');
+  }
 
   /* ---------- how hard the world presses ----------
      Offered on the opening sheet rather than buried in a settings menu,
@@ -234,14 +304,14 @@ HF.UI = (function () {
     const S = HF.CFG.STANDING;
     const demand = game.levyDemand(game.levyIndex);
     const have = Math.floor(game.res.food);
-    const due = game.turnsToLevy();
+    const due = game.daysToLevy();
     const pct = HF.U.clamp(game.standing, 0, 100);
 
     let h = '<div class="ledger">';
     h += '<div class="standing-bar"><div class="fill" style="width:' + pct + '%"></div>' +
          '<span>Standing &middot; ' + esc(game.standingWord()) + '</span></div>';
     h += '<p class="who">The castle asks <b>' + demand + ' koku</b> ' +
-         (due <= 0 ? '<b>now</b>' : 'in <b>' + due + (due === 1 ? ' turn' : ' turns') + '</b>') +
+         (due <= 0 ? '<b>now</b>' : 'in <b>' + due + (due === 1 ? ' day' : ' days') + '</b>') +
          '. The kura holds <b>' + have + '</b>.</p>';
     h += '<p class="who">Falling short costs standing in proportion to how far short you fall — ' +
          'a few koku is a note in a ledger, half the demand is a mark against the village. ' +
@@ -297,7 +367,7 @@ HF.UI = (function () {
     if (!o) return;
     const W = HF.RESOURCES[o.wants], G = HF.RESOURCES[o.gives];
     const canPay = game.res[o.wants] >= o.wantAmount;
-    const leaves = game.turnsToLevy();
+    const leaves = game.daysToLevy();
 
     let h = '<div class="ledger">';
     h += '<p class="who lede">' + esc(o.who) + '.</p>';
@@ -307,10 +377,10 @@ HF.UI = (function () {
          '<span class="side get"><b>' + o.giveAmount + '</b>' + esc(G.label) + '</span></div>';
     h += '<p class="who">You hold ' + Math.floor(game.res[o.wants]) + ' ' +
          esc(W.label.toLowerCase()) + '. They will wait ' +
-         Math.max(0, o.until - game.turn) + ' more ' +
-         (o.until - game.turn === 1 ? 'turn' : 'turns') + '.</p>';
+         Math.max(0, o.until - game.day()) + ' more ' +
+         (o.until - game.day() === 1 ? 'day' : 'days') + '.</p>';
     if (o.gives === 'food' && leaves > 0) {
-      h += '<p class="who">The levy falls in ' + leaves + ' turns.</p>';
+      h += '<p class="who">The levy falls in ' + leaves + ' days.</p>';
     }
     h += '<div class="offer-actions">' +
          '<button id="offer-yes" class="primary"' + (canPay ? '' : ' disabled') + '>' +
@@ -463,6 +533,10 @@ HF.UI = (function () {
   }
 
   function handleTap(t, e) {
+    // A finished bench is the one thing on the map you operate by tapping it.
+    const b = game.buildingAt(t.x, t.y);
+    if (b && b.built && HF.BUILDINGS[b.type].station) { openBench(b); return; }
+
     const c = game.colonistAt(t.x, t.y);
     if (c) {
       view.selectedId = c.id;
@@ -568,7 +642,9 @@ HF.UI = (function () {
   function closeSheet() { el.sidebar.classList.remove('open'); }
 
   function bindButtons() {
-    $('btn-endturn').addEventListener('click', endTurn);
+    for (const btn of document.querySelectorAll('#speed button')) {
+      btn.addEventListener('click', function () { setSpeed(+btn.dataset.speed); });
+    }
     $('mode-hint').addEventListener('click', function () { setMode('none', null); });
     el.levy.addEventListener('click', openLedger);
     $('offer-chip').addEventListener('click', openOffer);
@@ -631,7 +707,9 @@ HF.UI = (function () {
     window.addEventListener('keydown', function (e) {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
-      if (k === ' ' || k === 'enter') { e.preventDefault(); endTurn(); return; }
+      // Space is pause, the way it is in every game like this.
+      if (k === ' ') { e.preventDefault(); togglePause(); return; }
+      if (k === '1' || k === '2' || k === '3') { setSpeed(+k); return; }
       if (k === 'escape') {
         setMode('none', null);
         $('help').classList.remove('open');
@@ -649,15 +727,46 @@ HF.UI = (function () {
     });
   }
 
-  function endTurn() {
+  /* ---------- the clock ----------
+     The game advances on its own; the player sets the speed. Pause is a real
+     speed rather than a special case, so "stop and think" is always one tap
+     away - which is what makes a live simulation playable rather than frantic. */
+  let speed = 1;
+  let lastFrame = 0;
+  let tickCarry = 0;
+  let panelCarry = 0;
+
+  function setSpeed(n) {
+    speed = HF.U.clamp(n, 0, HF.Time.SPEEDS.length - 1);
+    tickCarry = 0;
+    updateSpeedButtons();
+    HF.Render.invalidate();
+  }
+
+  function togglePause() { setSpeed(speed === 0 ? 1 : 0); }
+
+  function updateSpeedButtons() {
+    for (const btn of document.querySelectorAll('#speed button')) {
+      btn.classList.toggle('on', +btn.dataset.speed === speed);
+    }
+  }
+
+  function advance(dtSeconds) {
     if (game.gameOver) return;
+    const mult = HF.Time.SPEEDS[speed];
+    if (!mult) return;
     const hadOffer = !!game.offer;
-    game.endTurn();
-    refresh();
-    // The first trader gets a nudge rather than a sheet. Opening a modal
-    // unasked put it straight over End Turn, and a village nobody is pressing
-    // should never be interrupted by a box demanding an answer. The chip on the
-    // map is the offer; this just points at it, once, and fades.
+
+    tickCarry += dtSeconds * HF.Time.BASE_TPS * mult;
+    // Cap the catch-up so a backgrounded tab does not come back and run a
+    // week of village history in one frame.
+    let budget = Math.min(Math.floor(tickCarry), 40);
+    tickCarry -= Math.floor(tickCarry);
+    while (budget-- > 0 && !game.gameOver) game.step();
+
+    HF.Render.invalidate();
+    // The first trader gets a nudge rather than a sheet. A village nobody is
+    // pressing should never be interrupted by a box demanding an answer.
     if (!hadOffer && game.offer && !game.taughtTrade) {
       game.taughtTrade = true;
       toast('A trader has come up the valley — tap the chip to hear the offer.', 4200);
@@ -672,15 +781,30 @@ HF.UI = (function () {
     renderLog();
     renderEnding();
     updateToolButtons();
+    updateSpeedButtons();
     HF.Render.invalidate();
   }
 
   function renderStats() {
+    /* Seven stores will not fit across a phone, so the three you build with are
+       always shown with their cap and the crafted ones only once the village
+       actually has any. An empty slot for a thing nobody has made yet is just
+       a question the player cannot answer. */
     const cap = HF.Build.storageCap(game);
-    el.stats.innerHTML =
+    let statsHtml =
       stat(HF.RESOURCES.food.label, Math.floor(game.res.food) + ' / ' + cap, 'food') +
       stat(HF.RESOURCES.wood.label, Math.floor(game.res.wood) + ' / ' + cap, 'wood') +
       stat(HF.RESOURCES.stone.label, Math.floor(game.res.stone) + ' / ' + cap, 'stone');
+    for (const r of ['hemp', 'herb', 'cloth', 'med']) {
+      const n = Math.floor(game.res[r] || 0);
+      if (n > 0) statsHtml += stat(HF.RESOURCES[r].short, String(n), r + ' minor');
+    }
+    el.stats.innerHTML = statsHtml;
+
+    $('clock').innerHTML =
+      '<div class="clock-time">' + game.clock() + '</div>' +
+      '<div class="clock-phase ' + HF.Time.phase(game.tick) + '">' +
+      HF.Time.phase(game.tick) + '</div>';
 
     el.calendar.innerHTML =
       '<div class="season ' + game.season().toLowerCase() + '">' + game.season() + '</div>' +
@@ -698,14 +822,14 @@ HF.UI = (function () {
         game.aliveColonists().length + '</span>';
       return;
     }
-    const due = game.turnsToLevy();
+    const due = game.daysToLevy();
     const demand = game.levyDemand(game.levyIndex);
     const short = game.res.food < demand;
     el.levy.className = due <= 4 ? (short ? 'urgent' : 'due') : (short ? 'warn' : '');
     el.levy.innerHTML =
       '<div class="levy-label">Next levy &middot; ' + game.standingWord() + '</div>' +
       '<div class="levy-value">' + demand + ' koku &middot; ' +
-      (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' turn' : ' turns')) + '</div>';
+      (due <= 0 ? 'now' : 'in ' + due + (due === 1 ? ' day' : ' days')) + '</div>';
 
     renderOfferChip();
 
@@ -865,7 +989,7 @@ HF.UI = (function () {
   function renderLog() {
     const recent = game.entries.slice(-40).reverse();
     el.log.innerHTML = recent.map(function (e) {
-      return '<li class="' + e.kind + '"><span class="turn">' + e.turn + '</span>' + e.message + '</li>';
+      return '<li class="' + e.kind + '"><span class="turn">' + e.day + '</span>' + e.message + '</li>';
     }).join('');
   }
 

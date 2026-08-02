@@ -16,6 +16,7 @@
       <div class="brand"><span class="mark">百姓</span><span class="name">Hyakushō</span></div>
       <div id="stats"></div>
       <div id="levy"></div>
+      <div id="clock"></div>
       <div id="calendar"></div>
     </header>
 
@@ -36,44 +37,43 @@
       <div id="help">
         <div class="sheet">
           <h2>How to hold a village together</h2>
-          <p class="lede">Four peasants, one valley, four years. Nothing happens until you end
-             the turn, so there is no hurry &mdash; only consequences.</p>
+          <p class="lede">Four peasants and a valley. The clock runs on its own &mdash;
+             set the speed at the bottom, or pause with <kbd>Space</kbd> and take as long
+             as you like.</p>
           <ol class="steps">
-            <li><b>Your first year is nearly free.</b> Newly opened land is taxed lightly, so the
-                first levy asks only 18 koku. Use the year to learn the valley. The asking then
-                climbs: 55, then 100, then 155.</li>
-            <li><b>Standing, not strikes.</b> Falling short costs the castle's regard in
-                proportion to how far short you fall &mdash; a few koku is a note in a ledger,
-                half the demand is a mark against the village. Run it to nothing and the village
-                is broken up. Tap the levy chip to read the ledger.</li>
-            <li><b>There is more than one way to pay.</b> Traders come up the valley with a single
-                offer &mdash; timber for rice, rice for stone, take it or leave it. A village that
-                cuts bamboo or traps fish can buy its way to the levy without a paddy in sight.</li>
-            <li><b>The ground decides the harvest.</b> Paddies ripen half again as fast on
-                <b>reed marsh</b>, slowly on dry <b>moor</b>. <b>Bamboo</b> pays less than pine but
-                grows back inside the year. Read the valley before you plan it.</li>
-            <li><b>Build shelter before winter.</b> A <b>Minka</b> sleeps two; villagers without a
-                bed lose heart. A <b>Hearth Fire</b> keeps anyone within five tiles alive through
-                the cold. A <b>Kura</b> raises how much you can store &mdash; everything over the
-                cap rots.</li>
-            <li><b>You give orders, not commands.</b> Choose a work order or a building, then drag
-                across the map. Villagers pick up the nearest job they are willing to do; the
-                toggles under each name in <b>Village</b> decide what that is.</li>
-            <li><b>Bandits come from year two.</b> Villagers fight automatically when one gets
-                close. A <b>Yagura</b> makes them fight harder; an <b>Ishigaki</b> makes bandits
-                waste turns breaking through.</li>
-            <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is not a mood
-                dial &mdash; it is a list of reasons, each one named and counted. Fix the reasons
-                and the number follows. Tap their name to call them something of your own.</li>
+            <li><b>Days pass, and people sleep.</b> A day is forty seconds at 1&times;. Villagers
+                work from dawn, go to bed around nine, and get up at first light. Watch the
+                valley go dark and the hearths come on.</li>
+            <li><b>Build a room, not a house.</b> There is no pre-fab hut. Raise
+                <b>timber walls</b> in a ring, hang a <b>door</b>, and lay a <b>futon</b>
+                inside. Anywhere fully enclosed counts as indoors: warm through winter, and
+                the only place anyone sleeps properly.</li>
+            <li><b>Furnish it.</b> An <b>irori</b> hearth keeps a room alive through the cold
+                and lights it after dark. A <b>chest</b> holds more stores. A <b>low table</b>
+                is somewhere to eat that is not the floor.</li>
+            <li><b>The valley grows more than rice.</b> Bracken in spring; hemp and chestnuts
+                through summer; mushrooms and wild yam in autumn. Each is only worth taking in
+                its own season. <b>Herbs</b> and <b>hemp</b> are useless raw.</li>
+            <li><b>Make things.</b> Build a <b>work bench</b> and tap it to set what it makes:
+                hemp into cloth, herbs into medicine, or a glut of rice dried into more than
+                you started with. Villagers come and work it on their own.</li>
+            <li><b>You give orders, not commands.</b> Choose a work order or a building, then
+                drag across the map. Villagers pick up the nearest job they are willing to do;
+                the toggles under each name in <b>Village</b> decide what that is.</li>
+            <li><b>The levy, if you want one.</b> The daimyō's collectors come each autumn:
+                18 koku, then 55, then 100, then 155. Falling short costs standing in
+                proportion. Tap the levy chip to read the ledger.</li>
+            <li><b>Tap a villager to hear what they are thinking.</b> Their spirit is a list of
+                named reasons, not a dial. Fix the reasons and the number follows. Tap their
+                name to call them something of your own.</li>
           </ol>
           <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
-             to zoom, tap a tile to inspect it, tap a villager to select them. While a tool is
-             chosen, dragging paints instead &mdash; tap the chip at the bottom of the map to put
-             it down.</p>
-          <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> end turn &middot; <kbd>B</kbd> build
-             menu &middot; <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot;
-             <kbd>X</kbd> cancel tool &middot; <kbd>Esc</kbd> put the tool down &middot;
-             <kbd>H</kbd> this page</p>
+             to zoom, tap a tile to inspect it, tap a villager to select them, tap a bench to set
+             its work. While a tool is chosen, dragging paints instead.</p>
+          <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> pause &middot;
+             <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> speed &middot; <kbd>B</kbd> build menu &middot;
+             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot; <kbd>X</kbd> cancel tool
+             &middot; <kbd>Esc</kbd> put the tool down &middot; <kbd>H</kbd> this page</p>
           <h3 class="pick-head">How hard should the world press?</h3>
           <div id="scenario-pick"></div>
           <button id="help-close">Begin</button>
@@ -124,7 +124,12 @@
       </div>
       <div class="tool-row pinned">
         <button id="btn-panel" class="plain">Village</button>
-        <button id="btn-endturn" class="primary">End Turn <kbd>Space</kbd></button>
+        <div id="speed" role="group" aria-label="Speed">
+          <button data-speed="0" title="Pause (Space)" aria-label="Pause">&#10073;&#10073;</button>
+          <button data-speed="1" class="on" title="Normal speed">1&times;</button>
+          <button data-speed="2" title="Fast">2&times;</button>
+          <button data-speed="3" title="Fastest">4&times;</button>
+        </div>
       </div>
     </footer>
 
@@ -142,6 +147,7 @@
 
   <script src="js/config.js"></script>
   <script src="js/util.js"></script>
+  <script src="js/time.js"></script>
   <script src="js/iso.js"></script>
   <script src="js/map.js"></script>
   <script src="js/path.js"></script>

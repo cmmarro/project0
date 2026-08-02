@@ -11,34 +11,60 @@ HF.CFG = {
   MAP_H: 28,
 
   START_COLONISTS: 4,
-  START_RES: { food: 55, wood: 45, stone: 12 },
+  /* Enough rice to reach the first harvest. A paddy takes a fortnight to come
+     in and four people eat about four koku a day, so anything less than this
+     is a village that starves before its first crop through no fault of the
+     player's. */
+  START_RES: { food: 95, wood: 60, stone: 12, cloth: 6 },
   BASE_STORAGE: 150,
 
-  MOVE_BUDGET: 3,          // movement points per villager per turn
-  TURNS_PER_SEASON: 10,
   SEASONS: ['Spring', 'Summer', 'Autumn', 'Winter'],
 
-  FOOD_DECAY: 1.7,
-  REST_DECAY: 2.0,
-  EAT_THRESHOLD: 34,
-  SLEEP_THRESHOLD: 24,
-  WAKE_AT: 92,
+  /* ---------- rates, all per tick ----------
+     A tick is a tenth of an in-game hour. These were per-turn numbers when a
+     turn was a keystroke; every one of them has been divided down so that a
+     villager gets through roughly the same day, but does it in front of you. */
+  TICKS_PER_TILE: 5,       // on cost-1 ground, before terrain cost
+  WORK_PER_TICK: 0.26,     // multiplied by the villager's work rate
+
+  FOOD_DECAY: 0.21,        // full to empty in a bit over two days
+
+  /* Rest is tuned so the cycle closes on twenty-four hours. Awake from six to
+     nine is fifteen hours and costs about seventy-five; a night on a futon
+     puts it back. Get this wrong by a little and sleep slowly walks around the
+     clock until the village is napping at noon - which is exactly what the
+     first pass did. */
+  /* A fifteen-hour day costs 57 rest. A night on a futon puts back 76 and
+     tops out; a night on the ground puts back 45, so sleeping rough loses
+     about twelve a day and degrades over a week rather than immediately. That
+     margin is the whole point: it has to be bad enough to make beds urgent and
+     survivable enough that the first week is not spent napping in a field. */
+  REST_DECAY: 0.38,
+  EAT_THRESHOLD: 38,
+  SLEEP_THRESHOLD: 22,
+  WAKE_AT: 88,
   MEAL_FOOD: 1,
   MEAL_RESTORE: 46,
-  BED_REST: 13,
-  GROUND_REST: 6,
+  BED_REST: 0.85,          // a futon: a night's sleep fills the bar and no more
+  ROOM_REST_BONUS: 0.25,   // indoors and out of the weather
+  GROUND_REST: 0.5,        // sleeping rough slowly loses ground
 
+  /* Health, per tick. These were the last numbers still carrying their
+     per-turn values, which at 240 ticks a day meant an empty stomach killed
+     somebody in seventeen hours and a winter afternoon outdoors cost half
+     their health. Both are meant to be problems you get a few days to solve. */
   COLONIST_HP: 60,
-  STARVE_DAMAGE: 3,
-  COLD_DAMAGE: 1,
-  REGEN: 1,
+  STARVE_DAMAGE: 0.075,    // about three days from full health to dead
+  COLD_DAMAGE: 0.037,      // a week of winter nights outdoors
+  REGEN: 0.058,            // fed and warm, back to full in four days
 
   GRIEF_CAP: 12,           // ceiling on the village-wide mourning thought
 
-  RAID_START_TURN: 42,
-  RAID_MIN_GAP: 24,
-  RAID_MAX_GAP: 38,
-  MIGRANT_GAP: 26,
+  /* Everything scheduled is now counted in days rather than turns. */
+  RAID_START_DAY: 50,
+  RAID_MIN_GAP: 28,
+  RAID_MAX_GAP: 44,
+  MIGRANT_GAP: 30,
 
   /* The spine of the game. The daimyo's collectors come after each harvest,
      before winter, and they do not care whether you can spare it.
@@ -49,10 +75,10 @@ HF.CFG = {
      roughly doubles each autumn, so the difficulty arrives as a ramp instead of
      a wall. */
   LEVY: {
-    turns: [40, 80, 120, 160],
+    days: [36, 84, 132, 180],   // after each autumn harvest, before winter
     demands: [18, 55, 100, 155],
     laterIncrease: 60,      // per year beyond the fourth
-    warnAhead: 10,
+    warnAhead: 9,           // days of notice
   },
 
   /* Standing is what the castle thinks of the village, and it replaced a
@@ -74,12 +100,12 @@ HF.CFG = {
     walkOutBelow: 22,       // desperate villages start losing people
   },
 
-  VICTORY_TURN: 160,        // end of the fourth year
+  VICTORY_DAY: 192,         // end of the fourth year
 
   /* Merchants come up the valley with a single offer, take it or leave it.
      This is the freedom valve: it is what makes a timber village or a fishing
      village viable when the castle only ever asks for rice. */
-  MERCHANT: { firstTurn: 14, gap: [10, 16], standFor: 4 },
+  MERCHANT: { firstDay: 12, gap: [9, 15], standFor: 4 },   // days
 
   SKILL_MAX: 10,
   XP_PER_LEVEL: 14,
@@ -109,11 +135,96 @@ HF.SCENARIOS = {
 };
 HF.DEFAULT_SCENARIO = 'quiet';
 
-/* What the player calls each resource. */
+/* What the player calls each resource. Hemp and herbs come off the land and are
+   useless until worked; cloth and medicine are what a villager makes of them at
+   a bench. Keeping the crafted pair small is deliberate - a longer chain would
+   be more to explain and no more to decide. */
 HF.RESOURCES = {
-  food:  { label: 'Rice',   unit: 'koku', color: '#d8c26a' },
-  wood:  { label: 'Timber', unit: '',     color: '#c69a63' },
-  stone: { label: 'Stone',  unit: '',     color: '#a8b0bb' },
+  food:  { label: 'Rice',     unit: 'koku', color: '#d8c26a', short: 'Rice' },
+  wood:  { label: 'Timber',   unit: '',     color: '#c69a63', short: 'Timber' },
+  stone: { label: 'Stone',    unit: '',     color: '#a8b0bb', short: 'Stone' },
+  hemp:  { label: 'Hemp',     unit: '',     color: '#9fae72', short: 'Hemp' },
+  herb:  { label: 'Herbs',    unit: '',     color: '#7fb08a', short: 'Herbs' },
+  cloth: { label: 'Cloth',    unit: '',     color: '#cfc0a8', short: 'Cloth' },
+  med:   { label: 'Medicine', unit: '',     color: '#c98fa8', short: 'Med' },
+};
+
+/* ---------- what grows wild ----------
+   Each is a tile feature with a season it can be taken in, so the year has a
+   shape beyond the rice: bracken in spring, mushrooms after the autumn rain,
+   hemp standing through the summer. Foraging used to be one bush that did the
+   same thing all year. */
+HF.PLANTS = {
+  chestnut: {
+    id: 'chestnut', label: 'Chestnut', order: 'forage',
+    yields: { food: 8 }, work: 6, regrow: [22, 34],
+    seasons: ['Summer', 'Autumn'],
+    on: ['grass', 'moor'], chance: 0.05,
+    note: 'Food, in autumn especially.',
+  },
+  bracken: {
+    id: 'bracken', label: 'Bracken', order: 'forage',
+    yields: { food: 5 }, work: 4, regrow: [14, 22],
+    seasons: ['Spring'],
+    on: ['grass', 'moor', 'forest'], chance: 0.05,
+    note: 'Warabi shoots. Only worth taking in spring.',
+  },
+  mushroom: {
+    id: 'mushroom', label: 'Mushrooms', order: 'forage',
+    yields: { food: 7 }, work: 4, regrow: [12, 20],
+    seasons: ['Autumn'],
+    on: ['forest', 'bamboo'], chance: 0.07,
+    note: 'Under the pines, after the autumn rain.',
+  },
+  yam: {
+    id: 'yam', label: 'Wild Yam', order: 'forage',
+    yields: { food: 11 }, work: 9, regrow: [30, 46],
+    seasons: ['Autumn', 'Winter'],
+    on: ['forest', 'hill', 'moor'], chance: 0.035,
+    note: 'Hard digging, but it keeps, and it is there in winter.',
+  },
+  hemp: {
+    id: 'hemp', label: 'Wild Hemp', order: 'forage',
+    yields: { hemp: 9 }, work: 7, regrow: [24, 36],
+    seasons: ['Summer', 'Autumn'],
+    on: ['grass', 'moor', 'marsh'], chance: 0.05,
+    note: 'Asa. Worthless until it is woven.',
+  },
+  herb: {
+    id: 'herb', label: 'Medicinal Herbs', order: 'forage',
+    yields: { herb: 6 }, work: 5, regrow: [26, 40],
+    seasons: ['Spring', 'Summer', 'Autumn'],
+    on: ['grass', 'marsh', 'forest', 'hill'], chance: 0.035,
+    note: 'No use raw. Ground at a bench it becomes medicine.',
+  },
+  fish: {
+    id: 'fish', label: 'Fish', order: 'fish',
+    yields: { food: 7 }, work: 13, regrow: [20, 32],
+    seasons: ['Spring', 'Summer', 'Autumn', 'Winter'],
+    on: ['water'], chance: 0.09,
+    note: 'The one thing the river gives all year.',
+  },
+};
+
+/* Recipes worked at a bench. The player turns one on and villagers keep at it
+   while the materials last. */
+HF.RECIPES = {
+  cloth: {
+    id: 'cloth', label: 'Weave Cloth', station: 'bench',
+    cost: { hemp: 6 }, yields: { cloth: 3 }, work: 22, skill: 'construction',
+    note: 'Hemp into cloth. A futon needs it, and so does anyone cold.',
+  },
+  medicine: {
+    id: 'medicine', label: 'Grind Medicine', station: 'bench',
+    cost: { herb: 5 }, yields: { med: 2 }, work: 18, skill: 'farming',
+    note: 'Herbs into medicine. The injured mend far faster with it to hand.',
+  },
+  preserve: {
+    id: 'preserve', label: 'Dry and Salt', station: 'bench',
+    cost: { food: 14 }, yields: { food: 20 }, work: 26, skill: 'farming',
+    note: 'Slow work that turns a glut into more than you started with. ' +
+          'Only worth doing when the kura is full and the levy is far off.',
+  },
 };
 
 /* ---------- terrain ----------
@@ -164,10 +275,14 @@ HF.ORDERS = {
     hint: 'Cut stone from slopes and mountains. Mountains are worked from an adjacent tile.',
   },
   forage: {
-    id: 'forage', label: 'Gather Chestnuts', verb: 'Gathering', key: 'F', work: 6, workType: 'farm',
+    id: 'forage', label: 'Forage', verb: 'Gathering', key: 'F', work: 6, workType: 'farm',
     color: '#c9738a',
-    valid: function (t) { return t.feature === 'chestnut'; },
-    hint: 'Gather chestnuts for the stores. They ripen again, but never in winter.',
+    valid: function (t) {
+      const pl = HF.PLANTS[t.feature];
+      return !!pl && pl.order === 'forage';
+    },
+    hint: 'Take whatever is growing: bracken in spring, hemp and chestnuts in ' +
+          'summer, mushrooms and yam in autumn. Out of season it is not worth the walk.',
   },
   fish: {
     id: 'fish', label: 'Set Fish Traps', verb: 'Fishing', key: 'T', work: 13, workType: 'farm',
@@ -184,72 +299,131 @@ HF.ORDERS = {
   },
 };
 
-/* ---------- buildings ---------- */
+/* ---------- what you can put on a tile ----------
+   Three categories, because they answer different questions. Structures make a
+   room; furniture makes it worth being in; works are the things that produce.
+
+   A minka used to be a single stamp that was a house, two beds and shelter all
+   at once. Now you build the walls, hang a door, and lay futons inside - and
+   the room being enclosed is what makes it warm and the sleep worth having. */
+HF.BUILD_CATEGORIES = [
+  { id: 'structure', label: 'Structure', note: 'Walls and doors. Enclose a space and it becomes a room.' },
+  { id: 'furniture', label: 'Furniture', note: 'What makes a room worth sleeping in.' },
+  { id: 'works',     label: 'Works',     note: 'Paddies, benches, and the rest of the working village.' },
+];
+
 HF.BUILDINGS = {
-  house: {
-    id: 'house', label: 'Minka', sub: 'farmhouse',
-    cost: { wood: 22 }, work: 26, beds: 2,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'A thatched farmhouse. Sleeps two. Villagers with a bed work harder and keep their spirits.',
+  /* ---- structure ---- */
+  wall: {
+    id: 'wall', label: 'Timber Wall', sub: '', cat: 'structure',
+    cost: { wood: 4 }, work: 7, blocks: true, encloses: true, hp: 55,
+    adjacentWork: true,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Quick to raise. Enclose a space with these and what is inside is a room.',
   },
-  storehouse: {
-    id: 'storehouse', label: 'Kura', sub: 'granary',
-    cost: { wood: 28 }, work: 24, storage: 150,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'A plastered granary. Raises the cap on every store by 150. Anything over the cap rots.',
+  door: {
+    id: 'door', label: 'Door', sub: '', cat: 'structure',
+    cost: { wood: 5 }, work: 8, encloses: true, hp: 35,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Seals a room but lets people through. A room with no door is a box.',
   },
+  ishigaki: {
+    id: 'ishigaki', label: 'Ishigaki', sub: 'stone rampart', cat: 'structure',
+    cost: { stone: 6 }, work: 12, blocks: true, encloses: true, hp: 80,
+    adjacentWork: true,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Impassable and slow to break. Bandits must come through it.',
+  },
+
+  /* ---- furniture ---- */
+  futon: {
+    id: 'futon', label: 'Futon', sub: 'bed', cat: 'furniture',
+    cost: { wood: 3, cloth: 2 }, work: 9, beds: 1,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'One person sleeps here. Indoors and near a hearth, they sleep properly.',
+  },
+  hearth: {
+    id: 'hearth', label: 'Irori', sub: 'hearth', cat: 'furniture',
+    cost: { stone: 4, wood: 6 }, work: 10, warmth: 5,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'A sunken hearth. Keeps anyone within five tiles alive through winter, ' +
+          'and lights the room after dark.',
+  },
+  table: {
+    id: 'table', label: 'Low Table', sub: '', cat: 'furniture',
+    cost: { wood: 8 }, work: 12, social: 4,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Somewhere to eat that is not the floor. Anyone eating near one is the ' +
+          'better for it.',
+  },
+  chest: {
+    id: 'chest', label: 'Storage Chest', sub: '', cat: 'furniture',
+    cost: { wood: 10 }, work: 11, storage: 70,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Raises what the village can hold by 70. Cheaper than a kura, and fits inside.',
+  },
+
+  /* ---- works ---- */
   farm: {
-    id: 'farm', label: 'Rice Paddy', sub: '',
+    id: 'farm', label: 'Rice Paddy', sub: '', cat: 'works',
     cost: { wood: 5 }, work: 12, farm: true,
     on: ['grass', 'marsh', 'moor'],
-    desc: 'Floods, ripens, and asks to be harvested. Ripens half again as fast on reed marsh, ' +
-          'and slowly on dry moor - where you put it matters more than how many you have.',
+    desc: 'Floods, ripens, and asks to be harvested. Half again as fast on reed ' +
+          'marsh, and slow on dry moor.',
   },
-  campfire: {
-    id: 'campfire', label: 'Hearth Fire', sub: '',
-    cost: { wood: 12 }, work: 8, warmth: 5,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'Keeps anyone within five tiles alive through the winter cold.',
+  bench: {
+    id: 'bench', label: 'Work Bench', sub: 'craft', cat: 'works',
+    cost: { wood: 14 }, work: 16, station: 'bench',
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Weaves hemp into cloth, grinds herbs into medicine, dries a glut of ' +
+          'rice into more than you started with. Tap it to choose the work.',
+  },
+  storehouse: {
+    id: 'storehouse', label: 'Kura', sub: 'granary', cat: 'works',
+    cost: { wood: 28, stone: 6 }, work: 24, storage: 150,
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'A plastered granary. Raises the cap on every store by 150. Anything ' +
+          'over the cap rots.',
   },
   tower: {
-    id: 'tower', label: 'Yagura', sub: 'watchtower',
+    id: 'tower', label: 'Yagura', sub: 'watchtower', cat: 'works',
     cost: { wood: 16, stone: 8 }, work: 22, guard: 6, guardBonus: 4,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'Villagers fighting within six tiles strike harder. Bandits are the price of a full granary.',
-  },
-  wall: {
-    id: 'wall', label: 'Ishigaki', sub: 'stone rampart',
-    cost: { stone: 6 }, work: 10, blocks: true, hp: 80,
-    adjacentWork: true,
-    on: ['grass', 'sand', 'hill'],
-    desc: 'Impassable. Bandits must break it down, which costs them turns you can use.',
+    on: ['grass', 'sand', 'hill', 'moor'],
+    desc: 'Villagers fighting within six tiles strike harder.',
   },
 };
 
 HF.FARM = {
-  RIPE_AT: 20,
+  RIPE_AT: 14,              // days, at spring growth on ordinary ground
   YIELD: 13,
   GROWTH: { Spring: 1.0, Summer: 1.4, Autumn: 0.8, Winter: 0 },
   /* Where a paddy sits is a real decision: wet ground is worth walking to. */
   SOIL: { marsh: 1.5, grass: 1.0, moor: 0.6 },
 };
 
+/* Chopping is the only order whose yield still lives here; everything foraged
+   or trapped reads its own numbers off HF.PLANTS, so adding a plant is one
+   entry and no edits anywhere else. */
 HF.YIELDS = {
   chop:    { wood: 12 },
   mine:    { stone: 10 },
-  forage:  { food: 8 },
-  fish:    { food: 7 },
   harvest: { food: HF.FARM.YIELD },
 };
 
-/* How long a stripped tile takes to come back, and as what. Bamboo is the
-   point of the pair: it yields less per cut than pine but returns inside a
-   year, so a bamboo valley can be logged over and over. */
+/* How long a felled grove takes to come back, and as what. Bamboo is the point
+   of the pair: less per cut than pine, but back inside the year, so a bamboo
+   valley can be logged over and over. Plants carry their own regrow times. */
 HF.REGROW = {
-  forest: { turns: [55, 85], yieldScale: 1 },
-  bamboo: { turns: [16, 26], yieldScale: 0.6 },
-  chestnut: { turns: [22, 34] },
-  fish: { turns: [20, 32] },
+  forest: { regrow: [55, 85], yieldScale: 1 },
+  bamboo: { regrow: [16, 26], yieldScale: 0.6 },
+};
+
+/* Is this plant worth taking right now? Out of season it is still standing
+   there - it just yields nothing worth the walk, which is what gives the year
+   its shape. */
+HF.plantInSeason = function (plantId, season) {
+  const pl = HF.PLANTS[plantId];
+  return !!pl && pl.seasons.indexOf(season) !== -1;
 };
 
 /* ---------- character ----------
@@ -267,7 +441,7 @@ HF.ORIGINS = [
   'is a third child, and will inherit nothing',
   'carried baggage behind an army and thought better of it',
   'was sold to a silk house as a child and walked home',
-  'lost a husband to a lord’s quarrel and never learned which one',
+  'lost a husband to a lord\u2019s quarrel and never learned which one',
   'has worked this valley since before the wars',
   'deserted an ashigaru levy and does not speak of it',
   'held a spear for a house that no longer exists',
@@ -295,12 +469,12 @@ HF.MARKS = [
 /* One mechanical hook each, and every hook shows up by name in the villager's
    thoughts - a trait the player cannot see the effect of is not a trait. */
 HF.TRAITS = {
-  steady:     { label: 'Steady',    note: 'Hardship lands lighter than it does on others.' },
-  sullen:     { label: 'Sullen',    note: 'Takes everything harder than it is.' },
-  devout:     { label: 'Devout',    note: 'Finds meaning where others find only work.' },
-  homesick:   { label: 'Homesick',  note: 'This is not home yet. A village of five buildings might be.' },
-  tough:      { label: 'Tough',     note: 'Harder to kill than they look.' },
-  diligent:   { label: 'Diligent',  note: 'Works faster at everything, and always has.' },
+  steady:   { label: 'Steady',   note: 'Hardship lands lighter than it does on others.' },
+  sullen:   { label: 'Sullen',   note: 'Takes everything harder than it is.' },
+  devout:   { label: 'Devout',   note: 'Finds meaning where others find only work.' },
+  homesick: { label: 'Homesick', note: 'This is not home yet. A village of five buildings might be.' },
+  tough:    { label: 'Tough',    note: 'Harder to kill than they look.' },
+  diligent: { label: 'Diligent', note: 'Works faster at everything, and always has.' },
 };
 
 HF.TRAIT_TUNING = {
@@ -322,16 +496,16 @@ HF.TRAIT_TUNING = {
    raised alongside Y". */
 HF.BONDS = ['kin to', 'the oldest friend of', 'a childhood companion of', 'in the debt of'];
 
-/* Thoughts that fade. Events leave a mark for a while and then stop mattering,
-   which is what lets a paid levy feel like relief and a missed one like a
-   shadow over the next few seasons. */
+/* Thoughts that fade, counted in days. Events leave a mark for a while and
+   then stop mattering, which is what lets a paid levy feel like relief and a
+   missed one like a shadow over the next few seasons. */
 HF.MEMORIES = {
-  levyPaid:    { label: 'The levy was paid',            delta: 8,   turns: 12 },
-  levyShort:   { label: 'The collectors took everything', delta: -10, turns: 15 },
-  levyStripped:{ label: 'The collectors stripped us bare', delta: -16, turns: 20 },
-  bondLost:    { label: 'Lost ',                        delta: -18, turns: 30 },
-  raidBroken:  { label: 'The raid was broken',          delta: 6,   turns: 8 },
-  buriedSomeone:{ label: 'A death in the village',      delta: -6,  turns: 12 },
+  levyPaid:     { label: 'The levy was paid',               delta: 8,   days: 10 },
+  levyShort:    { label: 'The collectors took everything',  delta: -10, days: 14 },
+  levyStripped: { label: 'The collectors stripped us bare', delta: -16, days: 18 },
+  bondLost:     { label: 'Lost ',                           delta: -18, days: 26 },
+  raidBroken:   { label: 'The raid was broken',             delta: 6,   days: 7 },
+  buriedSomeone:{ label: 'A death in the village',          delta: -6,  days: 11 },
 };
 
 /* ---------- names ----------
