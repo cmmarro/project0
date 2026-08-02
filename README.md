@@ -248,6 +248,27 @@ The visible tile range is solved for analytically rather than tested tile by
 tile. Villagers are simulated firmly on the grid — only the picture is allowed
 to be between tiles, interpolated from the tile they left.
 
+### Light
+
+There is a real sun. `HF.Time.sun()` gives its height and its direction on
+screen; `skyAt()` gives the colour of the light and the ambient, graded through
+ten keyframes from deep night through sunrise, noon, golden hour and dusk. Every
+surface is tinted by it and lit according to which way it faces, so the sunward
+side of a wall, a hill and a pine all catch the light and the whole valley
+swings from peach at dawn to white at noon to blue after dark.
+
+Shadows are directional contact shadows — pooled at the foot of a thing and
+stretched along the light — rather than long projected ones. That is a
+structural choice, not a shortcut: the scene is painted one diagonal at a time,
+so a shadow thrown towards the camera lands on ground that has not been drawn
+yet and is painted over, while one thrown away from the camera goes exactly
+where the object's own art already is. Keeping it at the base sidesteps both and
+still does the job that matters, which is sitting things on the ground.
+
+Both the ground palette and the light tint are memoised — the tint keyed on a
+quarter-hour bucket — because every visible face would otherwise re-parse a
+colour string on every frame.
+
 Save and load use `localStorage`. A save is the whole game state as JSON,
 including the RNG's internal state, so a restored village continues on exactly
 the random stream it left off on.

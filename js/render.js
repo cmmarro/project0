@@ -29,6 +29,106 @@ HF.Render = (function () {
   let canvas, ctx;
   let dirty = true;
 
+  /* ---------- light ----------
+     Recomputed once a frame and read by everything, rather than each drawing
+     routine working out the time of day for itself. */
+  let L = {
+    sun: { sx: -0.7, sy: 0.7, height: 1, length: 0.7, t: 0.5 },
+    light: [255, 248, 226],
+    ambient: [190, 200, 214],
+    day: 1,            // 0 at night, 1 in full daylight
+    shadow: 0.34,      // how dark a cast shadow is right now
+  };
+
+  /* Tinting is a pure function of (colour, how much light this face catches,
+     what the light is doing right now). The first two are a handful of fixed
+     values; the third only needs to change a few dozen times a day for the eye
+     to read it as continuous. So bucket the time of day and throw the cache
+     away when the bucket turns over - otherwise every visible face re-parses a
+     colour string on every frame, which is the same trap the ground palette
+     fell into once the clock started running. */
+  let shadeCache = new Map();
+  let lightBucket = -1;
+
+  function updateLight(game) {
+    const sun = HF.Time.sun(game.tick);
+    const sky = HF.Time.skyAt(game.tick);
+    const day = game.light();
+
+    const bucket = Math.round(HF.Time.hour(game.tick) * 4);   // every 15 minutes
+    if (bucket !== lightBucket) { lightBucket = bucket; shadeCache.clear(); }
+    L = {
+      sun: sun,
+      light: sky.light,
+      ambient: sky.ambient,
+      day: day,
+      // Shadows are sharpest with the sun high and fade out as it sets; there
+      // is nothing to cast them at night.
+      shadow: 0.10 + 0.30 * day * Math.max(0.35, sun.height),
+    };
+  }
+
+  /* A surface's brightness given which way it faces. `face` is 0 for the
+     ground plane, and -1 / +1 for the two visible sides of a raised tile. The
+     sun's screen direction decides which of those sides is towards it. */
+  function lit(face) {
+    const d = L.day;
+    if (face === 0) return 0.86 + 0.30 * d * L.sun.height;
+    const towards = face === 1 ? -L.sun.sx : L.sun.sx;   // right face vs left
+    return 0.46 + 0.13 * d + 0.26 * d * Math.max(0, towards) * (0.4 + 0.6 * L.sun.height);
+  }
+
+  /* Tints a colour by the light: multiplied towards the sun's colour and
+     lifted by the ambient, then scaled by how much of it this face catches.
+     This is what makes the whole valley swing from peach at dawn through
+     white at noon to blue after dark. */
+  function shadeBy(base, amount) {
+    const key = base + '|' + (amount * 64 | 0);
+    const hit = shadeCache.get(key);
+    if (hit !== undefined) return hit;
+    const c = parse(base);
+    const l = L.light, a = L.ambient;
+    const k = amount;
+    const r = (c[0] * (l[0] / 255) * k + c[0] * (a[0] / 255) * 0.34) * 0.78;
+    const g = (c[1] * (l[1] / 255) * k + c[1] * (a[1] / 255) * 0.34) * 0.78;
+    const b = (c[2] * (l[2] / 255) * k + c[2] * (a[2] / 255) * 0.34) * 0.78;
+    const out = rgb([Math.min(255, r), Math.min(255, g), Math.min(255, b)]);
+    shadeCache.set(key, out);
+    return out;
+  }
+
+  /* The shadow an object throws on the ground.
+
+     Deliberately a contact shadow - pooled at the foot of the thing, stretched
+     and offset along the sun - rather than a long projected one. Two reasons,
+     both structural. The scene is painted one diagonal at a time, so a shadow
+     thrown towards the camera lands on ground that has not been drawn yet and
+     is immediately painted over; and a shadow thrown away from the camera goes
+     exactly where the object's own art already is, so it hides behind its own
+     caster. Keeping it close to the base sidesteps both, still swings with the
+     sun, and does the job that actually matters - sitting things on the ground
+     rather than floating them above it. */
+  function castShadow(sx, sy, h, w) {
+    if (L.day < 0.06) return;
+    const sun = L.sun;
+    const reach = HF.U.clamp(h * 0.16 * sun.length, 2, 15);
+    const cx = sx + sun.sx * reach;
+    const cy = sy + sun.sy * reach * 0.5;
+
+    // Longer along the light, and longer still when the sun is low.
+    const rx = w * (0.62 + 0.5 * sun.length);
+    const ry = rx * 0.42;
+    const angle = Math.atan2(sun.sy * 0.5, sun.sx);
+
+    ctx.save();
+    ctx.globalAlpha = L.shadow;
+    ctx.fillStyle = '#12141f';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, angle, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   function init(cv) {
     canvas = cv;
     canvas.width = I.width;
@@ -114,6 +214,14 @@ HF.Render = (function () {
   }
 
   /* A box standing on the diamond centred at (sx, sy). */
+  /* A box lit by the current sun rather than by three fixed colours. */
+  function litBox(sx, sy, hw, hh, h, base) {
+    isoBox(sx, sy, hw, hh, h,
+      shadeBy(base, lit(0)),
+      shadeBy(base, lit(-1) * 0.92),
+      shadeBy(base, lit(1) * 0.92));
+  }
+
   function isoBox(sx, sy, hw, hh, h, top, left, right) {
     ctx.fillStyle = left;
     ctx.beginPath();
@@ -138,13 +246,6 @@ HF.Render = (function () {
     ctx.fill();
   }
 
-  function shadow(sx, sy, r) {
-    ctx.fillStyle = 'rgba(0,0,0,0.22)';
-    ctx.beginPath();
-    ctx.ellipse(sx, sy, r, r * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
   /* ---------- ground ---------- */
 
   function drawGround(game, x, y, season) {
@@ -155,7 +256,7 @@ HF.Render = (function () {
 
     if (elev > 0) {
       const h = elev * I.ELEV;
-      ctx.fillStyle = sideColor(tile.terrain, 0.62);
+      ctx.fillStyle = shadeBy(sideColor(tile.terrain, 0.78), lit(-1));
       ctx.beginPath();
       ctx.moveTo(p.sx - I.HW, p.sy);
       ctx.lineTo(p.sx, p.sy + I.HH);
@@ -164,7 +265,7 @@ HF.Render = (function () {
       ctx.closePath();
       ctx.fill();
 
-      ctx.fillStyle = sideColor(tile.terrain, 0.44);
+      ctx.fillStyle = shadeBy(sideColor(tile.terrain, 0.60), lit(1));
       ctx.beginPath();
       ctx.moveTo(p.sx, p.sy + I.HH);
       ctx.lineTo(p.sx + I.HW, p.sy);
@@ -174,10 +275,12 @@ HF.Render = (function () {
       ctx.fill();
     }
 
-    ctx.fillStyle = top;
+    ctx.fillStyle = shadeBy(top, lit(0));
     diamond(p.sx, p.sy, I.HW, I.HH);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.13)';
+    // A hairline seam rather than a hard grid: enough to read the tiling,
+    // not enough to look like graph paper.
+    ctx.strokeStyle = 'rgba(0,0,0,0.09)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -196,20 +299,33 @@ HF.Render = (function () {
   /* ---------- scenery ---------- */
 
   function drawPine(sx, sy, v, season) {
-    shadow(sx + 3, sy + 3, 9);
-    ctx.fillStyle = '#4a3b2a';
+    castShadow(sx, sy, 30, 8);
+    ctx.fillStyle = shadeBy('#4a3b2a', lit(0) * 0.8);
     ctx.fillRect(sx - 1.5, sy - 10, 3, 12);
     const dark = season === 'Winter' ? '#3f5a49' : '#2f5535';
-    const lit = season === 'Winter' ? '#5b7a68' : '#3d6b3f';
+    const bright = season === 'Winter' ? '#6a8a76' : '#4a7d4a';
     for (let i = 0; i < 3; i++) {
       const w = 13 - i * 3, top = sy - 14 - i * 9, base = sy - 4 - i * 9;
-      ctx.fillStyle = i === 2 ? lit : dark;
+      // Tiers catch progressively more light towards the crown.
+      const k = lit(0) * (0.72 + i * 0.13);
+      ctx.fillStyle = shadeBy(i === 2 ? bright : dark, k);
       ctx.beginPath();
       ctx.moveTo(sx, top);
       ctx.lineTo(sx + w, base);
       ctx.lineTo(sx - w, base);
       ctx.closePath();
       ctx.fill();
+
+      // The half facing the sun is lifted, which reads as roundness.
+      if (L.day > 0.1) {
+        ctx.fillStyle = shadeBy(i === 2 ? bright : dark, k * 1.4);
+        ctx.beginPath();
+        ctx.moveTo(sx, top);
+        ctx.lineTo(sx - Math.sign(L.sun.sx) * w, base);
+        ctx.lineTo(sx, base);
+        ctx.closePath();
+        ctx.fill();
+      }
     }
     if (season === 'Winter') {
       ctx.fillStyle = 'rgba(238,246,250,0.75)';
@@ -223,18 +339,18 @@ HF.Render = (function () {
   }
 
   function drawBamboo(sx, sy, v, season) {
-    shadow(sx + 2, sy + 3, 8);
+    castShadow(sx, sy, 26, 7);
     const n = 4;
     for (let i = 0; i < n; i++) {
       const ox = (i - (n - 1) / 2) * 5 + (v - 0.5) * 3;
       const hgt = 26 + ((i * 7 + v * 13) % 9);
-      ctx.strokeStyle = season === 'Autumn' ? '#a8a05a' : '#7f9c4a';
+      ctx.strokeStyle = shadeBy(season === 'Autumn' ? '#a8a05a' : '#7f9c4a', lit(0));
       ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(sx + ox, sy);
       ctx.lineTo(sx + ox + 1.5, sy - hgt);
       ctx.stroke();
-      ctx.fillStyle = season === 'Winter' ? '#8fae86' : '#93b356';
+      ctx.fillStyle = shadeBy(season === 'Winter' ? '#8fae86' : '#93b356', lit(0));
       ctx.beginPath();
       ctx.ellipse(sx + ox + 2, sy - hgt - 2, 5, 2.4, -0.5, 0, Math.PI * 2);
       ctx.fill();
@@ -242,13 +358,20 @@ HF.Render = (function () {
   }
 
   function drawChestnut(sx, sy, v, season) {
-    shadow(sx + 2, sy + 3, 9);
-    ctx.fillStyle = '#5a4530';
+    castShadow(sx, sy, 20, 7);
+    ctx.fillStyle = shadeBy('#5a4530', lit(0) * 0.8);
     ctx.fillRect(sx - 1.5, sy - 12, 3, 13);
-    ctx.fillStyle = season === 'Autumn' ? '#b8863a' : season === 'Winter' ? '#7d7a6a' : '#557f3f';
+    const crown = season === 'Autumn' ? '#b8863a' : season === 'Winter' ? '#7d7a6a' : '#557f3f';
+    ctx.fillStyle = shadeBy(crown, lit(0) * 0.85);
     ctx.beginPath();
     ctx.ellipse(sx, sy - 17, 11, 8, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (L.day > 0.1) {                       // a highlight on the sunward side
+      ctx.fillStyle = shadeBy(crown, lit(0) * 1.25);
+      ctx.beginPath();
+      ctx.ellipse(sx - L.sun.sx * 3.5, sy - 19, 7, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (season !== 'Winter') {
       ctx.fillStyle = '#8a5a2a';
       for (let i = 0; i < 3; i++) {
@@ -271,14 +394,15 @@ HF.Render = (function () {
 
   function drawPeak(sx, sy, v, season) {
     const h = 20 + v * 10;
-    ctx.fillStyle = '#6d6a5f';
+    castShadow(sx, sy, h * 0.9, 14);
+    ctx.fillStyle = shadeBy('#6d6a5f', lit(-1));
     ctx.beginPath();
     ctx.moveTo(sx, sy - I.HH - h);
     ctx.lineTo(sx + I.HW * 0.8, sy + 2);
     ctx.lineTo(sx - I.HW * 0.8, sy + 2);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#84806f';
+    ctx.fillStyle = shadeBy('#84806f', lit(1));
     ctx.beginPath();
     ctx.moveTo(sx, sy - I.HH - h);
     ctx.lineTo(sx + I.HW * 0.8, sy + 2);
@@ -299,8 +423,8 @@ HF.Render = (function () {
   /* Reeds: thin verticals with a seed head, thickest in autumn. */
   function drawReeds(sx, sy, v, season) {
     const n = 5 + ((v * 100) | 0) % 3;
-    ctx.strokeStyle = season === 'Winter' ? '#8d9a8e'
-                    : season === 'Autumn' ? '#b0a05e' : '#7f9a60';
+    ctx.strokeStyle = shadeBy(season === 'Winter' ? '#8d9a8e'
+                    : season === 'Autumn' ? '#b0a05e' : '#7f9a60', lit(0));
     ctx.lineWidth = 1.6;
     for (let i = 0; i < n; i++) {
       const ox = ((i * 37 + v * 190) % 30) - 15;
@@ -319,13 +443,13 @@ HF.Render = (function () {
     for (let i = 0; i < n; i++) {
       const ox = ((i * 53 + v * 210) % 28) - 14;
       const hgt = 9 + ((i * 13 + v * 31) % 6);
-      ctx.strokeStyle = '#a89c5e';
+      ctx.strokeStyle = shadeBy('#a89c5e', lit(0));
       ctx.lineWidth = 1.3;
       ctx.beginPath();
       ctx.moveTo(sx + ox, sy + 1);
       ctx.lineTo(sx + ox + 2, sy - hgt);
       ctx.stroke();
-      ctx.fillStyle = season === 'Autumn' ? '#e3d7a8' : '#c3bb84';
+      ctx.fillStyle = shadeBy(season === 'Autumn' ? '#e3d7a8' : '#c3bb84', lit(0));
       ctx.beginPath();
       ctx.ellipse(sx + ox + 3, sy - hgt - 2, 3.4, 1.6, -0.6, 0, Math.PI * 2);
       ctx.fill();
@@ -352,7 +476,7 @@ HF.Render = (function () {
 
   /* A roadside shrine: two posts, a lintel, and a small vermilion gate. */
   function drawShrine(sx, sy) {
-    shadow(sx, sy + 2, 10);
+    castShadow(sx, sy, 17, 9);
     ctx.strokeStyle = '#b8442c';
     ctx.lineWidth = 2.6;
     ctx.beginPath();
@@ -446,18 +570,18 @@ HF.Render = (function () {
         ctx.fill();
       }
     } else if (b.type === 'door') {
-      isoBox(p.sx, p.sy, I.HW - 3, I.HH - 2, 5, '#6a5540', '#54432f', '#3f3325');
+      litBox(p.sx, p.sy, I.HW - 3, I.HH - 2, 5, '#6a5540');
       ctx.fillStyle = '#8d6a45';
       ctx.fillRect(p.sx - 5, p.sy - 16, 10, 14);
       ctx.strokeStyle = 'rgba(30,25,20,0.6)';
       ctx.lineWidth = 1;
       ctx.strokeRect(p.sx - 5, p.sy - 16, 10, 14);
     } else if (b.type === 'table') {
-      shadow(p.sx, p.sy + 3, 12);
-      isoBox(p.sx, p.sy, 12, 6, 5, '#a37f52', '#8a6a44', '#6d5335');
+      castShadow(p.sx, p.sy, 7, 11);
+      litBox(p.sx, p.sy, 12, 6, 5, '#a37f52');
     } else if (b.type === 'chest') {
-      shadow(p.sx, p.sy + 3, 10);
-      isoBox(p.sx, p.sy, 10, 5, 9, '#8a6a45', '#6f5537', '#57422a');
+      castShadow(p.sx, p.sy, 11, 9);
+      litBox(p.sx, p.sy, 10, 5, 9, '#8a6a45');
       ctx.strokeStyle = '#c9a25e';
       ctx.lineWidth = 1.4;
       ctx.beginPath();
@@ -465,8 +589,8 @@ HF.Render = (function () {
       ctx.lineTo(p.sx + 10, p.sy - 5);
       ctx.stroke();
     } else if (b.type === 'bench') {
-      shadow(p.sx, p.sy + 3, 13);
-      isoBox(p.sx, p.sy, 13, 6.5, 7, '#9a7a4e', '#7d6140', '#614a30');
+      castShadow(p.sx, p.sy, 9, 12);
+      litBox(p.sx, p.sy, 13, 6.5, 7, '#9a7a4e');
       // Tools standing in a rack, so a bench reads as a place work happens.
       ctx.strokeStyle = '#4a4038';
       ctx.lineWidth = 2;
@@ -479,12 +603,12 @@ HF.Render = (function () {
       if (game.recipes[b.id]) progressPip(p.sx, p.sy - 24,
         (b.craftDone || 0) / HF.RECIPES[game.recipes[b.id]].work, '#d0a24a');
     } else if (b.type === 'ishigaki') {
-      shadow(p.sx, p.sy + 3, 14);
-      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 15, '#9b958a', '#7d776d', '#5f5a52');
+      castShadow(p.sx, p.sy, 22, 13);
+      litBox(p.sx, p.sy, I.HW - 5, I.HH - 2.5, 22, '#9b958a');
       if (def.hp && b.hp < def.hp) progressPip(p.sx, p.sy - 26, b.hp / def.hp, '#d9584f');
     } else if (b.type === 'house') {
-      shadow(p.sx, p.sy + 4, 17);
-      isoBox(p.sx, p.sy, 15, 7.5, 9, '#6a5540', '#54432f', '#3f3325');   // walls
+      castShadow(p.sx, p.sy, 20, 14);
+      litBox(p.sx, p.sy, 15, 7.5, 9, '#6a5540');   // walls
       // thatched hipped roof
       const ry = p.sy - 9;
       ctx.fillStyle = '#b59660';
@@ -522,7 +646,7 @@ HF.Render = (function () {
         ctx.fill();
       }
     } else if (b.type === 'storehouse') {
-      shadow(p.sx, p.sy + 4, 15);
+      castShadow(p.sx, p.sy, 22, 14);
       isoBox(p.sx, p.sy, 13, 6.5, 17, '#ded7c4', '#c3bba6', '#a49c88');  // plaster
       const ry = p.sy - 17;
       ctx.fillStyle = '#414852';
@@ -562,7 +686,7 @@ HF.Render = (function () {
         ctx.fill();
       }
     } else if (b.type === 'hearth' || b.type === 'campfire') {
-      shadow(p.sx, p.sy + 2, 12);
+      castShadow(p.sx, p.sy, 8, 11);
       ctx.fillStyle = '#5a5347';
       for (let i = 0; i < 5; i++) {
         const a = i / 5 * Math.PI * 2;
@@ -585,7 +709,7 @@ HF.Render = (function () {
       ctx.closePath();
       ctx.fill();
     } else if (b.type === 'tower') {
-      shadow(p.sx, p.sy + 4, 15);
+      castShadow(p.sx, p.sy, 22, 14);
       isoBox(p.sx, p.sy, 8, 4, 30, '#7a6045', '#5f4a34', '#463628');     // legs
       isoBox(p.sx, p.sy - 30, 13, 6.5, 11, '#8a6c4c', '#6d543a', '#52402c');
       const ry = p.sy - 41;
@@ -598,8 +722,8 @@ HF.Render = (function () {
       ctx.closePath();
       ctx.fill();
     } else if (b.type === 'wall') {
-      shadow(p.sx, p.sy + 3, 14);
-      isoBox(p.sx, p.sy, I.HW - 2, I.HH - 1, 17, '#8a6f4a', '#6d5738', '#523f28');
+      castShadow(p.sx, p.sy, 24, 12);
+      litBox(p.sx, p.sy, I.HW - 7, I.HH - 3.5, 24, '#8a6f4a');
       ctx.strokeStyle = 'rgba(40,38,34,0.45)';
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -670,10 +794,12 @@ HF.Render = (function () {
       diamond(p.sx, p.sy, I.HW - 5, I.HH - 3);
       ctx.stroke();
     }
-    shadow(p.sx, p.sy + 1, 8);
+    castShadow(p.sx, p.sy, 17, 5);
 
     const bodyTop = p.sy - 19, bodyBot = p.sy - 2;
-    ctx.fillStyle = c.asleep ? '#4a5a72' : '#3d5a7d';
+    // Villagers are lit like everything else, but never let fully into the
+    // dark - you still have to be able to find your people at night.
+    ctx.fillStyle = shadeBy(c.asleep ? '#4a5a72' : '#3d5a7d', Math.max(0.72, lit(0)));
     ctx.beginPath();
     ctx.moveTo(p.sx - 3.5, bodyTop);
     ctx.lineTo(p.sx + 3.5, bodyTop);
@@ -682,7 +808,7 @@ HF.Render = (function () {
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = '#e6c9a4';
+    ctx.fillStyle = shadeBy('#e6c9a4', Math.max(0.72, lit(0)));
     ctx.beginPath();
     ctx.arc(p.sx, bodyTop - 3, 3.4, 0, Math.PI * 2);
     ctx.fill();
@@ -716,7 +842,7 @@ HF.Render = (function () {
     const tile = game.tiles[r.y * game.w + r.x];
     const p = bodyPos(r);
     p.sy -= I.elevOf(tile) * I.ELEV;
-    shadow(p.sx, p.sy + 1, 8);
+    castShadow(p.sx, p.sy, 17, 5);
     const bodyTop = p.sy - 20, bodyBot = p.sy - 2;
     ctx.fillStyle = '#4a3f3a';
     ctx.beginPath();
@@ -747,25 +873,23 @@ HF.Render = (function () {
      recolour of every tile. Recolouring was affordable when a frame was only
      painted after a keypress; at sixty frames a second it is not, and the wash
      also lets hearths punch warm holes in the dark for almost nothing. */
-  const NIGHT = [22, 30, 58];
-  const DUSK = [92, 54, 40];
-
+  /* Once the ground and everything on it is lit per surface, the old flat wash
+     over the whole scene is doing the same job twice - so all that is left for
+     it is a little extra depth at night and the pools of light the hearths
+     throw, which no amount of per-surface shading can produce. */
   function drawLight(game) {
-    const l = game.light();
-    if (l >= 1) return;
-    const h = game.hour();
-    const warm = (h > 15 && h < 21) || (h > 4 && h < 8);
-    const tint = warm && l > 0.05 ? DUSK : NIGHT;
-    const strength = (1 - l) * (warm ? 0.42 : 0.66);
+    const d = L.day;
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'multiply';
-    ctx.fillStyle = 'rgba(' + tint[0] + ',' + tint[1] + ',' + tint[2] + ',' + strength.toFixed(3) + ')';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
+    if (d < 0.999) {
+      const a = (1 - d) * 0.3;
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = 'rgba(120,132,190,' + a.toFixed(3) + ')';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    }
+    if (d > 0.94) return;
 
-    // Anything that burns throws light. Drawn additively so a hearth reads as
-    // a source rather than a lighter patch of ground.
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const b of game.buildings) {
@@ -774,13 +898,12 @@ HF.Render = (function () {
       if (!def.warmth) continue;
       const tile = game.tiles[b.y * game.w + b.x];
       const p = I.toScreen(b.x, b.y, I.elevOf(tile));
-      // Kept modest on purpose: a wider, brighter pool washed out the walls of
-      // the very room it was meant to be lighting.
-      const r = 58;
+      const r = 62;
       const g = ctx.createRadialGradient(p.sx, p.sy - 6, 3, p.sx, p.sy - 6, r);
-      const a = (1 - l) * 0.34;
-      g.addColorStop(0, 'rgba(230,150,60,' + a.toFixed(3) + ')');
-      g.addColorStop(1, 'rgba(230,150,60,0)');
+      const a = (1 - d) * 0.4;
+      g.addColorStop(0, 'rgba(236,158,70,' + a.toFixed(3) + ')');
+      g.addColorStop(0.45, 'rgba(212,120,52,' + (a * 0.4).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(212,120,52,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.ellipse(p.sx, p.sy - 6, r, r * 0.55, 0, 0, Math.PI * 2);
@@ -793,6 +916,7 @@ HF.Render = (function () {
     if (!dirty && !force) return;
     dirty = false;
 
+    updateLight(game);
     const season = game.season();
     ctx.fillStyle = '#0e1116';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
