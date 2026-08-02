@@ -70,10 +70,18 @@
           <p class="keys"><b>Moving the map:</b> drag with no tool chosen to pan, pinch or scroll
              to zoom, tap a tile to inspect it, tap a villager to select them, tap a bench to set
              its work. While a tool is chosen, dragging paints instead.</p>
+          <p class="keys"><b>Building:</b> blueprints cost nothing to place &mdash; draw the whole
+             house and the village builds it as the timber comes in. Walls drag as a
+             <b>room outline</b>; the <b>Fill</b> toggle makes them a solid block. The chip at the
+             bottom of the map counts what you are about to place and what it will cost.
+             <b>Cancel</b> calls off plans and work orders; <b>Deconstruct</b> marks something
+             already standing to be pulled down for half its materials back.</p>
           <p class="keys"><b>Keyboard:</b> <kbd>Space</kbd> pause &middot;
              <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> speed &middot; <kbd>B</kbd> build menu &middot;
-             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot; <kbd>X</kbd> cancel tool
-             &middot; <kbd>Esc</kbd> put the tool down &middot; <kbd>H</kbd> this page</p>
+             <kbd>C</kbd>/<kbd>M</kbd>/<kbd>F</kbd> work orders &middot; <kbd>X</kbd> cancel &middot;
+             <kbd>V</kbd> deconstruct &middot; <kbd>R</kbd> fill toggle &middot;
+             <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo &middot; <kbd>Esc</kbd> put the tool down &middot;
+             <kbd>H</kbd> this page</p>
           <h3 class="pick-head">How hard should the world press?</h3>
           <div id="scenario-pick"></div>
           <button id="help-close">Begin</button>
@@ -114,7 +122,10 @@
         <button id="pick-build" class="tool picker-btn">
           <span class="lbl">Build</span><span class="sel">Choose…</span>
         </button>
-        <button id="tool-cancel" class="tool danger">Cancel</button>
+        <button id="tool-cancel" class="tool danger" title="Call off plans and work orders">Cancel</button>
+        <button id="tool-decon" class="tool danger" title="Pull down what is already built">Deconstruct</button>
+        <button id="tool-fill" class="tool" title="Walls drag as a room outline; turn this on for a solid block">Fill</button>
+        <button id="tool-undo" class="tool" title="Take back the last drag">Undo</button>
         <div class="tool-group meta">
           <button id="btn-help" class="plain">Help</button>
           <button id="btn-save" class="plain">Save</button>

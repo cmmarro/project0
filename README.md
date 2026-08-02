@@ -123,7 +123,25 @@ Build a **work bench** and tap it to set what it makes:
 | Grind Medicine | 5 herbs | 2 medicine |
 | Dry and Salt | 14 rice | 20 rice — slow, and only worth it on a glut |
 
-Drag to paint an order or a row of walls across an area.
+### Build tools
+
+Blueprints **cost nothing to place**. Draw the whole house and the village
+builds it as the timber comes in — a plan the stores cannot cover waits instead
+of blocking the builder, and gets picked up the moment the materials land. The
+materials come out of the stores when a thing is finished, not when it is drawn.
+
+| | |
+| --- | --- |
+| **Drag a wall** | Fills the *outline* of the box — drag a room, get a room |
+| **Fill** (`R`) | Turns that off, for a solid block |
+| **Cancel** (`X`) | Calls off plans and work orders. Instant; nothing was spent |
+| **Deconstruct** (`V`) | Marks something standing to be pulled down — a job somebody walks over and does, returning half the materials |
+| **Undo** (`Ctrl+Z`) | Takes back the whole last drag, not the last tile of it |
+
+The chip at the bottom of the map is a live readout: how many tiles the drag
+will take, what they cost, and whether the stores can cover it. On the map
+itself, each tile shows green if it will take and red if it will not — so a
+wall drawn across a river shows you the gap before you let go.
 
 ### The villagers
 

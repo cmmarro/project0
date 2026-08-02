@@ -249,6 +249,14 @@ kbd {
   z-index: 6;
 }
 #mode-hint.show { opacity: 1; pointer-events: auto; }
+/* The readout turns when the stores cannot cover the plan, and when the tool
+   in hand takes something away rather than adding it. */
+#mode-hint.warn { border-color: var(--shu); color: var(--shu-soft); }
+#mode-hint.danger { border-color: var(--shu); color: var(--shu-soft); }
+#mode-hint.danger .clear, #mode-hint.warn .clear { background: rgba(196, 70, 47, 0.22); }
+
+/* A toggle that means nothing with the current tool still reads, just quietly. */
+.tool.dimmed { opacity: 0.45; }
 #mode-hint .clear {
   display: inline-block;
   margin-left: 8px;

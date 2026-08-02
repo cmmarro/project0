@@ -3,6 +3,11 @@
 window.HF = window.HF || {};
 
 HF.Build = {
+  /* Whether a blueprint can go here. Deliberately says nothing about whether
+     the village can afford it: a blueprint costs nothing to place and the
+     materials come out of the stores when it is finished. That is what lets
+     the player draw a whole house at once and let the village build it as the
+     timber comes in, instead of laying one wall every time a tree falls. */
   canPlace: function (game, type, x, y) {
     const def = HF.BUILDINGS[type];
     const tile = HF.Map.at(game, x, y);
@@ -10,14 +15,18 @@ HF.Build = {
     if (tile.building != null) return { ok: false, reason: 'Something is already here.' };
     if (game.designations[HF.U.key(x, y)]) return { ok: false, reason: 'A work order is here.' };
     if (def.on.indexOf(tile.terrain) === -1) {
-      return { ok: false, reason: def.label + ' cannot go on ' + HF.TERRAIN[tile.terrain].name.toLowerCase() + '.' };
-    }
-    for (const r in def.cost) {
-      if (game.res[r] < def.cost[r]) {
-        return { ok: false, reason: 'Not enough ' + r + ' (' + def.cost[r] + ' needed).' };
-      }
+      return { ok: false, reason: def.label + ' cannot go on ' +
+               HF.TERRAIN[tile.terrain].name.toLowerCase() + '.' };
     }
     return { ok: true };
+  },
+
+  /* Can the stores cover this blueprint right now? Builders check it before
+     picking the job up, so an unaffordable plan waits rather than blocking. */
+  affordable: function (game, type) {
+    const def = HF.BUILDINGS[type];
+    for (const r in def.cost) if (game.res[r] < def.cost[r]) return false;
+    return true;
   },
 
   place: function (game, type, x, y) {
@@ -25,7 +34,6 @@ HF.Build = {
     if (!check.ok) return check;
 
     const def = HF.BUILDINGS[type];
-    for (const r in def.cost) game.res[r] -= def.cost[r];
 
     const b = {
       id: game.buildings.length,
@@ -45,15 +53,17 @@ HF.Build = {
     return { ok: true, building: b };
   },
 
-  /* Refunds materials in full for a blueprint, half for a finished building. */
+  /* Takes a thing off the map. A blueprint has cost nothing yet, so there is
+     nothing to give back; a finished building returns half its materials. */
   remove: function (game, x, y) {
     const tile = HF.Map.at(game, x, y);
     if (!tile || tile.building == null) return false;
     const b = game.buildings[tile.building];
     if (!b) return false;
     const def = HF.BUILDINGS[b.type];
-    const ratio = b.built ? 0.5 : 1;
-    for (const r in def.cost) game.addResource(r, Math.floor(def.cost[r] * ratio));
+    if (b.built) {
+      for (const r in def.cost) game.addResource(r, Math.floor(def.cost[r] * 0.5));
+    }
 
     b.cancelled = true;
     game.buildings[b.id] = null;
@@ -119,6 +129,39 @@ HF.Build = {
         if (t.terrain === 'grass' && !t.feature) { t.terrain = what; game.dirtyTerrain = true; }
       }
     }
+  },
+
+  /* ---------- taking things down ----------
+     Cancelling a blueprint is instant - nothing has been built and nothing
+     spent. Pulling down something finished is work somebody has to walk over
+     and do, which is why it is a separate tool and a separate job. */
+  markDeconstruct: function (game, x, y) {
+    const tile = HF.Map.at(game, x, y);
+    if (!tile || tile.building == null) return false;
+    const b = game.buildings[tile.building];
+    if (!b || !b.built || b.deconstruct) return false;
+    b.deconstruct = true;
+    b.workDone = 0;
+    b.claimedBy = null;
+    game.dirtyTerrain = true;
+    return true;
+  },
+
+  unmarkDeconstruct: function (game, x, y) {
+    const tile = HF.Map.at(game, x, y);
+    if (!tile || tile.building == null) return false;
+    const b = game.buildings[tile.building];
+    if (!b || !b.deconstruct) return false;
+    b.deconstruct = false;
+    b.workDone = HF.BUILDINGS[b.type].work;
+    game.releaseClaimsOnBuilding(b.id);
+    game.dirtyTerrain = true;
+    return true;
+  },
+
+  /* How much work pulling something down takes: less than putting it up. */
+  deconstructWork: function (type) {
+    return Math.max(4, Math.round(HF.BUILDINGS[type].work * 0.55));
   },
 
   /* ---------- rooms ----------

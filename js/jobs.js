@@ -28,7 +28,8 @@ HF.Jobs = {
     }
     if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
-      return !!b && !b.built && !b.cancelled;
+      if (!b || b.cancelled) return false;
+      return b.deconstruct ? true : !b.built;
     }
     if (task.targetType === 'station') {
       const b = game.buildings[task.targetKey];
@@ -74,8 +75,13 @@ HF.Jobs = {
 
     if (c.work.build) {
       for (const b of game.buildings) {
-        if (!b || b.built || b.cancelled) continue;
+        if (!b || b.cancelled) continue;
         if (b.claimedBy != null && b.claimedBy !== c.id) continue;
+        if (b.built && !b.deconstruct) continue;
+        // A blueprint the stores cannot cover waits instead of blocking the
+        // builder, so drawing a whole house at once is a plan rather than a
+        // jam. It gets picked up the moment the timber lands.
+        if (!b.built && !HF.Build.affordable(game, b.type)) continue;
         candidates.push({
           targetType: 'building', targetKey: b.id, tx: b.x, ty: b.y,
           skill: 'build',
@@ -301,7 +307,8 @@ HF.Jobs = {
       if (d) what = HF.ORDERS[d.type].verb;
     } else if (task.targetType === 'building') {
       const b = game.buildings[task.targetKey];
-      what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
+      if (b && b.deconstruct) what = 'Pulling down the ' + HF.BUILDINGS[b.type].label.toLowerCase();
+      else what = b ? 'Building ' + HF.BUILDINGS[b.type].label.toLowerCase() : 'Building';
     } else if (task.targetType === 'station') {
       const b = game.buildings[task.targetKey];
       const recipe = b && HF.RECIPES[game.recipes[b.id]];
@@ -371,7 +378,14 @@ HF.Jobs = {
       const b = game.buildings[task.targetKey];
       if (!b) { c.task = null; return; }
       b.workDone += amount;
-      if (b.workDone >= HF.BUILDINGS[b.type].work) HF.Jobs.completeBuilding(game, c, b);
+      if (b.deconstruct) {
+        if (b.workDone >= HF.Build.deconstructWork(b.type)) {
+          HF.Build.remove(game, b.x, b.y);
+          c.task = null;
+        }
+      } else if (b.workDone >= HF.BUILDINGS[b.type].work) {
+        HF.Jobs.completeBuilding(game, c, b);
+      }
     }
   },
 
@@ -473,6 +487,11 @@ HF.Jobs = {
   },
 
   completeBuilding: function (game, c, b) {
+    const def = HF.BUILDINGS[b.type];
+    // Paid for on completion, not on placement. Checked again here because the
+    // stores can have been spent elsewhere while this was being walked to.
+    if (!HF.Build.affordable(game, b.type)) { b.workDone = def.work; c.task = null; return; }
+    for (const r in def.cost) game.res[r] -= def.cost[r];
     b.built = true;
     b.workDone = HF.BUILDINGS[b.type].work;
     b.claimedBy = null;

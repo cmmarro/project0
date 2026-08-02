@@ -10,7 +10,8 @@ HF.UI = (function () {
   let game = null;
   let canvas = null;
   let stage = null;
-  const view = { hover: null, selectedId: null, mode: { kind: 'none', id: null }, drag: null };
+  const view = { hover: null, selectedId: null, mode: { kind: 'none', id: null }, drag: null,
+                 fill: false, plan: null };
 
   let endingDismissedFor = null;   // which gameOver state the player has closed
   const el = {};
@@ -116,6 +117,12 @@ HF.UI = (function () {
 
   function updateToolButtons() {
     const orderBtn = $('pick-order'), buildBtn = $('pick-build'), cancelBtn = $('tool-cancel');
+    const deconBtn = $('tool-decon'), fillBtn = $('tool-fill');
+    deconBtn.classList.toggle('active', view.mode.kind === 'deconstruct');
+    fillBtn.classList.toggle('active', view.fill);
+    // The fill toggle only means anything while holding something that encloses.
+    const wallish = view.mode.kind === 'build' && HF.BUILDINGS[view.mode.id].encloses;
+    fillBtn.classList.toggle('dimmed', !wallish);
     orderBtn.querySelector('.sel').textContent =
       view.mode.kind === 'order' ? HF.ORDERS[view.mode.id].label : 'Choose…';
     buildBtn.querySelector('.sel').textContent =
@@ -128,16 +135,48 @@ HF.UI = (function () {
 
   /* With a tool held, every drag paints instead of panning. The hint says which
      tool is live and doubles as the way to put it down. */
+  /* The hint is the readout as well as the label. While a drag is live it says
+     exactly how many tiles will take, what it will cost, and whether the stores
+     can cover it - so nobody has to drag, release, and then find out. */
   function updateHint() {
     const hint = $('mode-hint');
-    if (view.mode.kind === 'none') { hint.className = ''; hint.innerHTML = ''; return; }
-    let text;
-    if (view.mode.kind === 'order') text = HF.ORDERS[view.mode.id].label + ' — drag over the map';
-    else if (view.mode.kind === 'build') text = 'Place ' + HF.BUILDINGS[view.mode.id].label +
-                                                ' — tap a tile';
-    else text = 'Cancel — drag over what to remove';
+    if (view.mode.kind === 'none') { hint.className = ''; hint.innerHTML = ''; view.plan = null; return; }
+
+    const plan = view.drag ? planFor(view.drag) : null;
+    view.plan = plan;
+    let text, warn = false;
+
+    if (plan && (plan.ok.length || plan.bad.length)) {
+      const n = plan.ok.length;
+      if (plan.kind === 'build') {
+        const def = HF.BUILDINGS[plan.id];
+        const parts = [];
+        for (const r in plan.cost) parts.push(plan.cost[r] + ' ' + HF.RESOURCES[r].label.toLowerCase());
+        warn = !affordable(plan.cost);
+        text = def.label + ' &times;' + n + (parts.length ? ' &middot; ' + parts.join(' + ') : '');
+        if (warn) text += ' &middot; not in store yet';
+      } else if (plan.kind === 'order') {
+        text = HF.ORDERS[plan.id].label + ' &times;' + n;
+      } else if (plan.kind === 'cancel') {
+        text = 'Call off &times;' + n;
+      } else {
+        text = 'Pull down &times;' + n;
+      }
+    } else if (view.mode.kind === 'order') {
+      text = HF.ORDERS[view.mode.id].label + ' — drag over the map';
+    } else if (view.mode.kind === 'build') {
+      const def = HF.BUILDINGS[view.mode.id];
+      text = def.label + ' — ' + (def.encloses && !view.fill ? 'drag a room' : 'drag to place') +
+             ' &middot; ' + costText(def.cost).toLowerCase() + ' each';
+    } else if (view.mode.kind === 'deconstruct') {
+      text = 'Deconstruct — drag over what to pull down';
+    } else {
+      text = 'Cancel — drag over plans and orders to call off';
+    }
+
     hint.innerHTML = text + '<span class="clear">&times;</span>';
-    hint.className = 'show';
+    hint.className = 'show' + (warn ? ' warn' : '') +
+                     (view.mode.kind === 'deconstruct' || view.mode.kind === 'cancel' ? ' danger' : '');
   }
 
   function costText(cost) {
@@ -470,6 +509,7 @@ HF.UI = (function () {
           const t = tileAt(e.clientX, e.clientY);
           if (t && (t.x !== view.drag.x1 || t.y !== view.drag.y1)) {
             view.drag.x1 = t.x; view.drag.y1 = t.y;
+            updateHint();
             HF.Render.invalidate();
           }
         } else if (e.pointerId === leadPointer && (gesture === 'tap' || gesture === 'pan')) {
@@ -494,7 +534,7 @@ HF.UI = (function () {
       if (!p) return;
 
       if (gesture === 'paint' && pointers.size === 0) {
-        if (view.drag) { applyToRect(view.drag); view.drag = null; refresh(); }
+        if (view.drag) { applyToRect(view.drag); view.drag = null; updateHint(); refresh(); }
         gesture = null;
       } else if (gesture === 'tap' && e.pointerId === leadPointer) {
         const t = tileAt(e.clientX, e.clientY);
@@ -551,31 +591,122 @@ HF.UI = (function () {
     if (e.pointerType !== 'mouse') showTileInfo(t, e.clientX, e.clientY, true);
   }
 
-  function applyToRect(drag) {
+  /* ---------- planning a drag ----------
+
+     Every drag is turned into a plan before anything happens: which tiles it
+     would touch, which of those would actually work, and what it costs. The
+     plan drives the ghost the player sees and then gets executed on release,
+     so what you are shown and what you get cannot drift apart.
+
+     Walls fill only the edge of the dragged rectangle. Dragging out a room and
+     getting a solid block of timber is never what anyone wanted, and doing it
+     by hand one side at a time is the tedium this is here to remove. Hold the
+     Fill toggle to get the block. */
+  function tilesFor(drag, kind, id) {
     const x0 = Math.min(drag.x0, drag.x1), x1 = Math.max(drag.x0, drag.x1);
     const y0 = Math.min(drag.y0, drag.y1), y1 = Math.max(drag.y0, drag.y1);
-    let placed = 0, failReason = null;
+    const out = [];
+    const def = kind === 'build' ? HF.BUILDINGS[id] : null;
+    const outline = def && def.encloses && !view.fill;
 
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        if (view.mode.kind === 'order') {
-          if (game.designate(view.mode.id, x, y)) placed++;
-        } else if (view.mode.kind === 'cancel') {
-          if (game.undesignate(x, y)) placed++;
-          if (HF.Build.remove(game, x, y)) placed++;
-        } else if (view.mode.kind === 'build') {
-          const res = HF.Build.place(game, view.mode.id, x, y);
-          if (res.ok) placed++;
-          else failReason = res.reason;
-        }
+        if (outline && x !== x0 && x !== x1 && y !== y0 && y !== y1) continue;
+        out.push({ x: x, y: y });
+      }
+    }
+    return out;
+  }
+
+  function planFor(drag) {
+    const kind = view.mode.kind, id = view.mode.id;
+    if (kind === 'none') return null;
+    const tiles = tilesFor(drag, kind, id);
+    const plan = { kind: kind, id: id, ok: [], bad: [], cost: {}, reason: null };
+
+    for (const t of tiles) {
+      if (kind === 'order') {
+        const tile = HF.Map.at(game, t.x, t.y);
+        const free = tile && !game.designations[HF.U.key(t.x, t.y)] && tile.building == null;
+        (free && HF.ORDERS[id].valid(tile) ? plan.ok : plan.bad).push(t);
+      } else if (kind === 'build') {
+        const res = HF.Build.canPlace(game, id, t.x, t.y);
+        if (res.ok) plan.ok.push(t);
+        else { plan.bad.push(t); plan.reason = plan.reason || res.reason; }
+      } else if (kind === 'cancel') {
+        const b = game.buildingAt(t.x, t.y);
+        const hasOrder = !!game.designations[HF.U.key(t.x, t.y)];
+        ((b && !b.built) || hasOrder ? plan.ok : plan.bad).push(t);
+      } else if (kind === 'deconstruct') {
+        const b = game.buildingAt(t.x, t.y);
+        (b && b.built && !b.deconstruct ? plan.ok : plan.bad).push(t);
       }
     }
 
-    if (placed === 0 && failReason) toast(failReason);
-    else if (placed === 0 && view.mode.kind === 'order') {
-      toast('Nothing there to ' + HF.ORDERS[view.mode.id].label.toLowerCase() + '.');
+    if (kind === 'build') {
+      const def = HF.BUILDINGS[id];
+      for (const r in def.cost) plan.cost[r] = def.cost[r] * plan.ok.length;
+    }
+    return plan;
+  }
+
+  /* Everything placed in one drag is one batch, so undo takes back the whole
+     wall rather than the last brick of it. */
+  const undoStack = [];
+
+  function applyToRect(drag) {
+    const plan = planFor(drag);
+    if (!plan) return;
+    let placed = 0;
+    const batch = [];
+
+    for (const t of plan.ok) {
+      if (plan.kind === 'order') {
+        if (game.designate(plan.id, t.x, t.y)) { placed++; batch.push({ what: 'order', x: t.x, y: t.y }); }
+      } else if (plan.kind === 'build') {
+        const res = HF.Build.place(game, plan.id, t.x, t.y);
+        if (res.ok) { placed++; batch.push({ what: 'build', x: t.x, y: t.y }); }
+      } else if (plan.kind === 'cancel') {
+        if (game.undesignate(t.x, t.y)) placed++;
+        if (HF.Build.remove(game, t.x, t.y)) placed++;
+      } else if (plan.kind === 'deconstruct') {
+        if (HF.Build.markDeconstruct(game, t.x, t.y)) { placed++; batch.push({ what: 'decon', x: t.x, y: t.y }); }
+      }
+    }
+
+    if (batch.length) {
+      undoStack.push(batch);
+      if (undoStack.length > 30) undoStack.shift();
+    }
+
+    if (placed === 0) {
+      if (plan.kind === 'build' && plan.reason) toast(plan.reason);
+      else if (plan.kind === 'order') {
+        toast('Nothing there to ' + HF.ORDERS[plan.id].label.toLowerCase() + '.');
+      } else if (plan.kind === 'cancel') toast('No plans or orders there to call off.');
+      else if (plan.kind === 'deconstruct') toast('Nothing standing there to pull down.');
     }
     HF.Render.invalidate();
+  }
+
+  /* Takes back the last drag: blueprints vanish, deconstruction marks are
+     lifted, work orders are unmarked. Nothing that has actually been built or
+     already pulled down comes back - undo is for the plan, not the village. */
+  function undoLast() {
+    const batch = undoStack.pop();
+    if (!batch) { toast('Nothing to undo.'); return; }
+    let n = 0;
+    for (const item of batch) {
+      if (item.what === 'order') { if (game.undesignate(item.x, item.y)) n++; }
+      else if (item.what === 'build') {
+        const b = game.buildingAt(item.x, item.y);
+        if (b && !b.built && HF.Build.remove(game, item.x, item.y)) n++;
+      } else if (item.what === 'decon') {
+        if (HF.Build.unmarkDeconstruct(game, item.x, item.y)) n++;
+      }
+    }
+    toast(n ? 'Took back ' + n + (n === 1 ? ' plan.' : ' plans.') : 'That is already done.');
+    refresh();
   }
 
   let toastTimer = null;
@@ -656,6 +787,13 @@ HF.UI = (function () {
     $('picker-close').addEventListener('click', closePicker);
     el.picker.addEventListener('click', function (e) { if (e.target === el.picker) closePicker(); });
     $('tool-cancel').addEventListener('click', function () { setMode('cancel', null); });
+    $('tool-decon').addEventListener('click', function () { setMode('deconstruct', null); });
+    $('tool-undo').addEventListener('click', undoLast);
+    $('tool-fill').addEventListener('click', function () {
+      view.fill = !view.fill;
+      updateToolButtons();
+      HF.Render.invalidate();
+    });
 
     $('zoom-in').addEventListener('click', function () { HF.Camera.zoomBy(1.35); });
     $('zoom-out').addEventListener('click', function () { HF.Camera.zoomBy(1 / 1.35); });
@@ -717,6 +855,9 @@ HF.UI = (function () {
         return;
       }
       if (k === 'x') { setMode('cancel', null); return; }
+      if (k === 'v') { setMode('deconstruct', null); return; }
+      if (k === 'z' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undoLast(); return; }
+      if (k === 'r') { view.fill = !view.fill; updateToolButtons(); HF.Render.invalidate(); return; }
       if (k === 'h') { $('help').classList.toggle('open'); return; }
       if (k === 'b') { openPicker('build'); return; }
       for (const id in HF.ORDERS) {
@@ -763,6 +904,7 @@ HF.UI = (function () {
     let budget = Math.min(Math.floor(tickCarry), 40);
     tickCarry -= Math.floor(tickCarry);
     while (budget-- > 0 && !game.gameOver) game.step();
+    HF.Render.setSubTick(tickCarry);
 
     HF.Render.invalidate();
     // The first trader gets a nudge rather than a sheet. A village nobody is
@@ -1044,5 +1186,10 @@ HF.UI = (function () {
     node.classList.add('open');
   }
 
-  return { init: init, setGame: setGame, savedScenario: savedScenario };
+  return {
+    init: init, setGame: setGame, savedScenario: savedScenario,
+    debugView: function () { return view; },      // for tests only
+    debugPlan: function () { view.plan = planFor(view.drag); },
+    debugRefreshHint: updateHint,
+  };
 })();

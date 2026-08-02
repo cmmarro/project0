@@ -65,8 +65,21 @@ HF.Render = (function () {
   }
 
   /* Season is the loudest thing on the map, so it is painted into the ground
-     rather than washed over the top of it. */
+     rather than washed over the top of it.
+
+     Memoised, because this is a pure function of terrain, season and a jitter
+     that only needs sixteen steps to look random - and it used to run string
+     parsing and two blends for every visible tile on every frame. That was
+     affordable when a frame was painted after a keypress. Now that the clock
+     runs, it was the single most expensive thing on screen. */
+  const groundCache = new Map();
+
   function groundColor(tile, season, variant) {
+    const step = (variant * 16) | 0;
+    const key = tile.terrain + season + step;
+    const hit = groundCache.get(key);
+    if (hit !== undefined) return hit;
+
     let base = GROUND[tile.terrain];
     const green = !!GREEN[tile.terrain];
     if (season === 'Summer' && green) base = blend(base, '#4f7a3a', 0.35);
@@ -74,8 +87,19 @@ HF.Render = (function () {
     else if (season === 'Winter' && tile.terrain !== 'water') base = blend(base, '#dde6ec', 0.55);
     else if (season === 'Spring' && green) base = blend(base, '#8aa85c', 0.3);
     const c = parse(base);
-    const j = (variant - 0.5) * 12;
-    return rgb([c[0] + j, c[1] + j, c[2] + j]);
+    const j = (step / 16 - 0.5) * 12;
+    const out = rgb([c[0] + j, c[1] + j, c[2] + j]);
+    groundCache.set(key, out);
+    return out;
+  }
+
+  // The two derived shades used for the sides of raised ground, likewise.
+  const sideCache = new Map();
+  function sideColor(terrain, f) {
+    const key = terrain + f;
+    let hit = sideCache.get(key);
+    if (hit === undefined) { hit = shade(GROUND[terrain], f); sideCache.set(key, hit); }
+    return hit;
   }
 
   /* ---------- primitives ---------- */
@@ -131,7 +155,7 @@ HF.Render = (function () {
 
     if (elev > 0) {
       const h = elev * I.ELEV;
-      ctx.fillStyle = shade(GROUND[tile.terrain], 0.62);
+      ctx.fillStyle = sideColor(tile.terrain, 0.62);
       ctx.beginPath();
       ctx.moveTo(p.sx - I.HW, p.sy);
       ctx.lineTo(p.sx, p.sy + I.HH);
@@ -140,7 +164,7 @@ HF.Render = (function () {
       ctx.closePath();
       ctx.fill();
 
-      ctx.fillStyle = shade(GROUND[tile.terrain], 0.44);
+      ctx.fillStyle = sideColor(tile.terrain, 0.44);
       ctx.beginPath();
       ctx.moveTo(p.sx, p.sy + I.HH);
       ctx.lineTo(p.sx + I.HW, p.sy);
@@ -370,6 +394,23 @@ HF.Render = (function () {
     const tile = game.tiles[b.y * game.w + b.x];
     const p = I.toScreen(b.x, b.y, I.elevOf(tile));
     const def = HF.BUILDINGS[b.type];
+
+    // Marked to come down: a red cross over it and a bar for the work done.
+    if (b.deconstruct) {
+      drawBuildingBody(game, b, season, p, def);
+      ctx.strokeStyle = 'rgba(224,90,70,0.95)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(p.sx - 11, p.sy - 14); ctx.lineTo(p.sx + 11, p.sy + 2);
+      ctx.moveTo(p.sx + 11, p.sy - 14); ctx.lineTo(p.sx - 11, p.sy + 2);
+      ctx.stroke();
+      progressPip(p.sx, p.sy - 26, b.workDone / HF.Build.deconstructWork(b.type), '#e0705a');
+      return;
+    }
+    drawBuildingBody(game, b, season, p, def);
+  }
+
+  function drawBuildingBody(game, b, season, p, def) {
 
     if (!b.built) {
       ctx.save();
@@ -604,8 +645,13 @@ HF.Render = (function () {
   /* Where to actually paint somebody: between the tile they left and the tile
      they are on, by how far through the step they are. The simulation stays
      firmly on the grid; only the picture is allowed to be between tiles. */
+  let subTick = 0;
+  function setSubTick(f) { subTick = f; }
+
   function bodyPos(e) {
-    const t = e.stepLen ? Math.min(1, (e.stepT || 0) / e.stepLen) : 1;
+    // The fraction of a tick already elapsed is added in, so somebody walking
+    // glides at the frame rate instead of stepping at the tick rate.
+    const t = e.stepLen ? Math.min(1, ((e.stepT || 0) + subTick) / e.stepLen) : 1;
     if (t >= 1 || e.fromX == null) return I.toScreen(e.x, e.y, 0);
     const a = I.toScreen(e.fromX, e.fromY, 0);
     const b = I.toScreen(e.x, e.y, 0);
@@ -760,6 +806,16 @@ HF.Render = (function () {
     for (const r of game.raiders) if (!r.dead) put(HF.U.key(r.x, r.y), { kind: 'b', r: r });
 
     const sel = view.selectedId != null ? game.colonistById(view.selectedId) : null;
+
+    /* The ghost. Rather than washing the whole dragged rectangle in one colour,
+       every tile the plan actually touches is marked green if it will take and
+       red if it will not - so a wall drawn across a river shows you the gap
+       before you let go, and a room outline shows as an outline. */
+    const ghost = {};
+    if (view.plan) {
+      for (const t of view.plan.ok) ghost[HF.U.key(t.x, t.y)] = 'ok';
+      for (const t of view.plan.bad) ghost[HF.U.key(t.x, t.y)] = 'bad';
+    }
     const dragRect = view.drag ? {
       x0: Math.min(view.drag.x0, view.drag.x1), x1: Math.max(view.drag.x0, view.drag.x1),
       y0: Math.min(view.drag.y0, view.drag.y1), y1: Math.max(view.drag.y0, view.drag.y1),
@@ -789,10 +845,20 @@ HF.Render = (function () {
         const des = game.designations[key];
         if (des) drawDesignation(game, des);
 
-        if (dragRect && x >= dragRect.x0 && x <= dragRect.x1 &&
-            y >= dragRect.y0 && y <= dragRect.y1) {
+        const mark = ghost[key];
+        if (mark) {
           const tp = I.toScreen(x, y, I.elevOf(game.tiles[y * game.w + x]));
-          ctx.fillStyle = 'rgba(224,182,74,0.3)';
+          ctx.fillStyle = mark === 'ok' ? 'rgba(126,196,106,0.34)' : 'rgba(196,70,47,0.34)';
+          diamond(tp.sx, tp.sy, I.HW - 2, I.HH - 1);
+          ctx.fill();
+          ctx.strokeStyle = mark === 'ok' ? 'rgba(160,225,140,0.9)' : 'rgba(230,110,90,0.9)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        } else if (dragRect && x >= dragRect.x0 && x <= dragRect.x1 &&
+                   y >= dragRect.y0 && y <= dragRect.y1) {
+          // Inside the dragged box but not part of the plan: a room's interior.
+          const tp = I.toScreen(x, y, I.elevOf(game.tiles[y * game.w + x]));
+          ctx.fillStyle = 'rgba(224,182,74,0.1)';
           diamond(tp.sx, tp.sy, I.HW - 2, I.HH - 1);
           ctx.fill();
         }
@@ -826,5 +892,5 @@ HF.Render = (function () {
     drawLight(game);
   }
 
-  return { init: init, draw: draw, invalidate: invalidate };
+  return { init: init, draw: draw, invalidate: invalidate, setSubTick: setSubTick };
 })();
