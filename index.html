@@ -1,14 +1,30 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="en">
 
 <head>
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
-  <link rel="stylesheet" href="css/style.css">
   <meta charset="utf-8">
-  <title></title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Civ Prototype</title>
+  <link rel="stylesheet" href="styles/game.css">
 </head>
 
 <body>
+  <header class="topbar">
+    <h1>Civ Prototype</h1>
+    <div class="topbar-actions">
+      <span class="hint">click selects · click or right-click a tile to move · arrows/numpad · Enter ends turn</span>
+      <button id="new-game">New Map</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="map-wrap">
+      <canvas id="map"></canvas>
+    </div>
+    <aside id="panel"></aside>
+  </main>
+
+  <script type="module" src="js/main.js"></script>
 </body>
 
 </html>
