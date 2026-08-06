@@ -9,12 +9,24 @@ ones everything else will hang off of.
 
 ## Running it
 
-ES modules need a real origin, so `file://` will not work. Any static server:
+ES modules need a real origin, so opening `index.html` off the filesystem will
+not work. Any static server will do:
 
 ```sh
 python3 -m http.server 8000
 # then open http://localhost:8000
 ```
+
+If you would rather have one file you can just open — no server, no install —
+build it:
+
+```sh
+node build-single-file.mjs        # writes dist/civ.html
+```
+
+That inlines the stylesheet and concatenates the modules into a single inline
+script, so the result runs from a `file://` path or any static host. It is the
+same game; nothing is stripped.
 
 Add `?seed=12345` to the URL to replay a specific world. `New Map` rolls a fresh
 one. In the devtools console, `game()` returns `{ state, cam, view }`.

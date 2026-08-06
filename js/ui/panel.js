@@ -13,6 +13,7 @@ export function renderPanel(state, hover) {
     selectionSection(state),
     hoverSection(state, hover),
     logSection(state),
+    helpSection(state),
   ].join('');
 }
 
@@ -140,6 +141,28 @@ function logSection(state) {
       <h3>Log</h3>
       <ul class="log">${entries || '<li class="muted">Nothing yet.</li>'}</ul>
     </div>`;
+}
+
+// Always present, and open until the first city is founded -- the topbar hints
+// are hidden on narrow screens, and a unit is selected from turn one, so the
+// "nothing selected" text never gets a chance to explain anything.
+function helpSection(state) {
+  const open = state.cities.length ? '' : ' open';
+  return `
+    <details class="panel-block help"${open}>
+      <summary>How to play</summary>
+      <ol>
+        <li>Tap your Settler (⌂), then <strong>Found City</strong>.</li>
+        <li>Pick something to build under <strong>Production</strong>.</li>
+        <li>Tap <strong>End Turn</strong> and repeat. Cities grow on food and
+            finish builds with production.</li>
+      </ol>
+      <p class="muted">
+        Tap a tile to select what is on it. With a unit selected, tap any
+        adjacent tile to move there. Drag to pan, pinch or scroll to zoom.
+        Greyed-out buttons explain themselves if you hover or long-press.
+      </p>
+    </details>`;
 }
 
 function button(act, label, blocked, extra = '') {

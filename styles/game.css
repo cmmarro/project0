@@ -218,6 +218,29 @@ button.primary {
   font-size: 13px;
 }
 
+.help summary {
+  cursor: pointer;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.help summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.help ol {
+  margin: 10px 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.help p { margin: 0; }
+
 /* Touch devices: 44px minimum target, and no hover styling to get stuck in. */
 @media (pointer: coarse) {
   button {
