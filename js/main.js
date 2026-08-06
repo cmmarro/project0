@@ -1,6 +1,14 @@
 // Wiring: input -> actions -> render. No game rules live in this file.
 
-import { newGame, cityAt, cityById, unitById, unitsAt } from './core/state.js';
+import {
+  newGame,
+  cityAt,
+  cityById,
+  distance,
+  tileAt,
+  unitById,
+  unitsAt,
+} from './core/state.js';
 import { updateVisibility, endTurn } from './core/turn.js';
 import {
   canFoundCity,
@@ -10,26 +18,47 @@ import {
   nextUnitAt,
   setProduction,
 } from './core/actions.js';
-import { render, resizeCanvas, tileFromEvent } from './ui/render.js';
+import { render, resizeCanvas } from './ui/render.js';
 import { renderPanel } from './ui/panel.js';
+import { attachPointerInput } from './ui/pointer.js';
+import {
+  centerOn,
+  clampCamera,
+  createCamera,
+  ensureVisible,
+  panByPixels,
+  screenToTile,
+  zoomAt,
+} from './ui/camera.js';
 
 const canvas = document.getElementById('map');
 const ctx = canvas.getContext('2d');
 const panel = document.getElementById('panel');
 
 let state;
+let cam = createCamera();
+let view = { width: 1, height: 1 };
 let hover = null;
 
 function start(seed) {
   state = newGame(seed);
   updateVisibility(state);
   state.selectedUnitId = state.units[0]?.id ?? null;
-  resizeCanvas(canvas, state.map);
+  hover = null;
+
+  cam = createCamera();
+  view = resizeCanvas(canvas);
+
+  // Open on the starting units rather than the map's top-left corner.
+  const focus = state.units[0];
+  if (focus) centerOn(cam, state.map, view, focus.x, focus.y);
+  else clampCamera(cam, state.map, view);
+
   draw();
 }
 
 function draw() {
-  render(ctx, state, { hover });
+  render(ctx, state, cam, view, { hover });
   panel.innerHTML = renderPanel(state, hover);
 }
 
@@ -38,17 +67,19 @@ function draw() {
 function selectUnit(unit) {
   state.selectedUnitId = unit ? unit.id : null;
   state.selectedCityId = null;
+  if (unit) ensureVisible(cam, state.map, view, unit.x, unit.y);
 }
 
 function selectCity(city) {
   state.selectedCityId = city ? city.id : null;
   state.selectedUnitId = null;
+  if (city) ensureVisible(cam, state.map, view, city.x, city.y);
 }
 
 function selectTile(x, y) {
   const stack = unitsAt(state, x, y);
   if (stack.length) {
-    // Re-clicking a stack walks through it.
+    // Re-tapping a stack walks through it.
     const already = stack.some((u) => u.id === state.selectedUnitId);
     selectUnit(already ? nextUnitAt(state, x, y, state.selectedUnitId) : stack[0]);
     return;
@@ -69,6 +100,7 @@ function tryMove(x, y) {
   if (!unit || canMove(state, unit, x, y)) return false;
   doMove(state, unit, x, y);
   updateVisibility(state);
+  ensureVisible(cam, state.map, view, unit.x, unit.y);
   return true;
 }
 
@@ -86,42 +118,58 @@ function cycleIdleUnit() {
   selectUnit(idle[(i + 1) % idle.length]);
 }
 
-// --- input --------------------------------------------------------------
+// --- map input ----------------------------------------------------------
 
-canvas.addEventListener('click', (e) => {
-  const p = tileFromEvent(canvas, e, state.map);
-  if (!p) return;
+// With a unit selected, tapping an adjacent tile always means "go there" --
+// including onto a tile that already holds one of your units. Stacking is free
+// and there is no combat, so the cost of a mis-tap is one movement point, and
+// in exchange every tile is reachable with a single tap. That matters on touch,
+// where there is no right-click to fall back on.
+function handleTap(px, py) {
+  const p = screenToTile(cam, view, px, py);
+  if (!tileAt(state.map, p.x, p.y)) return;
 
-  // An empty adjacent tile is unambiguous: the player means "go there".
-  // Anything occupied selects instead, so a stack never gets stepped on by
-  // accident. Right-click and the arrow keys move regardless.
-  const occupied = unitsAt(state, p.x, p.y).length || cityAt(state, p.x, p.y);
-  if (!occupied && tryMove(p.x, p.y)) {
-    draw();
-    return;
+  const unit = unitById(state, state.selectedUnitId);
+  if (unit && distance(unit.x, unit.y, p.x, p.y) === 1) {
+    if (tryMove(p.x, p.y)) {
+      draw();
+      return;
+    }
+    // Blocked terrain or no movement left: hold the selection unless the tap
+    // clearly meant something else.
+    if (!unitsAt(state, p.x, p.y).length && !cityAt(state, p.x, p.y)) return;
   }
 
   selectTile(p.x, p.y);
   draw();
+}
+
+attachPointerInput(canvas, {
+  onTap: ({ x, y }) => handleTap(x, y),
+  onPan: (dx, dy) => {
+    panByPixels(cam, state.map, view, dx, dy);
+    draw();
+  },
+  onZoom: (factor, px, py) => {
+    zoomAt(cam, state.map, view, factor, px, py);
+    draw();
+  },
+  onHover: (p) => {
+    const tile = p ? screenToTile(cam, view, p.x, p.y) : null;
+    const next = tile && tileAt(state.map, tile.x, tile.y) ? tile : null;
+    if (next?.x === hover?.x && next?.y === hover?.y) return;
+    hover = next;
+    draw();
+  },
 });
 
-canvas.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  const p = tileFromEvent(canvas, e, state.map);
-  if (p && tryMove(p.x, p.y)) draw();
-});
-
-canvas.addEventListener('mousemove', (e) => {
-  const p = tileFromEvent(canvas, e, state.map);
-  if (p?.x === hover?.x && p?.y === hover?.y) return;
-  hover = p;
+window.addEventListener('resize', () => {
+  view = resizeCanvas(canvas);
+  clampCamera(cam, state.map, view);
   draw();
 });
 
-canvas.addEventListener('mouseleave', () => {
-  hover = null;
-  draw();
-});
+// --- panel input --------------------------------------------------------
 
 panel.addEventListener('click', (e) => {
   const button = e.target.closest('[data-act]');
@@ -155,6 +203,8 @@ panel.addEventListener('click', (e) => {
 
 document.getElementById('new-game').addEventListener('click', () => start());
 
+// --- keyboard -----------------------------------------------------------
+
 const ARROWS = {
   ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
   Numpad8: [0, -1], Numpad2: [0, 1], Numpad4: [-1, 0], Numpad6: [1, 0],
@@ -183,8 +233,9 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Handy from the devtools console: `game()` returns the live state object.
-window.game = () => state;
+// Handy from the devtools console: `game().state` is the live state object,
+// alongside the camera and the current canvas size in CSS pixels.
+window.game = () => ({ state, cam, view });
 
 // Seed can be pinned via ?seed=123 to replay a specific world.
 const requested = new URLSearchParams(location.search).get('seed');

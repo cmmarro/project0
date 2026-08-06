@@ -17,17 +17,21 @@ python3 -m http.server 8000
 ```
 
 Add `?seed=12345` to the URL to replay a specific world. `New Map` rolls a fresh
-one. In the devtools console, `game()` returns the live state object.
+one. In the devtools console, `game()` returns `{ state, cam, view }`.
+
+It works on phones as well as desktop — same controls, since everything is
+driven by taps and drags rather than the keyboard.
 
 ## Playing it
 
-You start with a Settler and a Warrior.
+You start with a Settler and a Warrior. The view opens centered on them.
 
 | Input | Effect |
 | --- | --- |
-| Click a tile | Select the unit or city on it (click again to cycle a stack) |
-| Click an empty adjacent tile | Move the selected unit there |
-| Right-click an adjacent tile | Move, even if the tile is occupied |
+| Tap / click a tile | Select the unit or city on it (again to cycle a stack) |
+| Tap an adjacent tile | Move the selected unit there |
+| Drag | Pan the camera |
+| Pinch, or scroll wheel | Zoom (anchored on the pinch midpoint or cursor) |
 | Arrow keys / numpad | Move the selected unit (numpad covers diagonals) |
 | Space | Jump to the next unit with movement left |
 | Enter | End the turn |
@@ -35,6 +39,12 @@ You start with a Settler and a Warrior.
 Found a city with the Settler, pick something to build, and end turns. Cities
 grow on food and build on production; population is assigned to the best nearby
 tiles automatically. Buttons that are greyed out have a tooltip explaining why.
+
+With a unit selected, tapping an adjacent tile always means "go there" —
+including onto a tile that already holds one of your units. Stacking is free and
+there is no combat, so a mis-tap costs one movement point, and in exchange every
+tile is reachable with a single tap. That matters on touch, where there is no
+right-click to fall back on.
 
 ## How it is put together
 
@@ -48,7 +58,11 @@ js/
     economy.js   which tiles a city works, and what they yield
     actions.js   player-initiated changes
     turn.js      end-of-turn pipeline and fog of war
-  ui/          render.js (canvas) and panel.js (side panel)
+  ui/          presentation. reads state, never changes it
+    camera.js    the window onto the map: pan, zoom, clamping
+    pointer.js   raw pointer events -> tap / pan / zoom intents
+    render.js    canvas drawing
+    panel.js     the side panel's HTML
   main.js      input wiring only
 ```
 
@@ -73,6 +87,11 @@ place knows each rule.
 **One RNG, always seeded.** Everything random goes through `core/rng.js`, so a
 seed fully determines a world.
 
+The camera is the one piece of view state that is deliberately *not* in the state
+tree — a save file should not record where someone was scrolled to. It also means
+map size is decoupled from screen size: only the tiles inside the view get drawn,
+so a bigger map costs nothing to display.
+
 ## Deliberately not here yet
 
 Left out because each one is a real system, and guessing at it now would mean
@@ -86,7 +105,8 @@ tearing it out later:
 - **Buildings.** Cities build units only.
 - **Terrain improvements.** The Worker exists as a placeholder and does nothing.
 - **Borders.** A city works tiles within radius 2; territory is not modelled.
-- **Multi-tile pathfinding.** Units move one tile at a time.
+- **Multi-tile pathfinding.** Units move one tile at a time, so crossing the map
+  is a lot of taps. This is the next thing that will annoy you on a phone.
 - **Rivers, resources, wonders, diplomacy, trade, religion, culture.**
 
 ## Known rough edges
