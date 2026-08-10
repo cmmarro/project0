@@ -185,6 +185,11 @@ class Game:
         # a castaway musing about timber must never be the reason your question
         # sits unanswered for half a minute.
         self.player_waiting = 0
+        # Nothing thinks in the background for a moment after you speak, so a
+        # follow-up doesn't queue behind something nobody asked for.
+        self.quiet_until = 0.0
+        self.plans_called = 0
+        self.plans_skipped = 0
 
         self.event("You come to on the sand beside a split supply crate. "
                    "The boat is gone. As far as you can tell, so is everyone who was on it.", "system")
@@ -910,6 +915,12 @@ class Game:
         # worse than none: by the time they run, the world has moved on.
         if self.player_waiting or self.jobs.qsize() > len(self.castaways):
             return
+        # While you're stood talking, nothing else gets to think. Priority only
+        # helps work that's still queued — a call already in flight can't be
+        # taken back, so a castaway musing about timber can cost you a minute
+        # on one line. Nothing in the background is worth that.
+        if self.conversation or now < self.quiet_until:
+            return
         for npc in self.castaways:
             if npc.down or npc.busy or npc.held:
                 continue
@@ -960,8 +971,15 @@ class Game:
             idle = npc.task["phase"] == "idle" and npc.task["action"] in ("idle", "rest", "follow")
             if idle and now >= npc.next_plan_at:
                 npc.next_plan_at = now + self.think_gap()
+                why = self.social_load(npc)
+                if why is None:
+                    # Nothing to weigh. Take the reflex and keep the call.
+                    self.plans_skipped += 1
+                    self._reflex(npc)
+                    continue
+                self.plans_called += 1
                 npc.busy = True
-                self.jobs.put(("plan", npc.key))
+                self.jobs.put(("plan", npc.key, why))
 
         if now < self.next_convo_at or self.conversation:
             return
@@ -978,6 +996,50 @@ class Game:
     # =========================================================================
     # worker-thread jobs
     # =========================================================================
+
+    def social_load(self, npc: Castaway) -> str | None:
+        """Is there anything here a person would actually have to think about?
+
+        Deciding to drink when you are thirsty and holding water is a reflex,
+        not a choice — every reasonable person does the same thing, and the
+        twenty lines of if-statements in _fallback_plan do it *better* than a
+        small model does, because they never forget. Spending a model call on
+        it buys nothing and costs the player the whole queue.
+
+        So the model gets called when the answer isn't already determined:
+        when there is somebody to react to, when something has happened to
+        them, when the thing they were doing has stopped being possible, or
+        when the ending is close enough to be worth arguing about. Returns
+        why, so the reason can go in the prompt.
+        """
+        for other in self.actors:
+            if other is npc or other.down or npc.distance_to(other) > SIGHT:
+                continue
+            if npc.has_met(other):
+                return f"{self.name_for(npc, other)} is right here"
+        down = [c for c in self.actors
+                if c is not npc and c.down and npc.distance_to(c) <= SIGHT]
+        if down:
+            return f"{self.name_for(npc, down[0])} is on the sand and not getting up"
+
+        # Something happened to them since they last decided anything.
+        stamp = len(npc.mind.working) + npc.mind.reflections * 100
+        if stamp != getattr(npc, "_mind_stamp", None):
+            npc._mind_stamp = stamp
+            if npc.mind.working:
+                return f"something you've just been left with: {npc.mind.working[-1].text}"
+
+        site = npc.task.get("target")
+        if site in self.stock and not any(v >= 1 for v in self.stock[site].values()):
+            return f"{site} has been worked out from under you"
+
+        raft = self.structures["raft"]
+        if raft["done"] or (raft["started"] and raft["progress"] >= raft["needed"] - 3):
+            return "the raft is nearly finished, and it seats two"
+
+        if npc.allies:
+            return f"you are working {self.allegiance_phrase(npc)}, and that has to hold"
+        return None
 
     def think_gap(self) -> float:
         """How long between one castaway's unprompted model calls.
@@ -1022,7 +1084,7 @@ class Game:
             self._yield_to_player()
             kind = job[0]
             if kind == "plan":
-                self._job_plan(self.by_key[job[1]])
+                self._job_plan(self.by_key[job[1]], job[2] if len(job) > 2 else "")
             elif kind == "convo":
                 self._job_convo(self.by_key[job[1]], self.by_key[job[2]])
             elif kind == "first_contact":
@@ -1036,10 +1098,10 @@ class Game:
                 for npc in self.castaways:
                     npc.busy = False
 
-    def _job_plan(self, npc: Castaway):
+    def _job_plan(self, npc: Castaway, why: str = ""):
         with self.brain_lock:
             self._throttle()
-            out = self.brain.plan(npc, self)
+            out = self.brain.plan(npc, self, why)
         with self.lock:
             was = npc.thought
             npc.thought = (out.get("thought") or npc.thought)[:120]
@@ -1084,6 +1146,16 @@ class Game:
             if convo and npc.key in convo.members:
                 convo.add(npc.key, self.player_name_for(npc), npc.colour, line,
                           f"D{self.day} {self.clock_str()}")
+
+    def _reflex(self, npc: Castaway):
+        """What they do when there's nothing to think about. No model call."""
+        out = self.brain._fallback_plan(npc, self)
+        npc.thought = (out.get("thought") or npc.thought)[:120]
+        if not npc.aim:
+            npc.aim = out.get("aim", "")
+        self.set_allies(npc, out.get("working_with"))
+        self.queue_next(npc, out.get("then_action", ""), out.get("then_target", ""))
+        self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
 
     def _job_reflect(self, npc: Castaway, night: bool = True, deliberate: bool = False):
         # Nightly consolidation and a deliberate think are never skipped: the
@@ -1312,9 +1384,13 @@ class Game:
         if not convo.members:
             self.conversation_end("You're talking to nobody.")
 
+    def hush(self, seconds: float = 12.0):
+        self.quiet_until = max(self.quiet_until, time.time() + seconds)
+
     def conversation_say(self, text: str) -> dict:
         """Add your line and set the room replying. Returns straight away."""
         text = (text or "").strip()[:400]
+        self.hush()
         with self.lock:
             convo = self.conversation
             if not convo:
@@ -1451,6 +1527,7 @@ class Game:
 
     def player_says(self, text: str, wait: bool = True) -> dict:
         text = text.strip()[:400]
+        self.hush()
         if not text:
             return {"heard_by": [], "replies": []}
         with self.lock:
@@ -1591,6 +1668,7 @@ class Game:
                 "provider": getattr(self.brain.provider, "kind", "offline"),
                 "llm_error": self.brain.last_error, "llm_calls": self.brain.calls,
                 "tempo": round(self.tempo(), 2), "latency": round(self.brain.latency, 1),
+                "plans": [self.plans_called, self.plans_skipped],
                 "here": world.landmark_at(self.player.x, self.player.y, radius=2.8),
                 "context": self.player_context(),
                 "seed": self.seed,

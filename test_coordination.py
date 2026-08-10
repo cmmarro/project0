@@ -864,6 +864,69 @@ def main():
     check("and what they said is in the log",
           any("want to hear this about the timber" in e["text"] for e in g5.log))
 
+    # --- 22. spend the model where it changes the answer --------------------
+    print("\n22. Not every step is a decision")
+    g6 = Game(seed=21, cast_size=2)
+    alone, other = g6.castaways
+    with g6.lock:
+        # On their own, on dry land, nothing happening to them.
+        camp_pos = world.LANDMARKS["camp"]["pos"]
+        alone.x, alone.y = float(camp_pos[0]), float(camp_pos[1])
+        other.x, other.y = alone.x + 40, alone.y + 30
+        g6.player.x, g6.player.y = alone.x + 40, alone.y
+        alone.mind.working.clear()
+        alone._mind_stamp = 0
+        alone.allies = set()
+        alone.task = {"action": "idle", "target": "", "phase": "idle", "timer": 0.0}
+    check("alone with nothing happening, there's nothing to weigh",
+          g6.social_load(alone) is None, str(g6.social_load(alone)))
+
+    with g6.lock:
+        other.x, other.y = alone.x + 2.0, alone.y
+        alone.met.add(other.key)
+    check("somebody turning up is worth a thought",
+          "right here" in (g6.social_load(alone) or ""), str(g6.social_load(alone)))
+
+    with g6.lock:
+        other.x, other.y = alone.x + 40, alone.y + 30
+        alone.mind.working.clear()
+        alone._mind_stamp = 0
+        g6.social_load(alone)                       # settle the stamp
+        alone.remember("Somebody took the rope out of the stores.", 1)
+        first, again = g6.social_load(alone), g6.social_load(alone)
+    check("something happening to them is worth a thought",
+          "just been left with" in (first or ""), str(first))
+    check("...but only once — it isn't news the second time", again is None, str(again))
+
+    with g6.lock:
+        site = next(iter(g6.stock))
+        alone.task = {"action": "gather", "target": site, "phase": "work", "timer": 0.0}
+        g6.stock[site] = {i: 0.0 for i in g6.stock[site]}
+    check("the ground going empty under them is worth a thought",
+          "worked out from under you" in (g6.social_load(alone) or ""),
+          str(g6.social_load(alone)))
+
+    with g6.lock:
+        g6.stock[site] = {i: 5.0 for i in g6.stock[site]}
+        alone.task = {"action": "idle", "target": "", "phase": "idle", "timer": 0.0}
+        g6.structures["raft"].update(started=True, progress=11, needed=12)
+    check("the raft nearly floating is worth a thought",
+          "seats two" in (g6.social_load(alone) or ""), str(g6.social_load(alone)))
+
+    # And the reflex still moves them, with no model call at all.
+    with g6.lock:
+        g6.structures["raft"].update(started=False, progress=0)
+        alone.thirst = 20.0
+        alone.inventory.clear()
+        alone.mind.working.clear()
+        alone._mind_stamp = 0
+        g6.social_load(alone)
+        before_calls = g6.brain.calls
+        g6._reflex(alone)
+    check("with nothing to weigh they still act",
+          alone.task["action"] != "idle", str(alone.task))
+    check("and it cost no model call at all", g6.brain.calls == before_calls)
+
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]
     check("every entry has a rising id", ns == sorted(ns) and len(set(ns)) == len(ns))

@@ -641,8 +641,11 @@ WHAT YOU REMEMBER
 
     # -- calls ----------------------------------------------------------------
 
-    def plan(self, npc, game) -> dict:
+    def plan(self, npc, game, why: str = "") -> dict:
         aim = f"\nWHAT YOU ARE IN THE MIDDLE OF\n  {npc.aim}\n" if npc.aim else ""
+        # Why this is worth stopping to think about at all. The reflex layer
+        # handles everything that isn't.
+        aim += f"\nWHAT MAKES THIS WORTH A THOUGHT\n  {why}\n" if why else ""
         user = f"""{self._situation(npc, game)}
 {aim}
 Nobody is talking to you. Decide what you're doing next, and say what it's in
