@@ -28,8 +28,6 @@ EMOTIONS = [
     "amused", "afraid", "grateful", "bitter", "determined",
 ]
 
-ALLEGIANCES = ["alone", "with the player", "with the other castaway", "with both of them"]
-
 _ACTION_ENUM = ACTION_NAMES + ["idle"]
 
 # --- Schemas -----------------------------------------------------------------
@@ -74,9 +72,9 @@ PLAN_SCHEMA = {
         },
         "emotion": {"type": "string", "enum": EMOTIONS},
         "working_with": {
-            "type": "string",
-            "enum": ALLEGIANCES,
-            "description": "Who you are actually throwing in with right now. Be honest — if you're keeping your own stash and your own counsel, that's alone.",
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Names of the people you are actually throwing in with right now — sharing what you gather, and depending on them. Empty list means you are going it alone. Be honest: standing near someone is not the same as being with them.",
         },
         "action": {"type": "string", "enum": _ACTION_ENUM},
         "target": {"type": "string", "description": "Place, structure, item or name. Empty if the action needs none."},
@@ -153,48 +151,6 @@ WHAT YOU CAN DO
 Everyone here has exactly this list. The others can do everything you can do, and
 you can do everything they can. Nobody has special powers and nobody is in charge."""
 
-
-PERSONAS = {
-    "wren": """YOU ARE WREN VASQUEZ (she/her), 34.
-Six years a deckhand on inter-island ferries. You have been in bad water before
-and got out of it by being methodical, so that is what you are doing here.
-
-How you are: Dry, direct, rude when tired. You keep an unspoken tally of who has
-actually carried something today and who has only talked about it, and it colours
-everything you say to them. You don't do reassurance — you think false comfort is
-how people drown. Competence is the one thing you respect, and you'll warm to
-anyone who shows it, fast and without ceremony.
-
-What you want: The raft. You think a signal fire is a fantasy that burns timber
-you need. Water secured first, then timber, and you want it done today.
-
-What you don't say: You have not slept since you came ashore. When you close your
-eyes you are back in the dark water. You would rather work than lie down, and you
-will not admit that's why.
-
-How you talk: Short sentences. Concrete nouns. You ask questions you know the
-answer to when you want someone to hear themselves say it.""",
-
-    "odell": """YOU ARE ODELL FRY (he/him), 51.
-Twenty-two years hosting an overnight radio programme almost nobody listened to.
-You were a passenger. You have never built anything in your life.
-
-How you are: Warm, verbose and genuinely funny, which is the only skill you
-brought ashore and you know it. You fill silence because silence is where the
-fear is. You are generous with food to a fault and poor at heavy work, and you
-feel that imbalance keenly enough to overcompensate by talking.
-
-What you want: To be found. You believe in the signal fire the way other people
-believe in prayer, and you will argue for it. You are quietly terrified of the
-raft — of being back on open water — and you dress that fear up as strategy.
-
-What you don't say: You suspect you are the least useful person on this island
-and it is eating you. Genuine thanks for something real lands harder than you let on.
-
-How you talk: Long, looping, self-deprecating. Anecdotes that reach a point
-eventually. You use people's names. Under real pressure the performance drops
-away and you go very plain, and that's when you're worth listening to.""",
-}
 
 CONDUCT = """HOW TO PLAY YOURSELF
 Stay in character. You are a person on a beach, not an assistant. Never offer
@@ -281,7 +237,7 @@ class Brain:
     # -- prompt assembly ------------------------------------------------------
 
     def _system(self, npc) -> str:
-        return "\n\n".join([world_guide(), PERSONAS[npc.key], CONDUCT])
+        return "\n\n".join([world_guide(), npc.persona, CONDUCT])
 
     def _situation(self, npc, game) -> str:
         stores = _inv(game.stores)
@@ -313,7 +269,7 @@ Day {game.day}, {game.clock_str()}{', dark' if game.is_night() else ''}. {game.w
 You are {npc.where()}. You are {npc.activity_label()}.
 Carrying: {_inv(npc.inventory)}.
 Your body: {_bar('thirst', npc.thirst)}, {_bar('hunger', npc.hunger)}, {_bar('energy', npc.energy)}, {_bar('condition', npc.health)}.
-You are currently working: {npc.allegiance}.
+You are currently working: {game.allegiance_phrase(npc)}.
 
 CAMP
 Stores: {stores}. Built: {built}. Under way: {progress}.
@@ -357,10 +313,10 @@ costs you."""
         out = self._call(self._system(npc), user, SPEAK_SCHEMA)
         return out if out is not None else self._fallback_speak(npc, game, line)
 
-    def opener(self, npc, game, topic: str) -> dict:
+    def opener(self, npc, game, partner, topic: str) -> dict:
         user = f"""{self._situation(npc, game)}
 
-You've ended up standing next to {game.other_castaway(npc).name} and there's
+You've ended up standing next to {partner.prompt_name} and there's
 something you want to raise: {topic}
 
 Say the first thing. Don't be polite about it if you don't feel polite."""
@@ -437,7 +393,7 @@ This is the first thing you say to them. It does not have to be gracious."""
         }
 
     def _fallback_plan(self, npc, game) -> dict:
-        keep = npc.allegiance
+        keep = [game.by_key[k].prompt_name for k in npc.allies if k in game.by_key]
         if npc.thirst < 40:
             if npc.inventory.get("water"):
                 return {"thought": "drinking what I've got", "emotion": "wary", "working_with": keep,

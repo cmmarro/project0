@@ -74,17 +74,20 @@ def settle(game, seconds=6.0, step=0.1):
 def main():
     print("\nCastaway — coordination proof\n")
 
-    game = Game(seed=42)
+    game = Game(seed=42, cast_size=2)
     game.brain.client = object()          # pretend we're online so _call is used
     stub(game)
     start(game)
     freeze_plans(game)
 
-    wren, odell = game.castaways
+    wren, odell = game.castaways   # a two-person cast, rolled from the seed
     wood_site = next(n for n, items in world.HARVEST.items() if "wood" in items)
     fish_site = next(n for n, items in world.HARVEST.items() if "fish" in items)
 
-    print(f"  island seed {game.seed}: timber at '{wood_site}', fish at '{fish_site}'\n")
+    print(f"  island seed {game.seed}: timber at '{wood_site}', fish at '{fish_site}'")
+    for c in game.castaways:
+        print(f"  cast: {c.name} ({c.pronouns}), once a {c.role}")
+    print()
 
     # --- 1. you have to actually meet them ---------------------------------
     print("1. Contact")
@@ -109,18 +112,19 @@ def main():
     print("\n2. Dividing the work")
     stub(game, speak=[
         {"say": "Timber. Fine. That's mine.", "emotion": "determined", "memory":
-         "The new one wants me on timber while they take the fish.", "trust_speaker": 1,
+         "The stranger wants me on timber while they take the fish.", "trust_speaker": 1,
          "action": "gather", "target": wood_site},
         {"say": "Fishing! Now that I can plausibly fail at.", "emotion": "amused", "memory":
          "I said I'd take the fish.", "trust_speaker": 1,
          "action": "gather", "target": fish_site},
     ])
-    reply = game.player_says(f"Wren, you take the timber. Odell, you take the fish.")
+    reply = game.player_says(
+        f"{wren.short}, you take the timber. {odell.short}, you take the fish.")
     check("both in earshot answered", len(reply["replies"]) == 2,
           f"{[r['who'] for r in reply['replies']]}")
-    check("Wren accepted the timber job", wren.task["target"] == wood_site,
+    check(f"{wren.short} accepted the timber job", wren.task["target"] == wood_site,
           f"task={wren.task}")
-    check("Odell accepted the fish job", odell.task["target"] == fish_site,
+    check(f"{odell.short} accepted the fish job", odell.task["target"] == fish_site,
           f"task={odell.task}")
     check("they remembered the deal", bool(wren.memories) and bool(odell.memories))
     check("trust moved", wren.trust_of("player") == 1 and odell.trust_of("player") == 1,
@@ -135,9 +139,9 @@ def main():
         if wren.inventory.get("wood") and odell.inventory.get("fish"):
             break
         time.sleep(0.25)
-    check("Wren walked to the timber and gathered it", wren.inventory.get("wood", 0) >= 1,
+    check(f"{wren.short} walked to the timber and gathered it", wren.inventory.get("wood", 0) >= 1,
           f"carrying {wren.inventory}")
-    check("Odell walked to the water and caught something", odell.inventory.get("fish", 0) >= 1,
+    check(f"{odell.short} walked to the water and caught something", odell.inventory.get("fish", 0) >= 1,
           f"carrying {odell.inventory}")
 
     # --- 4. shared stores and building -------------------------------------
@@ -174,6 +178,65 @@ def main():
     with game.lock:
         ok4, msg4 = verbs.give(game, odell, "water")
     check("NPC gives it straight back through that verb", ok4, msg4)
+
+    # --- 6. the cast is rolled, not written --------------------------------
+    print("\n6. Procedural cast")
+    import random as _random
+
+    from island import people
+
+    a = people.generate_cast(_random.Random(101))
+    b = people.generate_cast(_random.Random(101))
+    c = people.generate_cast(_random.Random(202))
+    check("a seed reproduces its cast exactly",
+          [p["name"] for p in a] == [p["name"] for p in b],
+          ", ".join(p["name"] for p in a))
+    check("a different seed gives different people",
+          [p["name"] for p in a] != [p["name"] for p in c],
+          ", ".join(p["name"] for p in c))
+
+    sizes = {len(people.generate_cast(_random.Random(s))) for s in range(60)}
+    check("cast size varies between runs", len(sizes) > 1, f"sizes seen: {sorted(sizes)}")
+
+    clashes = []
+    for s in range(60):
+        cast = people.generate_cast(_random.Random(s))
+        for field in ("short", "role"):
+            vals = [p[field] for p in cast]
+            if len(set(vals)) != len(vals):
+                clashes.append(f"seed {s} {field}")
+        surnames = [p["name"].split()[-1] for p in cast]
+        if len(set(surnames)) != len(surnames):
+            clashes.append(f"seed {s} surname")
+    check("no run repeats a name or a background", not clashes, "; ".join(clashes[:4]))
+
+    big = Game(seed=9, cast_size=4)
+    check("a four-person cast builds", len(big.castaways) == 4,
+          ", ".join(f"{p.short} ({p.role})" for p in big.castaways))
+    check("each gets their own persona in the prompt",
+          len({p.persona for p in big.castaways}) == 4)
+
+    # --- 7. alliances are sets, so factions can form ------------------------
+    print("\n7. Alliances")
+    x, y, z, w = big.castaways
+    with big.lock:
+        big.set_allies(x, [y.short])
+        big.set_allies(y, [x.name])              # full name should resolve too
+        big.set_allies(z, ["the player"])
+        big.set_allies(w, [])
+    check("a name list becomes actor keys", x.allies == {y.key} and y.allies == {x.key},
+          f"{x.short}->{sorted(x.allies)}, {y.short}->{sorted(y.allies)}")
+    check("the player can be named as an ally", z.allies == {"player"})
+    check("an empty list means going it alone", w.allies == set())
+    check("mutual allies read back as a phrase",
+          big.allegiance_phrase(x) == f"with {y.name}", big.allegiance_phrase(x))
+    check("solitude reads back as alone", big.allegiance_phrase(w) == "alone")
+
+    blocs = [set(g) for g in big.factions()]
+    check("a mutual pair forms one faction", {x.key, y.key} in blocs,
+          str([sorted(g) for g in big.factions()]))
+    check("the loner is not folded into it",
+          all(w.key not in g or g == {w.key} for g in blocs))
 
     print()
     if FAILS:

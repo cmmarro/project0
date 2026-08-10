@@ -142,20 +142,28 @@ class Castaway(Actor):
 
     SPEED = 2.1
 
-    def __init__(self, key: str, name: str, colour: str, pos, persona_hint: str):
-        super().__init__(key, name, colour, pos)
-        self.persona_hint = persona_hint
+    def __init__(self, person: dict, pos):
+        super().__init__(person["key"], person["name"], person["colour"], pos)
+        self.short = person["short"]
+        self.persona = person["persona"]
+        self.traits = person["traits"]
+        self.role = person["role"]
+        self.pronouns = person["pronouns"]
 
         self.memories: list[str] = []
         self.trust: dict[str, int] = {}      # actor key -> -15..15
         self.met: set[str] = set()           # actor keys they've made contact with
         self.emotion = "wary"
         self.thought = "alone on the sand, working out where to start"
-        # Who they've decided to throw in with. Set by the model, and it can change.
-        self.allegiance = "alone"
+        # Who they've thrown in with, by actor key. Empty means going it alone.
+        # Set by the model each time it re-plans, and it can change.
+        self.allies: set[str] = set()
 
         self.next_plan_at = 0.0
         self.busy = False
+
+    def trait(self, name: str) -> float:
+        return self.traits.get(name, 0.5)
 
     # -- social ---------------------------------------------------------------
 
@@ -222,6 +230,9 @@ class Castaway(Actor):
             "thought": self.thought,
             "busy": self.busy,
             "seen": seen,
+            "role": self.role,
+            "pronouns": self.pronouns,
             "trust_player": self.trust_of("player"),
+            "allies": sorted(self.allies),
         })
         return base

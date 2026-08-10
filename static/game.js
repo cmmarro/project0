@@ -1,5 +1,5 @@
 /* Castaway — client. Renders the island, moves you around it, and shows what
-   the two model-driven survivors are saying and doing. */
+   the model-driven survivors are saying and doing. */
 
 const TILE = 26;
 const SPEED = 4.2;              // tiles per second
@@ -254,6 +254,7 @@ function paintPanel() {
   el('clock').textContent = `Day ${S.day} · ${S.clock}`;
   el('weather').textContent = S.weather;
   el('here').textContent = S.here ? `at ${S.here}` : '';
+  el('seed').textContent = `island ${S.seed}`;
   const tag = el('llm');
   tag.textContent = S.online ? 'claude live' : 'offline';
   tag.className = 'tag ' + (S.online ? 'live' : 'off');
@@ -267,6 +268,11 @@ function paintPanel() {
     bar('condition', p.health, tone(p.health));
   el('you-inv').innerHTML = chips(p.inventory);
 
+  const blocs = (S.factions || []).filter(f => f.length > 1);
+  el('factions').innerHTML = blocs.length
+    ? blocs.map(f => `<span class="chip">${f.join(' + ')}</span>`).join('')
+    : '<span class="chip empty">no alliances yet</span>';
+
   el('others').innerHTML = S.castaways.map(c => {
     if (!c.met) {
       return `<div class="person unknown"><div class="top"><span class="name">
@@ -279,7 +285,8 @@ function paintPanel() {
       : 'would trust you with their life';
     return `<div class="person ${c.down ? 'down' : ''}">
       <div class="top"><span class="name" style="color:${c.colour}">${c.name}</span>
-        <span class="emo">${c.emotion}</span></div>
+        <span class="emo">${c.pronouns} · ${c.role}</span></div>
+      <div class="act" style="opacity:.6">${c.emotion}</div>
       <div class="act">${c.down ? 'Collapsed. Needs water.' : c.activity}</div>
       <div class="act" style="opacity:.75">“${c.thought}”</div>
       <div class="allegiance">working ${c.allegiance}</div>

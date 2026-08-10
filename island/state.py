@@ -1,4 +1,5 @@
-"""The simulation: three people, one island, and whatever they decide about each other."""
+"""The simulation: an island, however many people it rolled, and whatever they
+decide about each other."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import random
 import threading
 import time
 
-from . import verbs, world
+from . import people, verbs, world
 from .actors import Castaway, Player, clamp
 from .brain import Brain
 
@@ -25,6 +26,7 @@ CONVO_TURNS = 4
 EARSHOT = 4.5               # who hears you speak
 MEET_RADIUS = 2.6           # close enough to make contact
 SIGHT = 6.5                 # close enough to see someone you haven't met
+MAX_REPLIES = 2             # how many people answer one thing you say out loud
 
 DECAY = {"thirst": 0.20, "hunger": 0.11, "energy": 0.09}
 
@@ -52,28 +54,25 @@ def bearing(from_xy, to_xy) -> str:
     return (ns + ew) or "close by"
 
 
-CAST = [
-    ("wren", "Wren Vasquez", "#e0603f"),
-    ("odell", "Odell Fry", "#4aa3c7"),
-]
-
-
 class Game:
-    def __init__(self, seed: int | None = None):
+    def __init__(self, seed: int | None = None, cast_size: int | None = None):
         self.lock = threading.RLock()
         self.brain = Brain()
         self.seed = world.generate(seed)
-        rng = random.Random(self.seed)
+        rng = random.Random(self.seed ^ 0x5EED)
+
+        # A fresh cast every run: how many, who they were, and what they're like.
+        self.cast = people.generate_cast(rng, cast_size)
 
         # You wash up at the crate. They are elsewhere on the island, and none
         # of you knows yet that the others exist.
         self.player = Player(world.LANDMARKS["camp"]["pos"])
         taken = [(self.player.x, self.player.y)]
         self.castaways = []
-        for key, name, colour in CAST:
-            spot = world.random_start(rng, taken, min_gap=8.0)
+        for person in self.cast:
+            spot = world.random_start(rng, taken, min_gap=7.0)
             taken.append(spot)
-            self.castaways.append(Castaway(key, name, colour, spot, ""))
+            self.castaways.append(Castaway(person, spot))
         self.actors = [self.player, *self.castaways]
         self.by_key = {a.key: a for a in self.actors}
         self.player_met: set[str] = set()
@@ -101,6 +100,9 @@ class Game:
 
         self.event("You come to on the sand beside a split supply crate. "
                    "The boat is gone. As far as you can tell, so is everyone who was on it.", "system")
+        # The seed is fine to show — how many people it rolled is not. Finding
+        # out whether you're alone is the first thing the game is about.
+        self.event(f"Island {self.seed}. You have no idea whether anyone else made it.", "system")
 
     # -- clock ----------------------------------------------------------------
 
@@ -118,8 +120,42 @@ class Game:
 
     # -- lookups --------------------------------------------------------------
 
-    def other_castaway(self, npc: Castaway) -> Castaway:
-        return self.castaways[1] if npc is self.castaways[0] else self.castaways[0]
+    def other_castaways(self, npc: Castaway) -> list[Castaway]:
+        return [c for c in self.castaways if c is not npc]
+
+    def allegiance_phrase(self, npc: Castaway) -> str:
+        names = [self.by_key[k].prompt_name for k in sorted(npc.allies) if k in self.by_key]
+        if not names:
+            return "alone"
+        if len(names) == 1:
+            return f"with {names[0]}"
+        return "with " + ", ".join(names[:-1]) + f" and {names[-1]}"
+
+    def set_allies(self, npc: Castaway, names) -> bool:
+        """Turn the model's list of names into actor keys. Returns True if changed."""
+        keys = set()
+        for n in (names or []):
+            who = self.actor_by_name(str(n))
+            if who is not None and who is not npc:
+                keys.add(who.key)
+        changed = keys != npc.allies
+        npc.allies = keys
+        return changed
+
+    def factions(self) -> list[list[str]]:
+        """Groups of people who name each other as allies. Loners come back alone."""
+        groups: list[set[str]] = []
+        for c in self.castaways:
+            bloc = {c.key} | {k for k in c.allies
+                              if k == "player" or (k in self.by_key
+                                                   and c.key in getattr(self.by_key[k], "allies", set()))}
+            for g in groups:
+                if g & bloc:
+                    g |= bloc
+                    break
+            else:
+                groups.append(bloc)
+        return [sorted(g) for g in groups]
 
     def actor_by_name(self, name: str):
         n = (name or "").strip().lower()
@@ -288,7 +324,7 @@ class Game:
                 if not ok:
                     npc.stop()
                 elif t["action"] == "gather" and npc.carried() >= 7:
-                    if npc.allegiance == "alone":
+                    if not npc.allies:
                         npc.stop()
                     else:
                         npc.thought = "hauling this back to camp"
@@ -367,10 +403,10 @@ class Game:
         self._mark_met(b, a)
         if a.is_human or b.is_human:
             npc = b if a.is_human else a
-            self.event(f"You come face to face with a stranger. She is as startled as you are."
-                       if npc.key == "wren" else
-                       "You come face to face with a stranger. He looks at you like you might not be real.",
-                       "meeting", npc)
+            subj = npc.pronouns.split("/")[0]
+            verb = "are" if subj == "they" else "is"
+            self.event(f"You come face to face with a stranger. {subj.capitalize()} {verb} "
+                       "looking at you like you might not be real.", "meeting", npc)
             if not npc.busy:
                 npc.busy = True
                 self.jobs.put(("first_contact", npc.key, self.player.key))
@@ -418,12 +454,16 @@ class Game:
                 npc.busy = True
                 self.jobs.put(("plan", npc.key))
 
-        a, b = self.castaways
-        if (now >= self.next_convo_at and not a.busy and not b.busy and not a.down and not b.down
-                and a.has_met(b) and a.distance_to(b) <= 3.5):
-            self.next_convo_at = now + CONVO_COOLDOWN
-            a.busy = b.busy = True
-            self.jobs.put(("convo", a.key, b.key))
+        if now < self.next_convo_at:
+            return
+        for i, a in enumerate(self.castaways):
+            for b in self.castaways[i + 1:]:
+                if (not a.busy and not b.busy and not a.down and not b.down
+                        and a.has_met(b) and a.distance_to(b) <= 3.5):
+                    self.next_convo_at = now + CONVO_COOLDOWN
+                    a.busy = b.busy = True
+                    self.jobs.put(("convo", a.key, b.key))
+                    return
 
     # =========================================================================
     # worker-thread jobs
@@ -456,10 +496,8 @@ class Game:
         with self.lock:
             npc.thought = (out.get("thought") or npc.thought)[:160]
             npc.emotion = out.get("emotion", npc.emotion)
-            new_allegiance = out.get("working_with", npc.allegiance)
-            if new_allegiance != npc.allegiance:
-                npc.allegiance = new_allegiance
-                self.event(f"{npc.short} is working {new_allegiance}.", "allegiance", npc)
+            if self.set_allies(npc, out.get("working_with")):
+                self.event(f"{npc.short} is working {self.allegiance_phrase(npc)}.", "allegiance", npc)
             self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
             self.event(npc.thought, "thought", npc)
 
@@ -488,7 +526,7 @@ class Game:
             options.append("there being no fire yet, with the dark coming again")
         if "player" in a.met and a.trust_of("player") != 0:
             options.append("what you make of the stranger, and whether they're pulling their weight")
-        if a.allegiance == "alone" or b.allegiance == "alone":
+        if not a.allies or not b.allies:
             options.append("whether you're actually doing this together or just standing near each other")
         if a.memories:
             options.append(f"something sitting with you: {a.memories[-1]}")
@@ -500,7 +538,7 @@ class Game:
 
         with self.brain_lock:
             self._throttle()
-            out = self.brain.opener(a, self, topic)
+            out = self.brain.opener(a, self, b, topic)
         with self.lock:
             a.emotion = out.get("emotion", a.emotion)
             line = (out.get("say") or "").strip()
@@ -550,7 +588,7 @@ class Game:
         replies = []
         also_heard: list[str] = []
         try:
-            for npc in listeners[:2]:
+            for npc in listeners[:MAX_REPLIES]:
                 with self.brain_lock:
                     self._throttle()
                     out = self.brain.speak(npc, self, self.player.prompt_name, text, also_heard)
@@ -628,7 +666,7 @@ class Game:
                 seen = met or self.player.distance_to(c) <= SIGHT
                 snap = c.snapshot(seen)
                 snap["met"] = met
-                snap["allegiance"] = c.allegiance
+                snap["allegiance"] = self.allegiance_phrase(c)
                 if not met:
                     # You haven't met them: you can see a figure, nothing more.
                     snap = {k: snap[k] for k in ("key", "x", "y", "seen")}
@@ -650,6 +688,9 @@ class Game:
                 "online": self.brain.online, "model": self.brain.model,
                 "llm_error": self.brain.last_error, "llm_calls": self.brain.calls,
                 "here": world.landmark_at(self.player.x, self.player.y, radius=2.8),
+                "seed": self.seed,
+                "factions": [[self.by_key[k].short for k in g if k in self.by_key]
+                             for g in self.factions() if len(g) > 1],
             }
 
 
