@@ -32,6 +32,25 @@ STAKES = 0.22
 # which is most of what stops a satisfied subject compulsively topping up.
 TRAVEL_COST = 0.012          # per tile
 
+# Doing something makes you want it less for a while. Without this, whatever
+# the cheapest idle option happens to be becomes the entire idle behaviour —
+# random wandering was 100% of it, and replacing it with standing at the glass
+# just moved the problem: the glass then took 61% of the pawn's life.
+SATED_FOR = 90.0             # simulated minutes for the appetite to come back
+SATED_BY = 0.75              # how much of the score a just-finished job loses
+
+# Once you've started something you finish it, unless something clearly better
+# turns up. A pawn that re-decides every tick on a hair's difference reads as a
+# process ticking over rather than as somebody who meant to do this.
+COMMITMENT = 0.10
+
+
+def sated(raw: float, s, key: str, now: float) -> float:
+    since = now - s.did.get(key, -9e9)
+    if since >= SATED_FOR:
+        return raw
+    return raw * (1.0 - SATED_BY * (1.0 - since / SATED_FOR))
+
 
 def discount(raw: float, s, thing) -> float:
     """Knock utility down by the walk. Nothing is worth crossing a room for
@@ -131,8 +150,27 @@ class Eat(UseThing):
 class Sleep(UseThing):
     key, label, verb = "sleep", "sleeping", "sleep"
     thing_key, need = "cot", "energy"
-    points = [(0.0, 0.98), (0.2, 0.8), (0.45, 0.4), (0.75, 0.1), (1.0, 0.0)]
+    points = [(0.0, 0.98), (0.25, 0.85), (0.5, 0.55), (0.8, 0.25), (1.0, 0.05)]
     rate = 1 / 45
+
+    def score(self, s, lab):
+        raw = super().score(s, lab)
+        if raw is None:
+            return None
+        # A pawn with no night sleeps in twenty-minute snatches whenever
+        # energy dips, which is the single thing that made the day unreadable.
+        # With one, it goes to bed.
+        return raw * (2.2 if lab.dark() else 0.25)
+
+    def run(self, s, lab):
+        done = super().run(s, lab)
+        # Don't get up in the dark just because you've topped up.
+        return done and not lab.dark()
+
+    def why(self, s, lab):
+        n = s.needs[self.need]
+        return (f"{n.label} {n.level:.0%}"
+                + (", and it's dark" if lab.dark() else ", and it isn't night"))
 
 
 class Examine(Job):
@@ -192,36 +230,168 @@ class Examine(Job):
         return f"curiosity {s.needs['curiosity'].level:.0%}, {known}"
 
 
-class Wander(Job):
-    """The floor. Something to do when nothing else scores."""
+class Work(Job):
+    """Pick at the crate lid. Hours of it, and it does eventually give.
 
-    key, label, verb = "wander", "wandering", "wander"
+    This is the piece the room was missing. Needs get satisfied and then the
+    pawn has nothing, so whatever the cheapest idle option is swallows the
+    waking day — random wandering at first, then standing at the glass. A job
+    of work is what a day is actually made of, and it reads completely
+    differently because it goes somewhere.
+    """
+
+    key, label, verb = "work", "working at the crate", "work"
+    NEEDED = 240.0            # simulated minutes of picking
+
+    def _crate(self, lab):
+        t = lab.things.get("crate")
+        return t if t is not None and t.known and not lab.crate_open else None
 
     def score(self, s, lab):
-        return 0.06
+        t = self._crate(lab)
+        if t is None:
+            return None
+        if s.needs["energy"].level < 0.25:
+            return None       # too tired to be any use at it
+        # Steady and unglamorous. It beats standing at the window, and loses to
+        # anything the body actually needs.
+        done = lab.crate_work / self.NEEDED
+        keen = 0.16 + 0.10 * done          # more so the closer it gets
+        return discount(sated(keen, s, self.key, lab.minutes) if done < 0.9 else keen,
+                        s, t)
+
+    def target(self, s, lab):
+        return self._crate(lab)
+
+    def run(self, s, lab):
+        lab.crate_work += lab.step_minutes
+        s.needs["energy"].tick(lab.step_minutes, rate=0.8)
+        s.busy += lab.step_minutes
+        if lab.crate_work >= self.NEEDED:
+            lab.crate_open = True
+            lab.note("The crate lid comes off. Inside: folded cloth, and a "
+                     "second set of clothes in a smaller size.", "discovery")
+            return True
+        return s.busy > 45       # a session, not the whole job
+
+    def why(self, s, lab):
+        return f"the lid is coming, slowly — {lab.crate_work / self.NEEDED:.0%} of it"
+
+
+class Watch(Job):
+    """Stand at the glass and look at whoever is on the other side.
+
+    This is what replaced random wandering. A pawn with nothing to do that
+    walks to a random tile, then another random tile, reads as a process
+    ticking over — because that is exactly what it is. A pawn that goes and
+    stands at the one thing in the room that looks back reads as a person with
+    nothing to do, which is the same information and a completely different
+    impression.
+    """
+
+    key, label, verb = "watch", "watching the glass", "watch"
+    points = [(0.0, 0.30), (0.4, 0.18), (0.8, 0.10), (1.0, 0.07)]
+
+    def _glass(self, lab):
+        t = lab.things.get("glass")
+        return t if t is not None and t.known else None
+
+    def score(self, s, lab):
+        t = self._glass(lab)
+        if t is None:
+            return None
+        # More appealing when there is nothing else, and when somebody has
+        # recently been talking through it.
+        recent = 0.12 if s.heard and lab.minutes - s.heard[-1]["at"] < 120 else 0.0
+        raw = curve(s.needs["curiosity"].level, self.points) + recent
+        return sated(raw, s, self.key, lab.minutes)
+
+    def target(self, s, lab):
+        return self._glass(lab)
+
+    def run(self, s, lab):
+        s.busy += lab.step_minutes
+        if s.busy < 4:
+            return False
+        s.needs["curiosity"].fill(0.03)
+        return s.busy > 25
+
+    def why(self, s, lab):
+        if s.heard and lab.minutes - s.heard[-1]["at"] < 120:
+            return "somebody was talking through it not long ago"
+        return "nothing else to do, and it looks back"
+
+
+class Pace(Job):
+    """Walk it off. Only when something is wrong that can't be fixed.
+
+    Pacing is not what a pawn does when it is fine — it is what a pawn does
+    when it wants something it cannot have. Tying it to that makes the same
+    animation read as agitation instead of filler.
+    """
+
+    key, label, verb = "pace", "pacing", "pace"
+
+    def score(self, s, lab):
+        worst, source = None, None
+        for job in lab.jobs:
+            need = getattr(job, "need", "")
+            if not need:
+                continue
+            t = lab.things.get(getattr(job, "thing_key", ""))
+            if t is None or not t.known or not t.spent():
+                continue           # it's available; wanting it isn't a problem
+            level = s.needs[need].level
+            if worst is None or level < worst:
+                worst, source = level, t
+        if worst is None or worst > 0.55:
+            return None
+        self.about = source
+        # The worse it is and the less it can be done about it, the more.
+        return 0.10 + 0.35 * (0.55 - worst)
+
+    about = None
 
     def target(self, s, lab):
         return None
 
     def run(self, s, lab):
-        if s.roam is None or s.at(*s.roam):
-            s.roam = lab.somewhere()
+        # Back and forth between where it is and the thing it can't have,
+        # rather than to a random tile.
+        t = self.about
+        if t is None:
+            return True
+        if s.roam is None:
+            s.roam = (float(t.x), float(t.y))
+        if s.at(*s.roam):
+            s.roam = (float(t.x), float(t.y)) if s.roam != (float(t.x), float(t.y)) \
+                else (round(s.x + (3 if s.x < room_mid() else -3)), s.y)
         s.walk_to(*s.roam, lab)
         s.busy += lab.step_minutes
-        return s.busy > 20
+        return s.busy > 18
 
     def why(self, s, lab):
-        return "nothing else worth doing"
+        t = self.about
+        return f"the {t.label} is no use and it wants it" if t else "unsettled"
+
+
+def room_mid() -> float:
+    from . import room
+    return room.W / 2
 
 
 class Rest(Job):
     """Standing still. Cheaper than wandering when they're tired."""
 
     key, label, verb = "rest", "resting", "rest"
-    points = [(0.0, 0.5), (0.4, 0.2), (0.8, 0.03), (1.0, 0.0)]
+    points = [(0.0, 0.55), (0.4, 0.28), (0.8, 0.06), (1.0, 0.0)]
 
     def score(self, s, lab):
-        return curve(s.needs["energy"].level, self.points)
+        raw = curve(s.needs["energy"].level, self.points)
+        # Sitting down is the daytime answer to being tired; the cot is the
+        # night's. Without this split the pawn naps four times a day.
+        raw *= 0.4 if lab.dark() else 1.3
+        return sated(raw, s, self.key, lab.minutes)
 
     def run(self, s, lab):
         s.needs["energy"].fill(1 / 180 * lab.step_minutes)
@@ -291,4 +461,5 @@ class Comply(Job):
 
 
 def all_jobs() -> list[Job]:
-    return [Drink(), Eat(), Sleep(), Comply(), Examine(), Rest(), Wander()]
+    return [Drink(), Eat(), Sleep(), Comply(), Examine(), Work(), Watch(),
+            Pace(), Rest()]

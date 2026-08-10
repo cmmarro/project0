@@ -93,9 +93,11 @@ def build() -> tuple[list[str], dict[str, Thing]]:
         Thing("glass", "the glass", W - 1, 7, {}, glyph="|",
               examine="A window. There is a room on the other side, and it is "
                       "not empty."),
+        # A job of work. Not a need — something to be getting on with, which is
+        # what actually fills a waking day and what the room was missing.
         Thing("crate", "crate", 16, 9, {}, glyph="B",
               examine="A crate with the lid nailed down. Something shifts inside "
-                      "when it's tipped."),
+                      "when it's tipped. The nails are old."),
         Thing("drain", "drain", 8, 11, {}, glyph="o",
               examine="A drain in the floor. It smells of nothing at all."),
         Thing("mark", "scratches", 20, 11, {}, glyph="x",

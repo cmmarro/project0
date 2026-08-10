@@ -31,6 +31,12 @@ class Subject:
         # Conditionals somebody told it through the glass. Nothing in the room
         # will ever remind it these exist.
         self.deals: list = []
+        # Anything said through the glass, verbatim and unparsed. Nothing in
+        # the sim reads it — it is here for whatever ends up doing the
+        # deciding, and for you to see that it was heard.
+        self.heard: list[dict] = []
+        # When each job was last finished, for satiation.
+        self.did: dict[str, float] = {}
         self.picked: list[dict] = []  # the last few decisions, with their tables
 
     # -- body -----------------------------------------------------------------

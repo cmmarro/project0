@@ -488,11 +488,37 @@ A second, much smaller thing in the same repo, and a step backwards on purpose.
 `python lab_server.py` → <http://127.0.0.1:5001>
 
 One subject wakes on the floor of a bare room with no memory of arriving. It has
-four needs, ten things it can look at, and it decides what to do by scoring
-every option against how it feels — needs on curves, utility discounted by how
-far it would have to walk, exactly the way a colony sim does it. **All of that
-is ordinary code, and it is a complete creature on its own:** twenty-four seeds
-run sixty hours unaided without a death.
+four needs, eleven things it can look at, and it decides what to do by scoring
+every option against how it feels. **All of that is ordinary code, and it is a
+complete creature on its own** — twenty-four seeds run sixty hours unaided
+without a death — and getting it good *before* any model is involved is the
+point, so that when one is added there is something for it to beat.
+
+Four things do most of the work of making it read as a person rather than a
+process:
+
+- **A day.** The lamp is on a cycle you control, and the cot is for the night.
+  Without one the pawn slept in twenty-minute snatches whenever energy dipped,
+  which was the single thing that made a day unreadable. It now sleeps about a
+  third of the time, in a block, and sits down when it's tired in daylight.
+- **Satiation.** Doing something makes you want it less for an hour or so.
+  Without it, whatever the cheapest idle option happens to be swallows the
+  entire waking day: random wandering was 100% of idle time, and replacing it
+  with standing at the glass just moved the problem — the glass took 61%.
+- **Commitment.** What it's already doing keeps a bonus, so it isn't abandoned
+  on a hair's difference. Re-deciding every tick is most of what reads as
+  automated.
+- **Work.** A crate with the lid nailed down, four hours of picking, and it
+  does eventually give. Needs get satisfied and then a pawn has *nothing* — a
+  job of work is what a waking day is actually made of.
+
+Nothing walks to a random tile any more. Idling is standing at the glass
+(the one thing in the room that looks back), and pacing is reserved for wanting
+something you can't have — which makes the same animation read as agitation
+rather than filler.
+
+Where a day goes, over 200 simulated hours with no model at all: sleep 32%,
+watching 28%, drinking 10%, working 10%, resting 9%, examining 6%, eating 5%.
 
 You are on the other side of the glass. The instrument panel is the point — you
 are never told what it decided, you are shown the whole table it decided from,

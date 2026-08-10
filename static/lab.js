@@ -69,7 +69,7 @@ function tone(v) { return v > 0.6 ? '#6bbf8a' : v > 0.3 ? '#d8a44e' : '#e0603f';
 
 function paint() {
   const s = S.subject;
-  el('clock').textContent = S.clock;
+  el('clock').textContent = S.clock + (S.dark ? ' · dark' : '');
   el('subj-doing').textContent = s.alive ? s.doing : 'not moving';
   el('thr').textContent = S.fork_threshold.toFixed(2);
   el('counts').textContent = `${S.forks} ties · ${S.consulted} asked`;
@@ -109,6 +109,10 @@ function paint() {
 
   // your side of the glass
   const ctrl = S.things.filter(t => t.controllable);
+  const cr = S.crate || {};
+  el('crate').textContent = cr.open ? 'the crate is open'
+    : cr.done ? `crate lid: ${Math.round(cr.done / cr.needed * 100)}%` : '';
+
   el('supply').innerHTML = ctrl.map(t =>
     `<button data-supply="${t.key}" class="${t.enabled ? 'on' : 'off'}">${
       esc(t.known ? t.label : t.key)}: ${t.enabled ? 'open' : 'cut'}</button>`).join('');

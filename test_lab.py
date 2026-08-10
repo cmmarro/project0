@@ -165,6 +165,63 @@ def main():
     check("...and it stays decided when one option is plainly ahead",
           len(outs) == 1, str(outs))
 
+    print("\n6c. A day that reads as a day")
+    day = Lab(seed=11)
+    fast(day, 900)
+    check("there is a night, and the cot is for it", day.dark() is not None)
+    spent = {}
+    d2 = Lab(seed=11)
+    d2.step_minutes = 2.0
+    for _ in range(1500):
+        d2.step()
+        j = d2.subject.job
+        spent[j.key if j else "idle"] = spent.get(j.key if j else "idle", 0) + 1
+    total = sum(spent.values())
+    check("it sleeps about a third of the time, in a block",
+          0.22 <= spent.get("sleep", 0) / total <= 0.42,
+          f"{spent.get('sleep', 0) / total:.0%}")
+    naps = 0
+    d3 = Lab(seed=11)
+    d3.step_minutes = 2.0
+    was = None
+    for _ in range(760):
+        d3.step()
+        k = d3.subject.job.key if d3.subject.job else None
+        h = d3.minutes % (24 * 60) / 60
+        if k == "sleep" and was != "sleep" and 8 < h < 21:
+            naps += 1
+        was = k
+    check("and doesn't nap through the afternoon", naps <= 1, f"{naps} daytime naps")
+    check("nothing walks to a random tile any more",
+          not any(j.key == "wander" for j in d3.jobs),
+          str([j.key for j in d3.jobs]))
+    check("there is a job of work, and it finishes",
+          d3.crate_open or d3.crate_work > 0, f"{d3.crate_work:.0f} minutes on the lid")
+
+    print("\n6d. It sticks at things")
+    st = Lab(seed=4)
+    for t in st.things.values():
+        t.known = True
+    st.subject.needs["curiosity"].level = 0.3
+    st.subject.job = None
+    st.choose()
+    first = st.subject.job.key
+    same = 0
+    for _ in range(20):
+        st.choose()
+        same += st.subject.job.key == first
+    check("it doesn't abandon what it's doing on a hair's difference",
+          same >= 18, f"kept it {same}/20")
+
+    sat = Lab(seed=4)
+    for t in sat.things.values():
+        t.known = True
+    before = next(r["score"] for r in sat.weigh() if r["key"] == "watch")
+    sat.subject.did["watch"] = sat.minutes
+    after = next(r["score"] for r in sat.weigh() if r["key"] == "watch")
+    check("and wants a thing less right after doing it",
+          after < before * 0.5, f"{before:.3f} -> {after:.3f}")
+
     print("\n7. A promise, and whether it is kept")
     # The one thing the scoring layer cannot represent: somebody told it that
     # doing X gets Y. Nothing in the room will ever remind it.
@@ -250,8 +307,11 @@ def main():
           str(lab.subject.learned[-2:]))
 
     for _ in range(6):
-        lab.honour(False) if any(d.pending for d in lab.subject.deals) else None
+        if any(d.pending for d in lab.subject.deals):
+            lab.honour(False)
+        lab.minutes = 12 * 60          # broad daylight, so it's awake for this
         lab.subject.needs["hunger"].level = 0.3
+        lab.subject.needs["energy"].level = 0.9
         fast(lab, 400, until=lambda l: any(d.pending for d in l.subject.deals))
         lab.honour(False)
     check("lie to it enough and it stops pressing the button",

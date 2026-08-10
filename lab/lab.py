@@ -51,11 +51,22 @@ class Lab:
         self.forks = 0                       # times the top two were level
         self.consulted = 0                   # times the mind was actually asked
         self.running = True
+        self.crate_work = 0.0                # minutes spent on the lid
+        self.crate_open = False
 
         self.note("The subject wakes on the floor. It does not know where it is, "
                   "and it does not appear to remember arriving.", "system")
 
     # -- bookkeeping ----------------------------------------------------------
+
+    def dark(self) -> bool:
+        """Lights out. The lamp is on a cycle you control, and it is the only
+        thing in the room that organises a day."""
+        lamp = self.things.get("lamp")
+        if lamp is not None and not lamp.enabled:
+            return True
+        h = (self.minutes % (24 * 60)) / 60
+        return h < 7 or h >= 22
 
     def clock(self) -> str:
         m = int(self.minutes)
@@ -224,6 +235,16 @@ class Lab:
         if not live:
             return
 
+        # Whatever it was already doing keeps a bonus, so it isn't abandoned on
+        # a hair's difference. A pawn that re-decides constantly reads as a
+        # process ticking over rather than as someone who meant to do this.
+        if s.job is not None:
+            for r in live:
+                if r["job"] is s.job:
+                    r["score"] = round(r["score"] + jobs.COMMITMENT, 3)
+                    live.sort(key=lambda r: -r["score"])
+                    break
+
         top = live[0]
         gap = top["score"] - live[1]["score"] if len(live) > 1 else 1.0
         # A tie only counts when the subject wanted something. Otherwise every
@@ -313,6 +334,7 @@ class Lab:
                 return
             s.stuck = 0
             if s.job.run(s, self):
+                s.did[s.job.key] = self.minutes    # satiation
                 s.job = None
                 self.choose()
 
@@ -321,6 +343,7 @@ class Lab:
             table = self.weigh()
             return {
                 "clock": self.clock(),
+                "dark": self.dark(),
                 "seed": self.seed,
                 "rows": self.rows,
                 "w": room.W, "h": room.H,
@@ -336,6 +359,8 @@ class Lab:
                 "consulted": self.consulted,
                 "mind_on": self.mind is not None,
                 "auto_honour": self.auto_honour,
+                "crate": {"done": round(self.crate_work), "needed": 240,
+                          "open": self.crate_open},
                 "waiting": any(d.pending for d in self.subject.deals),
                 "running": self.running,
             }
