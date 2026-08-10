@@ -96,6 +96,11 @@ export class World {
       cy: y + (rot % 2 === 1 ? def.size[0] : def.size[1]) / 2,
       on: true,
     };
+    if (def.spin) {
+      thing.speed = def.spin.start || 0;
+      thing.rate = 0;
+      thing.spin = 0;
+    }
     this.things.set(thing.id, thing);
     if (def.occupies !== false) {
       for (const [tx, ty] of tiles) this.at[this.idx(tx, ty)] = thing.id;
@@ -154,10 +159,26 @@ export class World {
    * west means the door lies along it; a run north and south means it turns.
    * Falls back to whatever was asked for when there is no wall to read. */
   orientFor(key, x, y, asked = 0) {
+    if (THINGS[key].autoOrient === 'open') return this.orientToOpen(x, y, asked);
     const eastWest = this.structureAt(x - 1, y) || this.structureAt(x + 1, y);
     const northSouth = this.structureAt(x, y - 1) || this.structureAt(x, y + 1);
     if (eastWest && !northSouth) return 0;
     if (northSouth && !eastWest) return 1;
+    return asked;
+  }
+
+  /* For things that mount on a wall and face the room — a light on a bracket.
+   * Rotation moves the mounting clockwise from the north edge, so a wall to
+   * the north gives rot 0 and the fitting throws its light southwards. */
+  orientToOpen(x, y, asked = 0) {
+    const around = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    for (let r = 0; r < 4; r++) {
+      const [dx, dy] = around[r];
+      // A wall on that side, and open floor opposite it.
+      if (this.structureAt(x + dx, y + dy) && !this.structureAt(x - dx, y - dy)) {
+        return r;
+      }
+    }
     return asked;
   }
 
@@ -178,7 +199,7 @@ export class World {
       world.place('wall', x1, y);
     }
     world.place('door', x0 + 8, y1);      // straight into the wall
-    world.place('ceilinglight', x0 + 8, y0 + 6);
+    world.place('ceilingfan', x0 + 8, y0 + 6);
     return world;
   }
 }

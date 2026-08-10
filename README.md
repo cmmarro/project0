@@ -35,9 +35,16 @@ it wrong was visible on screen.
 - **Doors orient themselves** to the wall they land in, and *replace* it — a
   door becomes that segment of wall rather than standing inside one. A door you
   have to align by hand is a door you will align wrong.
-- **Lighting.** A standing lamp throws warm light about seven tiles; a ceiling
-  light is colder, brighter, and doesn't take up the tile. Walls stop light.
-  The sun slider takes the room from night to daylight.
+- **Lighting.** A standing lamp throws warm light about seven tiles; a wall
+  light mounts on a wall and finds which side the room is on; a ceiling fan
+  lights and doesn't take up the tile. Walls stop light. The sun slider takes
+  the room from night to daylight.
+- **A ceiling fan that turns.** Click a placed one to change speed. It winds up
+  under power in about two seconds and coasts down under friction in ten, and
+  the blades stop being countable somewhere in the middle both times — that
+  asymmetry is the whole difference between a fan and a texture being rotated.
+  Its blades throw a shadow on the floor, which is a moving texture in a room
+  that is otherwise a still image.
 - **Camera.** Wheel to zoom towards the cursor, drag to pan.
 
 ## How it fits together
@@ -45,6 +52,7 @@ it wrong was visible on screen.
 ```
 check.html      the placement rules, checked in the browser
 src/defs.js     what exists — every object and floor, in one table
+src/anim.js     the only things that move: fan spin-up and spin-down
 src/world.js    the map, and the rules about what can go where
 src/light.js    the light map
 src/art.js      how each thing is drawn
@@ -71,7 +79,10 @@ one `h` above its footprint and its south face hangs below that; the footprint
 itself never moves. So placement, occupancy and pathing stay on a plain square
 grid and know nothing about any of it.
 
-Each object is therefore two drawings:
+There are then two ways to draw a thing, and which you want depends entirely on
+whether the thing **is a box**.
+
+**Extruded**, for things that are — walls, tables, beds, the dispenser:
 
 ```
 top(c, w, d, thing)     the top surface. Rotates with the object, because a
@@ -80,9 +91,29 @@ face(c, w, h, thing)    the south face. Never rotates, because "up" is a
                         property of the screen and not of the furniture.
 ```
 
-Anything without a `face` gets a default extruded slab, tapered slightly inward
-at the bottom. That taper is two lines of code doing most of the work of making
-a box look like a box rather than a rectangle with a stripe under it.
+Anything without a `face` gets a default slab, tapered slightly inward at the
+bottom. That taper is two lines doing most of the work of making a box look
+like a box rather than a rectangle with a stripe under it.
+
+**Viewed**, for things that aren't:
+
+```
+view(c, w, d, h, rot)   the whole thing, in a w × (d+h) box with the
+                        footprint's south edge at the bottom.
+```
+
+A chair is a back with a seat hanging off it, and the two swap places when you
+turn it — facing away, the backrest stands in front of the seat and hides its
+edge; sideways it is a panel down one side. Extruding that can only ever give
+you an orange box with a bar on the front. This is the sprite-sheet model —
+north/south/east/west art — except the frames are canvas commands rather than
+PNGs, so they stay readable in the source and cost nothing to load.
+
+**Why not three.js?** It would replace the whole pipeline — light map, terrain
+bake, painter's sort — for one benefit you don't need, since the camera never
+moves. And authoring a chair *mesh* is more work than drawing four views of
+one, not less. If the four-view approach ever runs out, the move is to bake
+sprites from 3D offline, not to ship a renderer.
 
 Two consequences that are easy to miss:
 

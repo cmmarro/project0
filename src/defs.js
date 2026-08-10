@@ -131,13 +131,36 @@ export const THINGS = {
     light: { radius: 7.5, colour: [255, 214, 150], strength: 1.0 },
     hint: 'Lights about seven tiles. Walls stop it.',
   },
-  ceilinglight: {
-    label: 'Ceiling light',
+  ceilingfan: {
+    label: 'Ceiling fan',
     cat: 'Misc',
     size: [1, 1],
     occupies: false,                 // overhead; you can walk under it
-    light: { radius: 10, colour: [214, 226, 255], strength: 1.0 },
-    hint: 'Brighter and colder, and nothing stands on the tile.',
+    light: { radius: 9.5, colour: [255, 236, 200], strength: 0.95 },
+    // Starting and stopping are different curves: a motor drives it up to
+    // speed in a couple of seconds, and only friction brings it down, which
+    // takes far longer. `sharp` and `blurred` are the rates between which the
+    // blades stop being countable.
+    spin: {
+      speeds: [0, 4.5, 9, 15],       // radians a second: off, low, medium, high
+      start: 2,
+      up: 1.6,                       // time constant under power
+      down: 5.5,                     // ...and coasting
+      drag: 0.8,                     // dry friction, so it actually stops
+      sharp: 4, blurred: 12,
+    },
+    cycles: true,                    // click it to change speed
+    hint: 'Click a placed fan to change speed. Its shadow turns with it.',
+  },
+  walllight: {
+    label: 'Wall light',
+    cat: 'Misc',
+    size: [1, 1],
+    occupies: false,                 // sits on the wall, not on the floor
+    rotates: true,
+    autoOrient: 'open',              // mounts on the wall, throws into the room
+    light: { radius: 5.5, colour: [255, 222, 168], strength: 0.75 },
+    hint: 'Put it on a wall. It finds which side the room is on.',
   },
 };
 

@@ -5,18 +5,33 @@
  * grid stays square and axis-aligned, which keeps placement, occupancy and
  * pathing exactly as simple as they were. Only the drawing changes.
  *
- * So every object is two drawings:
+ * There are two ways to draw a thing, and which one you want depends entirely
+ * on whether the thing is a box.
  *
- *   top(c, w, d, thing)      the top surface, in a w×d box. This rotates with
- *                            the object, because a bed's pillow end turns.
+ * EXTRUDED — for things that are boxes: walls, tables, beds, the dispenser.
+ *
+ *   top(c, w, d, thing)      the top surface, in a w×d box. Rotates with the
+ *                            object, because a bed's pillow end turns.
  *   face(c, w, h, thing)     the south face, w wide and h tall, hanging below
- *                            the top. This never rotates, because "up" is a
- *                            property of the screen and not of the furniture.
+ *                            the top. Never rotates, because "up" is a property
+ *                            of the screen and not of the furniture.
  *
- * Anything without a `face` gets a default extruded slab in its `side` colour,
- * tapered slightly inward at the bottom. The taper is doing a lot of work for
- * two lines of code: it is most of what stops a box reading as a flat rectangle
- * with a stripe under it.
+ *   Anything without a `face` gets a default slab in its `side` colour, tapered
+ *   inward at the bottom. That taper is two lines doing most of the work of
+ *   making a box read as a box.
+ *
+ * VIEWED — for things that are not boxes. A chair is mostly vertical structure
+ * with a seat hanging off it, and extruding it can only ever produce an orange
+ * box with a bar on the front. So instead:
+ *
+ *   view(c, w, d, h, rot)    the whole thing, drawn into a w × (d+h) box with
+ *                            the footprint's south edge at the bottom. One
+ *                            drawing per facing, switched on rot.
+ *
+ *   This is the sprite-sheet model — north/south/east/west art — except the
+ *   frames are canvas commands rather than PNGs, so they stay legible in the
+ *   source and cost nothing to load. Reach for it the moment a thing's
+ *   silhouette changes shape when you turn it.
  *
  * Two palette rules, both learned by getting them wrong. Art is drawn at *full
  * brightness* and lit down — anything already dim turns to sludge the moment
@@ -24,6 +39,8 @@
  * table within a few percent of each other read as one grey mass however good
  * the shapes are.
  */
+
+import { blur } from './anim.js';
 
 const LINE = 'rgba(26,22,18,.85)';
 
@@ -37,13 +54,15 @@ export function box(c, x, y, w, h, fill, r = 2) {
   c.stroke();
 }
 
-/* A leg: a tapered post from the underside of something down to the floor. */
-function leg(c, x, h, w = 5, fill = '#6d4c28') {
+/* A leg: a tapered post from the underside of something down to the floor.
+ * `top` is where it starts, which is 0 for an extruded face (the face region
+ * begins at the underside) and some way down for a viewed thing. */
+function leg(c, x, h, w = 5, fill = '#6d4c28', top = 0) {
   c.beginPath();
-  c.moveTo(x, 0);
-  c.lineTo(x + w, 0);
-  c.lineTo(x + w - 0.8, h);
-  c.lineTo(x + 0.8, h);
+  c.moveTo(x, top);
+  c.lineTo(x + w, top);
+  c.lineTo(x + w - 0.8, top + h);
+  c.lineTo(x + 0.8, top + h);
   c.closePath();
   c.fillStyle = fill;
   c.fill();
@@ -100,22 +119,18 @@ export const ART = {
     shadow: false,
     side: '#6d4c28',
     top(c, w, d) {
-      // The door *is* this segment of wall, so from above you see the slab
-      // filling the opening flush with the run, with the reveal of the frame
-      // either side of it and the seam where the two leaves meet.
-      c.fillStyle = '#6b6459';                       // frame reveal
+      // The top of a doorway is the top of the wall it interrupts, with the
+      // frame's reveal cut through it. Drawing the door itself up here as well
+      // as on the face gave you two doors, one lying flat on the wall.
+      c.fillStyle = '#a9a192';
       c.fillRect(0, 0, w, d);
-      c.fillStyle = '#a5763f';                       // the leaves, closed
-      c.fillRect(0, 3, w, d - 6);
-      c.fillStyle = 'rgba(255,255,255,.13)';
-      c.fillRect(0, 3.5, w, 2);
-      c.strokeStyle = 'rgba(26,22,18,.55)';
+      c.fillStyle = 'rgba(255,255,255,.07)';
+      c.fillRect(0, 0, w, d * 0.3);
+      c.fillStyle = '#6b6459';                       // the opening, seen down into
+      c.fillRect(2.5, d * 0.3, w - 5, d * 0.42);
+      c.strokeStyle = 'rgba(26,22,18,.5)';
       c.lineWidth = 1;
-      c.beginPath();
-      c.moveTo(0, 3.5); c.lineTo(w, 3.5);
-      c.moveTo(0, d - 3.5); c.lineTo(w, d - 3.5);
-      c.moveTo(w / 2, 3); c.lineTo(w / 2, d - 3);    // where they part
-      c.stroke();
+      c.strokeRect(2.5, d * 0.3, w - 5, d * 0.42);
     },
     face(c, w, h, t) {
       // Seen along the run, you are looking at the two leaves. Seen end-on —
@@ -130,19 +145,23 @@ export const ART = {
         c.strokeRect(w * 0.28, 1.5, w * 0.44, h - 3);
         return;
       }
-      c.fillStyle = '#3f3a33';                       // the dark of the opening
-      c.fillRect(0, 0, w, h);
-      const lw = w * 0.46;
-      for (const x of [0, w - lw]) {
-        box(c, x + 0.5, 1, lw - 1, h - 2, '#a5763f', 1.5);
-        c.fillStyle = 'rgba(255,255,255,.13)';
-        c.fillRect(x + 1.5, 2, lw - 3, 1.5);
+      // The jamb either side, then the leaves centred in the opening between
+      // them — one door, sitting in the gap, rather than a slab across it.
+      ART.wall.face(c, w, h);
+      const jamb = 2.5, ow = w - jamb * 2;
+      c.fillStyle = '#33302b';
+      c.fillRect(jamb, 1, ow, h - 1);
+      const lw = ow / 2;
+      for (const x of [jamb, jamb + lw]) {
+        box(c, x + 0.5, 2, lw - 1, h - 3, '#a5763f', 1.5);
+        c.fillStyle = 'rgba(255,255,255,.14)';
+        c.fillRect(x + 1.5, 3, lw - 3, 1.5);
         c.fillStyle = 'rgba(0,0,0,.10)';             // a panel line each
-        c.fillRect(x + 3, h * 0.42, lw - 6, 1);
+        c.fillRect(x + 2.5, h * 0.45, lw - 5, 1);
       }
-      c.fillStyle = '#d8c08c';                       // handles, either side
-      c.fillRect(lw - 4, h * 0.44, 2.5, 5);
-      c.fillRect(w - lw + 1.5, h * 0.44, 2.5, 5);
+      c.fillStyle = '#d8c08c';                       // handles, meeting stiles
+      c.fillRect(jamb + lw - 3.5, h * 0.42, 2.5, 5);
+      c.fillRect(jamb + lw + 1, h * 0.42, 2.5, 5);
     },
   },
 
@@ -199,29 +218,65 @@ export const ART = {
   },
 
   chair: {
-    h: 16,
-    taper: 0,
-    side: '#8a5f33',
-    // The seat fills its tile and the backrest sits *on* it rather than beside
-    // it. That is not just a look: `top` rotates and `face` does not, so an
-    // asymmetric top leaves the edge band and legs hanging off one side the
-    // moment the chair is turned. A seat that fills the tile has the same
-    // extent at every rotation, and the back carries the facing on its own.
-    inset: 2.5,
-    top(c, w, d) {
-      const i = ART.chair.inset;
-      box(c, i, i, w - 2 * i, d - i - 0.5, '#a5763f', 3);       // the seat
+    h: 18,
+    // Viewed, not extruded. A chair is a back with a seat hanging off it, and
+    // the two swap places when you turn it — facing away, the backrest stands
+    // in front of the seat and hides its edge; facing sideways, it is a panel
+    // down one side. No amount of top-plus-face gets you that.
+    view(c, w, d, h, rot) {
+      const F = h + d;                     // the full silhouette, top to floor
+      const seatT = '#a5763f', seatE = '#8a5f33', back = '#7a5330', legs = '#6d4c28';
+      const floor = F - 1;
+
+      // Legs, drawn first so every panel's outline closes over them.
+      const post = (x, top) => leg(c, x, floor - top, 4, legs, top);
+
+      if (rot === 1 || rot === 3) {
+        // Sideways. Mirror one view for the other rather than writing it twice
+        // — they differ only in which side the back is on. Drawn with the back
+        // to the west, so rot 1 is the mirrored one: a quarter turn clockwise
+        // takes the back from north to east, the same way the bed's pillow goes.
+        c.save();
+        if (rot === 1) { c.translate(w, 0); c.scale(-1, 1); }
+        post(w * 0.34, F * 0.6);
+        post(w * 0.78, F * 0.66);
+        box(c, w * 0.28, F * 0.44, w * 0.66, F * 0.2, seatT, 2.5);   // the seat
+        c.fillStyle = 'rgba(255,255,255,.10)';
+        c.fillRect(w * 0.31, F * 0.46, w * 0.6, 3);
+        c.fillStyle = seatE;                                          // its edge
+        c.fillRect(w * 0.28, F * 0.62, w * 0.66, 3);
+        box(c, w * 0.1, F * 0.16, w * 0.2, F * 0.5, back, 2);         // the back
+        c.restore();
+        return;
+      }
+
+      if (rot === 2) {
+        // Facing away. You are looking at the outside of the backrest, and it
+        // stands in front of the seat.
+        post(w * 0.16, F * 0.66);
+        post(w - w * 0.16 - 4, F * 0.66);
+        box(c, w * 0.12, F * 0.3, w * 0.76, F * 0.24, seatT, 2.5);    // seat behind
+        box(c, w * 0.14, F * 0.46, w * 0.72, F * 0.26, back, 2);      // back in front
+        c.fillStyle = 'rgba(255,255,255,.08)';
+        c.fillRect(w * 0.17, F * 0.48, w * 0.66, 3);
+        return;
+      }
+
+      // Facing you. The back rises behind the seat; you see the seat surface
+      // and the front edge it sits on.
+      post(w * 0.16, F * 0.74);
+      post(w - w * 0.16 - 4, F * 0.74);
+      box(c, w * 0.14, F * 0.06, w * 0.72, F * 0.26, back, 2);        // back, behind
+      box(c, w * 0.12, F * 0.28, w * 0.76, F * 0.44, seatT, 2.5);     // the seat
+      c.fillStyle = 'rgba(0,0,0,.14)';                                 // its shadow
+      c.fillRect(w * 0.15, F * 0.3, w * 0.7, 3);
       c.fillStyle = 'rgba(255,255,255,.10)';
-      c.fillRect(i + 1.5, i + 1.5, w - 2 * i - 3, 3);
-      box(c, i + 1.5, i + 0.5, w - 2 * i - 3, 7.5, '#7a5330', 2);  // the back
-      c.fillStyle = 'rgba(0,0,0,.14)';                          // its shadow
-      c.fillRect(i + 2.5, i + 8.5, w - 2 * i - 5, 2.5);
-    },
-    face(c, w, h) {
-      const i = ART.chair.inset;
-      leg(c, i, h, 4);
-      leg(c, w - i - 4, h, 4);
-      edge(c, i, w - 2 * i, 4.5, '#96692f');
+      c.fillRect(w * 0.15, F * 0.35, w * 0.7, 3);
+      c.fillStyle = seatE;                                             // front edge
+      c.fillRect(w * 0.12, F * 0.66, w * 0.76, 5);
+      c.strokeStyle = LINE;
+      c.lineWidth = 1;
+      c.strokeRect(w * 0.12 + 0.5, F * 0.66 + 0.5, w * 0.76 - 1, 4);
     },
   },
 
@@ -308,27 +363,124 @@ export const ART = {
     },
   },
 
-  ceilinglight: {
-    h: 40,                          // hangs well above everything else
+  ceilingfan: {
+    h: 46,                          // hangs above everything else in the room
+    taper: 0,
+    shadow: false,
+    side: '#8d97a3',
+    top(c, w, d, t) {
+      const cx = w / 2, cy = d / 2;
+      const a = t.spin || 0;
+      const smear = blur(t);
+      const R = w * 1.05;           // the blades overhang the tile, as they do
+
+      // Fast blades are a disc, not four sticks. Fading between the two is
+      // what sells the acceleration — you watch them stop being countable.
+      if (smear > 0) {
+        c.save();
+        c.globalAlpha = 0.19 * smear;
+        c.fillStyle = '#b9a887';
+        c.beginPath();
+        c.arc(cx, cy, R, 0, 7);
+        c.arc(cx, cy, R * 0.3, 0, 7, true);
+        c.fill();
+        c.restore();
+      }
+
+      c.save();
+      c.translate(cx, cy);
+      c.globalAlpha = 1 - smear * 0.84;
+      for (let i = 0; i < 4; i++) {
+        c.save();
+        c.rotate(a + (i * Math.PI) / 2);
+        c.beginPath();
+        c.roundRect(R * 0.24, -R * 0.16, R * 0.76, R * 0.32, R * 0.14);
+        c.fillStyle = i % 2 ? '#c2b291' : '#b8a887';
+        c.fill();
+        c.lineWidth = 1;
+        c.strokeStyle = LINE;
+        c.stroke();
+        c.restore();
+      }
+      c.restore();
+
+      box(c, cx - w * 0.17, cy - d * 0.17, w * 0.34, d * 0.34, '#9aa4ac', 5);
+      c.fillStyle = 'rgba(255,255,255,.2)';
+      c.beginPath();
+      c.arc(cx - 1.5, cy - 2, w * 0.09, 0, 7);
+      c.fill();
+    },
+    face(c, w, h) {
+      // The downrod, and the glass under the motor. Nothing else: it hangs in
+      // the air, so there is nothing between here and the floor to draw.
+      c.fillStyle = '#7c868e';
+      c.fillRect(w / 2 - 2, 0, 4, h * 0.3);
+      c.fillStyle = 'rgba(255,244,214,.6)';
+      c.beginPath();
+      c.ellipse(w / 2, 1, w * 0.24, 3, 0, 0, 7);
+      c.fill();
+    },
+    /* The shadow the blades throw on the floor, drawn under everything else.
+     * This is the whole reason a fan beats a light: an empty floor gets a
+     * texture that moves, and the room stops being a still image. */
+    floor(c, w, d, t) {
+      const cx = w / 2, cy = d / 2;
+      const a = t.spin || 0;
+      const smear = blur(t);
+      const R = w * 1.5;
+      c.save();
+      c.translate(cx, cy);
+      if (smear < 1) {
+        c.globalAlpha = 0.15 * (1 - smear);
+        c.fillStyle = '#000';
+        for (let i = 0; i < 4; i++) {
+          c.save();
+          c.rotate(a + (i * Math.PI) / 2);
+          c.beginPath();
+          c.roundRect(R * 0.22, -R * 0.15, R * 0.74, R * 0.3, R * 0.13);
+          c.fill();
+          c.restore();
+        }
+      }
+      if (smear > 0) {              // ...and a soft ring once they blur out
+        c.globalAlpha = 0.05 * smear;
+        c.fillStyle = '#000';
+        c.beginPath();
+        c.arc(0, 0, R, 0, 7);
+        c.arc(0, 0, R * 0.28, 0, 7, true);
+        c.fill();
+      }
+      c.restore();
+    },
+  },
+
+  walllight: {
+    h: 30,
     taper: 0,
     shadow: false,
     side: '#8d97a3',
     top(c, w, d) {
-      box(c, w * 0.14, d * 0.14, w * 0.72, d * 0.72, '#aeb8c4', 3);
-      c.fillStyle = '#f4f8ff';
-      c.beginPath();
-      c.roundRect(w * 0.22, d * 0.22, w * 0.56, d * 0.56, 2);
+      // Mounted against the north edge of its tile, throwing south. Rotation
+      // carries it round to whichever wall it was placed on.
+      c.fillStyle = '#6f7981';
+      c.fillRect(w * 0.34, 1, w * 0.32, 4);
+      c.beginPath();                          // the shade, a half-cone
+      c.moveTo(w * 0.24, 3);
+      c.lineTo(w * 0.76, 3);
+      c.lineTo(w * 0.64, d * 0.42);
+      c.lineTo(w * 0.36, d * 0.42);
+      c.closePath();
+      c.fillStyle = '#e7d3a2';
       c.fill();
-      c.strokeStyle = 'rgba(26,22,18,.45)';
-      c.lineWidth = 1;
+      c.lineWidth = 1.25;
+      c.strokeStyle = LINE;
       c.stroke();
+      c.fillStyle = 'rgba(255,247,220,.8)';
+      c.fillRect(w * 0.36, d * 0.36, w * 0.28, 3);
     },
     face(c, w) {
-      // Only the lit underside. It hangs in the air, so there is nothing
-      // between here and the floor to draw — and anything above the face
-      // region would be clipped away anyway.
-      c.fillStyle = 'rgba(244,248,255,.55)';
-      c.fillRect(w * 0.2, 0, w * 0.6, 3);
+      c.fillStyle = 'rgba(255,243,205,.45)';  // spill from under the shade
+      c.fillRect(w * 0.3, 0, w * 0.4, 3);
     },
   },
 };

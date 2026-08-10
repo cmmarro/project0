@@ -33,6 +33,7 @@ import { World } from './src/world.js';
 import { THINGS, TERRAIN } from './src/defs.js';
 import { footprint } from './src/render.js';
 import { ART } from './src/art.js';
+import * as anim from './src/anim.js';
 
 const out = document.getElementById('out');
 let pass = 0, fail = 0;
@@ -60,8 +61,12 @@ const ok = (what, got, why) => is(what, !!got, true, why);
 
 group('the catalogue is complete');
 for (const [key, def] of Object.entries(THINGS)) {
-  ok(`${key} can be drawn`, ART[key] && typeof ART[key].top === 'function',
-    'defs and art agree');
+  const a = ART[key];
+  ok(`${key} can be drawn`,
+    a && (typeof a.top === 'function' || typeof a.view === 'function'),
+    a && a.view ? 'viewed' : 'extruded');
+  if (a && a.view) is(`${key} is viewed, not both`, typeof a.top, 'undefined',
+    'one drawing style or the other');
 }
 for (const [key, def] of Object.entries(TERRAIN)) {
   ok(`${key} has a colour`, def.base, '');
@@ -88,12 +93,12 @@ group('what may share a tile');
   const w = new World(20, 20);
   w.place('chair', 5, 5);
   is('two things cannot stand on one tile', w.place('chair', 5, 5), null);
-  ok('but an overhead light may hang over one', w.place('ceilinglight', 5, 5),
+  ok('but a fan may hang over one', w.place('ceilingfan', 5, 5),
     'that is the whole difference from a standing lamp');
   is('a lamp may not', w.place('lamp', 5, 5), null);
-  ok('the tile still reports the chair, not the light',
+  ok('the tile still reports the chair, not the fan',
     w.thingAt(5, 5).key === 'chair');
-  ok('the light is findable overhead', w.overheadAt(5, 5).key === 'ceilinglight');
+  ok('the fan is findable overhead', w.overheadAt(5, 5).key === 'ceilingfan');
 }
 
 group('a door becomes the wall');
@@ -137,6 +142,57 @@ group('walls stop things, doorways do not');
   w.place('dispenser', 8, 8);
   ok('a dispenser blocks, being solid', w.blocked(8, 8));
   ok('a chair does not', (w.place('chair', 12, 12), !w.blocked(12, 12)));
+}
+
+group('a fan starts and stops like a fan');
+{
+  const w = new World(10, 10);
+  const f = w.place('ceilingfan', 5, 5);
+  const spin = THINGS.ceilingfan.spin;
+  is('it comes on at medium', f.speed, spin.start);
+  is('and is not turning yet', f.rate, 0);
+  const run = s => { for (let i = 0; i < s * 60; i++) anim.step(w, 1 / 60); };
+  run(0.35);
+  ok('a third of a second in, it is barely moving',
+    f.rate > 0 && f.rate < spin.speeds[f.speed] * 0.35, 'it has to wind up');
+  run(6);
+  ok('after six seconds it is at speed',
+    Math.abs(f.rate - spin.speeds[f.speed]) < 0.2);
+  ok('and the blades have blurred out', anim.blur(f) > 0.4);
+  ok('the angle has advanced', f.spin !== 0);
+
+  f.speed = 0;                                   // switched off
+  run(1.5);
+  ok('a second and a half later it is still turning', f.rate > 1,
+    'nothing but friction is slowing it');
+  const coasting = f.rate;
+  run(2);
+  ok('...slower', f.rate < coasting);
+  ok('...and countable again on the way down', anim.blur(f) < 0.5);
+  run(20);
+  is('eventually it stops dead', f.rate, 0, 'dry friction, not an asymptote');
+
+  const up = (() => { const g = w.place('ceilingfan', 8, 8); g.speed = 3;
+    let s = 0; while (g.rate < spin.speeds[3] * 0.9 && s < 60) { anim.step(w, 1/60); s += 1/60; }
+    return s; })();
+  const down = (() => { const g = w.overheadAt(8, 8); g.speed = 0;
+    let s = 0; while (g.rate > 0.5 && s < 60) { anim.step(w, 1/60); s += 1/60; }
+    return s; })();
+  ok('stopping takes longer than starting', down > up * 1.8,
+    `${up.toFixed(1)}s up, ${down.toFixed(1)}s down`);
+}
+
+group('a wall light finds the room');
+{
+  const w = new World(12, 12);
+  for (let x = 2; x <= 8; x++) w.place('wall', x, 2);       // a north wall
+  is('mounted on a wall to the north', w.place('walllight', 5, 3).rot, 0);
+  for (let y = 4; y <= 9; y++) w.place('wall', 2, y);       // a west wall
+  is('...or one to the west', w.place('walllight', 3, 6).rot, 3);
+  is('out in the open it keeps what you asked',
+    w.place('walllight', 7, 7, 2).rot, 2);
+  ok('it does not take the tile', !w.thingAt(5, 3),
+    'it is on the wall, not standing on the floor');
 }
 
 group('the edges of the map');

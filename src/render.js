@@ -157,6 +157,19 @@ export class Renderer {
     c.imageSmoothingEnabled = false;
     c.drawImage(this.terrainCache, 0, 0);
 
+    // Anything an overhead thing casts on the floor goes down before the
+    // furniture, so a chair under a fan is lit by the room and shadowed by the
+    // blades rather than having a shadow painted over the top of it.
+    for (const thing of this.sorted()) {
+      const a = ART[thing.key];
+      if (!a || !a.floor) continue;
+      const [fw, fd] = footprint(thing.key, thing.rot);
+      c.save();
+      c.translate(thing.x * TILE, thing.y * TILE);
+      a.floor(c, fw, fd, thing);
+      c.restore();
+    }
+
     for (const thing of this.sorted()) this.drawThing(thing);
 
     // Light, multiplied over everything built so far. The half-sample offset is
@@ -172,6 +185,32 @@ export class Renderer {
     c.globalCompositeOperation = 'source-over';
 
     if (overlay) overlay(c);
+  }
+
+  /* A soft ellipse pooled at the foot of a thing. It was a rounded rectangle
+   * at flat alpha, which at any zoom reads as a grey slab lying on the floor
+   * rather than as a shadow — the softness is the whole point, and a
+   * hard-edged shadow is worse than none. */
+  contactShadow(t, a, fw, fd, h, ghost) {
+    if (ghost || a.shadow === false || h <= 0) return;
+    const c = this.c;
+    const sx = t.x * TILE + fw / 2, sy = t.y * TILE + fd - 2.5;
+    const rx = fw * 0.46 + 2, ry = Math.min(fd * 0.34, 4 + h * 0.16);
+    const r = Math.max(rx, ry);
+    const g = c.createRadialGradient(sx, sy, 0, sx, sy, r);
+    const dark = 0.2 + Math.min(0.14, h / 260);
+    g.addColorStop(0, `rgba(0,0,0,${dark})`);
+    g.addColorStop(0.5, `rgba(0,0,0,${dark * 0.45})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.save();
+    c.translate(sx, sy);
+    c.scale(rx / r, ry / r);
+    c.translate(-sx, -sy);
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(sx, sy, r, 0, 7);
+    c.fill();
+    c.restore();
   }
 
   /* One thing: shadow on the floor, south face, then top face lifted by `h`.
@@ -191,28 +230,19 @@ export class Renderer {
     c.save();
     if (ghost) c.globalAlpha = 0.62;
 
-    // Contact shadow: a soft ellipse pooled at the foot of the thing. It was a
-    // rounded rectangle at flat alpha, which at any zoom reads as a grey slab
-    // lying on the floor rather than as a shadow — the softness is the whole
-    // point, and a hard-edged shadow is worse than none.
-    if (!ghost && a.shadow !== false && h > 0) {
-      const sx = X + fw / 2, sy = Y + fd - 2.5;
-      const rx = fw * 0.46 + 2, ry = Math.min(fd * 0.34, 4 + h * 0.16);
-      const r = Math.max(rx, ry);
-      const g = c.createRadialGradient(sx, sy, 0, sx, sy, r);
-      const dark = 0.2 + Math.min(0.14, h / 260);
-      g.addColorStop(0, `rgba(0,0,0,${dark})`);
-      g.addColorStop(0.5, `rgba(0,0,0,${dark * 0.45})`);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
+    this.contactShadow(t, a, fw, fd, h, ghost);
+
+    // Viewed things draw themselves whole, into a box running from the top of
+    // their height down to the south edge of their footprint. Everything below
+    // is the extruded path, which only makes sense for things that are boxes.
+    if (a.view) {
+      this.contactShadow(t, a, fw, fd, h, ghost);
       c.save();
-      c.translate(sx, sy);
-      c.scale(rx / r, ry / r);
-      c.translate(-sx, -sy);
-      c.fillStyle = g;
-      c.beginPath();
-      c.arc(sx, sy, r, 0, 7);
-      c.fill();
+      c.translate(X, Y - h);
+      a.view(c, fw, fd, h, rot, t);
       c.restore();
+      c.restore();
+      return;
     }
 
     // A wall with another wall in front of it shows no face — the neighbour's

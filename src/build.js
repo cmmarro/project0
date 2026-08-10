@@ -31,14 +31,14 @@ export class Build {
     this.onChange();
   }
 
-  rotate() {
+  rotate(by = 1) {
     if (!this.tool || this.tool.kind !== 'thing') return;
     // Everything turns, the way it does in a colony sim — a square table
     // turning invisibly is harmless, and having to remember which pieces are
     // rotatable is not. Doors are the exception: they take their orientation
     // from the wall.
     if (THINGS[this.tool.key].autoOrient) return;
-    this.rot = (this.rot + 1) % 4;
+    this.rot = (this.rot + by + 4) % 4;
     this.onChange();
   }
 
@@ -210,7 +210,7 @@ export function buildMenu(root, build) {
       else el.classList.toggle('on', el.dataset.cat === cat && (!t || t.kind !== 'delete'));
     }
     const def = t && t.kind === 'thing' ? THINGS[t.key] : null;
-    const turn = def && def.rotates ? '  ·  R to turn it.' : '';
+    const turn = def && def.rotates ? '  ·  E or Q to turn it.' : '';
     hint.textContent = !t ? 'Pick something to build. Right-drag or space-drag to pan, wheel to zoom.'
       : t.kind === 'delete' ? 'Click or drag over anything you want gone.'
       : (def && def.hint) ? def.hint + turn
@@ -243,6 +243,8 @@ function swatch(el) {
   const def = THINGS[key];
   if (def) {
     const [w, h] = def.size;
+    // The drawing box is the footprint plus the height above it, and the art
+    // is authored with the footprint's south edge at the bottom.
     const lift = (ART[key] && ART[key].h) || 0;
     const s = 24 / Math.max(w * TILE, h * TILE + lift);
     c.translate(14, 14);
@@ -250,20 +252,21 @@ function swatch(el) {
     c.translate((-w * TILE) / 2, (-h * TILE - lift) / 2);
     const a = ART[key];
     if (a) {
-      // Same two-part drawing as the world, so the menu can never disagree
-      // with what you get: face below, top lifted above it.
+      // The same routines the world uses, so the menu cannot disagree with what
+      // you actually get.
       const hh = a.h || 0;
-      if (hh) {
-        c.save();
-        c.translate(0, h * TILE - hh);
-        if (a.face) a.face(c, w * TILE, hh, {});
-        else { c.fillStyle = a.side || '#7d7668'; c.fillRect(0, 0, w * TILE, hh); }
-        c.restore();
+      if (a.view) {
+        a.view(c, w * TILE, h * TILE, hh, 0, {});
+      } else {
+        if (hh) {
+          c.save();
+          c.translate(0, h * TILE);
+          if (a.face) a.face(c, w * TILE, hh, {});
+          else { c.fillStyle = a.side || '#7d7668'; c.fillRect(0, 0, w * TILE, hh); }
+          c.restore();
+        }
+        a.top(c, w * TILE, h * TILE, {});
       }
-      c.save();
-      c.translate(0, -hh);
-      a.top(c, w * TILE, h * TILE, {});
-      c.restore();
     }
   } else if (TERRAIN[key]) {
     const t = TERRAIN[key];
