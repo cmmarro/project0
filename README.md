@@ -10,6 +10,11 @@ python3 -m http.server 8000     # any static server will do
 Then open <http://localhost:8000>. No build step, no dependencies, no backend.
 It is plain ES modules and a canvas.
 
+<http://localhost:8000/check.html> runs the rules about what can go where
+against the real `World` and prints pass/fail. Same deal — no dependencies, no
+runner. Every check in there is a rule that was worth stating because getting
+it wrong was visible on screen.
+
 ---
 
 ## What it does
@@ -27,8 +32,9 @@ It is plain ES modules and a canvas.
 - **Multi-tile objects, and everything turns.** A bed is 1×2, a table 2×2, a
   paste dispenser 3×1. Rotation was built in from the first commit because
   retrofitting it into placement, occupancy and drawing is miserable.
-- **Doors orient themselves** to the wall they land in. A door you have to
-  align by hand is a door you will align wrong.
+- **Doors orient themselves** to the wall they land in, and *replace* it — a
+  door becomes that segment of wall rather than standing inside one. A door you
+  have to align by hand is a door you will align wrong.
 - **Lighting.** A standing lamp throws warm light about seven tiles; a ceiling
   light is colder, brighter, and doesn't take up the tile. Walls stop light.
   The sun slider takes the room from night to daylight.
@@ -37,6 +43,7 @@ It is plain ES modules and a canvas.
 ## How it fits together
 
 ```
+check.html      the placement rules, checked in the browser
 src/defs.js     what exists — every object and floor, in one table
 src/world.js    the map, and the rules about what can go where
 src/light.js    the light map
@@ -103,6 +110,17 @@ Two consequences that are easy to miss:
 - **Terrain is baked** into one bitmap and blitted; it has its own version
   counter, because sharing one with things meant every lamp placed re-baked the
   entire floor.
+- **A contact shadow has to be soft.** The first one was a rounded rectangle at
+  flat alpha, which at any zoom reads as a grey slab lying on the floor. It is
+  a radial gradient now.
+- **`top` rotates and `face` does not**, so anything whose top art is
+  asymmetric comes apart when you turn it — the edge band and legs end up
+  hanging off one side. A chair's seat therefore fills its tile and the
+  backrest sits *on* the seat, which has the same extent at every rotation and
+  lets the back carry the facing by itself.
+- **Only a default face gets the tapered outline.** Anything drawing its own
+  face has legs, and two diagonals ruled through the air beside them look worse
+  than no taper at all.
 
 ## Next
 

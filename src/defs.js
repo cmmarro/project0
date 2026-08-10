@@ -84,7 +84,10 @@ export const THINGS = {
     // whatever you last pressed R on. A door you have to align by hand is a
     // door you will align wrong.
     autoOrient: true,
-    hint: 'Turns to match the wall it sits in.',
+    // ...and it *becomes* that segment of wall rather than standing inside
+    // one. Two structures on a tile is not a doorway, it is a bug you can see.
+    replaces: true,
+    hint: 'Drops into a wall, replacing it, and turns to match.',
   },
   bed: {
     label: 'Bed',

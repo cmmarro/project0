@@ -90,8 +90,8 @@ export class Renderer {
         // Grain, plus a whole-tile shade wobble. The wobble matters more than
         // the specks: a floor of one flat colour reads as a placeholder no
         // matter how much noise you sprinkle on it.
-        c.fillStyle = n % 3 === 0 ? def.speck : def.base;
-        c.globalAlpha = 0.5;
+        c.fillStyle = n % 4 === 0 ? def.speck : def.base;
+        c.globalAlpha = 0.1 + (n % 7) * 0.02;
         c.fillRect(px, py, TILE, TILE);
         c.fillStyle = def.speck;
         for (let i = 0; i < 9; i++) {
@@ -191,13 +191,28 @@ export class Renderer {
     c.save();
     if (ghost) c.globalAlpha = 0.62;
 
-    // Contact shadow, on the floor, offset the way the light comes from.
+    // Contact shadow: a soft ellipse pooled at the foot of the thing. It was a
+    // rounded rectangle at flat alpha, which at any zoom reads as a grey slab
+    // lying on the floor rather than as a shadow — the softness is the whole
+    // point, and a hard-edged shadow is worse than none.
     if (!ghost && a.shadow !== false && h > 0) {
-      c.fillStyle = `rgba(0,0,0,${0.1 + Math.min(0.16, h / 200)})`;
+      const sx = X + fw / 2, sy = Y + fd - 2.5;
+      const rx = fw * 0.46 + 2, ry = Math.min(fd * 0.34, 4 + h * 0.16);
+      const r = Math.max(rx, ry);
+      const g = c.createRadialGradient(sx, sy, 0, sx, sy, r);
+      const dark = 0.2 + Math.min(0.14, h / 260);
+      g.addColorStop(0, `rgba(0,0,0,${dark})`);
+      g.addColorStop(0.5, `rgba(0,0,0,${dark * 0.45})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.save();
+      c.translate(sx, sy);
+      c.scale(rx / r, ry / r);
+      c.translate(-sx, -sy);
+      c.fillStyle = g;
       c.beginPath();
-      c.roundRect(X + 1.5, Y + fd - Math.min(fd - 2, h * 0.45), fw + 1.5,
-        Math.min(fd, h * 0.5) + 2, 3);
+      c.arc(sx, sy, r, 0, 7);
       c.fill();
+      c.restore();
     }
 
     // A wall with another wall in front of it shows no face — the neighbour's
@@ -230,7 +245,10 @@ export class Renderer {
         c.fillRect(0, 0, fw, 1.5);
       }
       c.restore();
-      if (taper > 0) {                      // the taper's own outline
+      // Only the default slab gets a tapered outline. Anything that draws its
+      // own face has legs or panels, and two diagonals ruled through the empty
+      // air beside them is worse than no taper at all.
+      if (taper > 0 && !a.face) {           // the taper's own outline
         c.strokeStyle = 'rgba(26,22,18,.6)';
         c.lineWidth = 1;
         c.beginPath();

@@ -53,21 +53,27 @@ function leg(c, x, h, w = 5, fill = '#6d4c28') {
 }
 
 /* The edge of a horizontal surface seen from slightly in front — a thin band
- * of the top colour, darkened, with a highlight along its upper lip. */
-function edge(c, w, t, fill, hi = 'rgba(255,255,255,.18)') {
+ * of the top colour, darkened, with a highlight along its upper lip.
+ *
+ * Takes an x and a width rather than assuming the full footprint, because the
+ * band has to line up with the surface above it. A seat inset two pixels with
+ * an edge band drawn full-width is exactly how furniture comes apart.
+ */
+function edge(c, x, w, t, fill, hi = 'rgba(255,255,255,.18)') {
   c.fillStyle = fill;
-  c.fillRect(0, 0, w, t);
+  c.fillRect(x, 0, w, t);
   c.fillStyle = hi;
-  c.fillRect(0, 0, w, 1.5);
+  c.fillRect(x, 0, w, 1.5);
   c.strokeStyle = LINE;
   c.lineWidth = 1;
-  c.strokeRect(0.5, 0.5, w - 1, t - 1);
+  c.strokeRect(x + 0.5, 0.5, w - 1, t - 1);
 }
 
 export const ART = {
   wall: {
     h: 22,
     taper: 0,                       // structure doesn't taper; furniture does
+    shadow: false,                  // its own face darkens where it meets the floor
     side: '#7d7668',
     top(c, w, d) {
       c.fillStyle = '#a9a192';
@@ -91,40 +97,58 @@ export const ART = {
   door: {
     h: 22,
     taper: 0,
+    shadow: false,
     side: '#6d4c28',
     top(c, w, d) {
-      // The same top as the wall it interrupts, plus the frame reveal. Drawn
-      // as anything else and a doorway reads as a dark hole punched in the
-      // room rather than as a way through it.
-      c.fillStyle = '#a9a192';
+      // The door *is* this segment of wall, so from above you see the slab
+      // filling the opening flush with the run, with the reveal of the frame
+      // either side of it and the seam where the two leaves meet.
+      c.fillStyle = '#6b6459';                       // frame reveal
       c.fillRect(0, 0, w, d);
-      c.fillStyle = 'rgba(255,255,255,.07)';
-      c.fillRect(0, 0, w, d * 0.3);
-      c.fillStyle = '#6d4c28';
-      c.fillRect(1.5, d * 0.34, w - 3, d * 0.32);
-      c.strokeStyle = 'rgba(26,22,18,.5)';
+      c.fillStyle = '#a5763f';                       // the leaves, closed
+      c.fillRect(0, 3, w, d - 6);
+      c.fillStyle = 'rgba(255,255,255,.13)';
+      c.fillRect(0, 3.5, w, 2);
+      c.strokeStyle = 'rgba(26,22,18,.55)';
       c.lineWidth = 1;
-      c.strokeRect(1.5, d * 0.34, w - 3, d * 0.32);
+      c.beginPath();
+      c.moveTo(0, 3.5); c.lineTo(w, 3.5);
+      c.moveTo(0, d - 3.5); c.lineTo(w, d - 3.5);
+      c.moveTo(w / 2, 3); c.lineTo(w / 2, d - 3);    // where they part
+      c.stroke();
     },
-    face(c, w, h) {
-      // Two leaves parted in the middle, so a doorway reads as a gap in the
-      // wall rather than an object standing in front of one.
-      c.fillStyle = '#3f3a33';
-      c.fillRect(0, 0, w, h);
-      const lw = w * 0.44;
-      for (const x of [0.5, w - 0.5 - lw]) {
-        box(c, x, 1, lw, h - 2, '#a5763f', 1.5);
-        c.fillStyle = 'rgba(255,255,255,.12)';
-        c.fillRect(x + 1, 2, lw - 2, 1.5);
+    face(c, w, h, t) {
+      // Seen along the run, you are looking at the two leaves. Seen end-on —
+      // a door in a north-south wall — you are looking at the wall's own face
+      // with the door's edge in it, so it should read as wall.
+      if ((t.rot || 0) % 2 === 1) {
+        ART.wall.face(c, w, h);
+        c.fillStyle = '#8a5f33';
+        c.fillRect(w * 0.28, 1, w * 0.44, h - 2);
+        c.strokeStyle = 'rgba(26,22,18,.55)';
+        c.lineWidth = 1;
+        c.strokeRect(w * 0.28, 1.5, w * 0.44, h - 3);
+        return;
       }
-      c.fillStyle = '#c9b183';                    // handles
-      c.fillRect(lw - 3, h * 0.45, 2, 4);
-      c.fillRect(w - lw + 1, h * 0.45, 2, 4);
+      c.fillStyle = '#3f3a33';                       // the dark of the opening
+      c.fillRect(0, 0, w, h);
+      const lw = w * 0.46;
+      for (const x of [0, w - lw]) {
+        box(c, x + 0.5, 1, lw - 1, h - 2, '#a5763f', 1.5);
+        c.fillStyle = 'rgba(255,255,255,.13)';
+        c.fillRect(x + 1.5, 2, lw - 3, 1.5);
+        c.fillStyle = 'rgba(0,0,0,.10)';             // a panel line each
+        c.fillRect(x + 3, h * 0.42, lw - 6, 1);
+      }
+      c.fillStyle = '#d8c08c';                       // handles, either side
+      c.fillRect(lw - 4, h * 0.44, 2.5, 5);
+      c.fillRect(w - lw + 1.5, h * 0.44, 2.5, 5);
     },
   },
 
   bed: {
     h: 10,
+    taper: 0,                       // it has legs; the taper would cut the air
     side: '#6d4c28',
     top(c, w, d) {
       box(c, 0.5, 0.5, w - 1, d - 1, '#8a5f33', 3);                  // frame
@@ -143,16 +167,15 @@ export const ART = {
       }
     },
     face(c, w, h) {
-      edge(c, w, h * 0.5, '#7a5330');              // the frame rail
-      c.fillStyle = 'rgba(0,0,0,.12)';
-      c.fillRect(0, h * 0.5 - 1, w, 1);
-      leg(c, 2, h);                                 // and short legs under it
-      leg(c, w - 7, h);
+      leg(c, 2.5, h);                               // legs first, rail over them
+      leg(c, w - 7.5, h);
+      edge(c, 0.5, w - 1, h * 0.55, '#7a5330');     // the frame rail
     },
   },
 
   table: {
     h: 15,
+    taper: 0,
     side: '#8a5f33',
     top(c, w, d) {
       box(c, 0.5, 0.5, w - 1, d - 1, '#a5763f', 3);
@@ -168,25 +191,37 @@ export const ART = {
     face(c, w, h) {
       // A tabletop is a thin slab on legs, and drawing it as a solid block is
       // the single thing that most makes furniture look like painted floor.
-      edge(c, w, 5, '#96692f');
-      leg(c, 3, h, 5);
-      leg(c, w - 8, h, 5);
+      // The legs are drawn first so the slab's outline closes over them.
+      leg(c, 3.5, h, 5);
+      leg(c, w - 8.5, h, 5);
+      edge(c, 0.5, w - 1, 5.5, '#96692f');
     },
   },
 
   chair: {
     h: 16,
+    taper: 0,
     side: '#8a5f33',
+    // The seat fills its tile and the backrest sits *on* it rather than beside
+    // it. That is not just a look: `top` rotates and `face` does not, so an
+    // asymmetric top leaves the edge band and legs hanging off one side the
+    // moment the chair is turned. A seat that fills the tile has the same
+    // extent at every rotation, and the back carries the facing on its own.
+    inset: 2.5,
     top(c, w, d) {
-      box(c, 3, 1.5, w - 6, 6, '#7a5330', 2);      // back, at the head end
-      box(c, 2, 8, w - 4, d - 11, '#a5763f', 2.5); // seat
-      c.fillStyle = 'rgba(255,255,255,.12)';
-      c.fillRect(3, 9, w - 6, 3);
+      const i = ART.chair.inset;
+      box(c, i, i, w - 2 * i, d - i - 0.5, '#a5763f', 3);       // the seat
+      c.fillStyle = 'rgba(255,255,255,.10)';
+      c.fillRect(i + 1.5, i + 1.5, w - 2 * i - 3, 3);
+      box(c, i + 1.5, i + 0.5, w - 2 * i - 3, 7.5, '#7a5330', 2);  // the back
+      c.fillStyle = 'rgba(0,0,0,.14)';                          // its shadow
+      c.fillRect(i + 2.5, i + 8.5, w - 2 * i - 5, 2.5);
     },
     face(c, w, h) {
-      edge(c, w * 0.66, 4, '#96692f');
-      leg(c, 2, h, 4);
-      leg(c, w * 0.66 - 6, h, 4);
+      const i = ART.chair.inset;
+      leg(c, i, h, 4);
+      leg(c, w - i - 4, h, 4);
+      edge(c, i, w - 2 * i, 4.5, '#96692f');
     },
   },
 
@@ -233,25 +268,32 @@ export const ART = {
     taper: 0,
     side: '#6f7981',
     top(c, w, d) {
+      // The stem is drawn here as well, running from under the shade to the
+      // south edge of the box — otherwise it starts at the face and the shade
+      // hangs several pixels clear of it in mid-air.
+      const x = w / 2;
+      c.fillStyle = '#6f7981';
+      c.fillRect(x - 2.5, d * 0.5, 5, d * 0.5);
+      c.strokeStyle = LINE;
+      c.lineWidth = 1;
+      c.strokeRect(x - 2, d * 0.5, 4, d * 0.5);
       // The shade, seen from above and slightly in front: an ellipse with the
       // lit underside just showing at the near edge.
       c.beginPath();
-      c.ellipse(w / 2, d / 2, w * 0.36, d * 0.3, 0, 0, 7);
+      c.ellipse(x, d * 0.42, w * 0.36, d * 0.3, 0, 0, 7);
       c.fillStyle = '#f2d78f';
       c.fill();
       c.lineWidth = 1.25;
       c.strokeStyle = LINE;
       c.stroke();
       c.beginPath();
-      c.ellipse(w / 2, d * 0.44, w * 0.22, d * 0.17, 0, 0, 7);
+      c.ellipse(x, d * 0.38, w * 0.2, d * 0.15, 0, 0, 7);
       c.fillStyle = '#fff3cd';
       c.fill();
     },
     face(c, w, h) {
-      c.fillStyle = 'rgba(255,246,214,.5)';        // glow spilling from under
-      c.fillRect(w * 0.18, 0, w * 0.64, 3);
       const x = w / 2;
-      c.fillStyle = '#6f7981';                      // stem
+      c.fillStyle = '#6f7981';                      // stem, continuing down
       c.beginPath();
       c.moveTo(x - 2.5, 0);
       c.lineTo(x + 2.5, 0);
@@ -281,15 +323,12 @@ export const ART = {
       c.lineWidth = 1;
       c.stroke();
     },
-    face(c, w, h) {
-      c.fillStyle = 'rgba(244,248,255,.55)';        // the lit underside
+    face(c, w) {
+      // Only the lit underside. It hangs in the air, so there is nothing
+      // between here and the floor to draw — and anything above the face
+      // region would be clipped away anyway.
+      c.fillStyle = 'rgba(244,248,255,.55)';
       c.fillRect(w * 0.2, 0, w * 0.6, 3);
-      c.strokeStyle = 'rgba(150,160,175,.45)';      // and the flex to the ceiling
-      c.lineWidth = 1.5;
-      c.beginPath();
-      c.moveTo(w / 2, 0);
-      c.lineTo(w / 2, -h * 0.3);
-      c.stroke();
     },
   },
 };

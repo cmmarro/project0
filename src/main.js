@@ -20,6 +20,11 @@ const sunEl = document.getElementById('sun');
 const sunLabel = document.getElementById('sunlabel');
 const countEl = document.getElementById('count');
 
+// A handle on the world for poking at it from the console, and for the
+// browser-driven checks. Read-only by convention; nothing in here uses it.
+window.__world = world;
+window.__lights = lights;
+
 const build = new Build(world, camera, canvas, () => {
   syncMenu();
   syncCounts();

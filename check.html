@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Room — checks</title>
+<style>
+  body { margin: 0; padding: 28px; background: #0e1114; color: #dfe3e6;
+    font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  h1 { font-size: 13px; letter-spacing: .16em; text-transform: uppercase;
+    color: #8b979e; font-weight: 600; margin: 0 0 4px; }
+  p.lead { color: #6f7d84; margin: 0 0 20px; max-width: 62ch; line-height: 1.6; }
+  h2 { font-size: 12px; color: #d8b25e; margin: 22px 0 6px; font-weight: 600; }
+  .row { display: flex; gap: 10px; padding: 1px 0; }
+  .ok  { color: #6bbf8a; }
+  .bad { color: #e4715a; }
+  .row .what { color: #b9c2c7; }
+  .row .why  { color: #6f7d84; }
+  #tally { margin-top: 24px; padding-top: 12px; border-top: 1px solid #242a2e;
+    font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>Room — checks</h1>
+<p class="lead">The rules about what can go where, run against the real
+<code>World</code>. No dependencies and no build step: open this file from the
+same server as the game. Everything here is a rule that was worth stating
+because getting it wrong was visible on screen.</p>
+<div id="out"></div>
+<div id="tally"></div>
+
+<script type="module">
+import { World } from './src/world.js';
+import { THINGS, TERRAIN } from './src/defs.js';
+import { footprint } from './src/render.js';
+import { ART } from './src/art.js';
+
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+
+function group(name) {
+  const h = document.createElement('h2');
+  h.textContent = name;
+  out.appendChild(h);
+}
+
+function is(what, got, want, why = '') {
+  const good = JSON.stringify(got) === JSON.stringify(want);
+  good ? pass++ : fail++;
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML = `<span class="${good ? 'ok' : 'bad'}">${good ? 'ok  ' : 'FAIL'}</span>`
+    + `<span class="what">${what}</span>`
+    + `<span class="why">${good ? why : `got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}`}</span>`;
+  out.appendChild(row);
+}
+
+const ok = (what, got, why) => is(what, !!got, true, why);
+
+/* -------------------------------------------------------------------------- */
+
+group('the catalogue is complete');
+for (const [key, def] of Object.entries(THINGS)) {
+  ok(`${key} can be drawn`, ART[key] && typeof ART[key].top === 'function',
+    'defs and art agree');
+}
+for (const [key, def] of Object.entries(TERRAIN)) {
+  ok(`${key} has a colour`, def.base, '');
+}
+
+group('footprints and rotation');
+{
+  const w = new World(20, 20);
+  is('a 1x2 bed covers two tiles', w.place('bed', 3, 3, 0).tiles.length, 2);
+  is('...running north to south', footprint('bed', 0), [32, 64]);
+  is('...and east to west when turned', footprint('bed', 1), [64, 32]);
+  is('a 3x1 dispenser turned is 1x3', footprint('dispenser', 1), [32, 96]);
+  is('a 2x2 table is square either way', footprint('table', 1), [64, 64]);
+  const t = w.place('table', 8, 8, 0);
+  is('a table covers four tiles', t.tiles.length, 4);
+  ok('every covered tile reports the table',
+    t.tiles.every(([x, y]) => w.thingAt(x, y) === t));
+  ok('and removing it clears all four',
+    (w.remove(9, 9), t.tiles.every(([x, y]) => w.thingAt(x, y) === null)));
+}
+
+group('what may share a tile');
+{
+  const w = new World(20, 20);
+  w.place('chair', 5, 5);
+  is('two things cannot stand on one tile', w.place('chair', 5, 5), null);
+  ok('but an overhead light may hang over one', w.place('ceilinglight', 5, 5),
+    'that is the whole difference from a standing lamp');
+  is('a lamp may not', w.place('lamp', 5, 5), null);
+  ok('the tile still reports the chair, not the light',
+    w.thingAt(5, 5).key === 'chair');
+  ok('the light is findable overhead', w.overheadAt(5, 5).key === 'ceilinglight');
+}
+
+group('a door becomes the wall');
+{
+  const w = new World(20, 20);
+  for (let x = 2; x <= 8; x++) w.place('wall', x, 5);
+  const walls = () => [...w.things.values()].filter(t => t.key === 'wall').length;
+  is('seven walls to start', walls(), 7);
+  const d = w.place('door', 5, 5, 3);
+  is('the door takes the wall\'s place', walls(), 6);
+  is('and is the only thing on the tile', w.thingAt(5, 5).key, 'door');
+  ok('the run still joins either side',
+    w.structureAt(4, 5) && w.structureAt(6, 5));
+  is('it ignores the rotation you asked for', d.rot, 0, 'east-west run');
+  is('a door will not stack on a door', w.place('door', 5, 5), null);
+  is('nor a wall on a door', w.place('wall', 5, 5), null);
+  w.remove(5, 5);
+  is('deconstructing leaves a hole, not a wall', w.thingAt(5, 5), null);
+}
+
+group('doors face the way the wall runs');
+{
+  const w = new World(20, 20);
+  for (const x of [4, 5, 7, 8]) w.place('wall', x, 5);
+  is('east-west run', w.place('door', 6, 5, 3).rot, 0);
+  for (const y of [10, 11, 13, 14]) w.place('wall', 3, y);
+  is('north-south run', w.place('door', 3, 12, 0).rot, 1);
+  is('nothing to read: keeps what you asked', w.place('door', 15, 15, 1).rot, 1);
+  w.place('wall', 17, 3); w.place('wall', 18, 4);
+  is('a corner is ambiguous, so it keeps it too',
+    w.place('door', 18, 3, 1).rot, 1);
+}
+
+group('walls stop things, doorways do not');
+{
+  const w = new World(20, 20);
+  w.place('wall', 4, 4);
+  ok('a wall blocks', w.blocked(4, 4));
+  w.place('door', 4, 4);
+  ok('the doorway that replaced it does not', !w.blocked(4, 4));
+  w.place('dispenser', 8, 8);
+  ok('a dispenser blocks, being solid', w.blocked(8, 8));
+  ok('a chair does not', (w.place('chair', 12, 12), !w.blocked(12, 12)));
+}
+
+group('the edges of the map');
+{
+  const w = new World(10, 10);
+  is('nothing may hang off the east edge', w.place('bed', 9, 9, 1), null);
+  is('or off the south', w.place('bed', 5, 9, 0), null);
+  ok('but it fits one tile in', w.place('bed', 5, 8, 0));
+  is('painting outside is a no-op', w.paint('concrete', -1, 4), false);
+}
+
+group('version counters');
+{
+  const w = new World(10, 10);
+  const v0 = w.version, p0 = w.paintVersion;
+  w.place('chair', 3, 3);
+  ok('placing a thing bumps the world', w.version > v0);
+  is('...but not the terrain bake', w.paintVersion, p0,
+    'sharing one counter re-baked the whole floor on every lamp');
+  w.paint('steel', 3, 3);
+  ok('painting bumps both', w.paintVersion > p0 && w.version > v0);
+  is('repainting the same tile changes nothing', w.paint('steel', 3, 3), false);
+}
+
+/* -------------------------------------------------------------------------- */
+
+const tally = document.getElementById('tally');
+tally.innerHTML = fail
+  ? `<span class="bad">${fail} failed</span>, ${pass} passed`
+  : `<span class="ok">all ${pass} passed</span>`;
+document.title = fail ? `${fail} FAILED — Room checks` : `Room checks — ok`;
+</script>
+</body>
+</html>

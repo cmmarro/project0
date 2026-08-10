@@ -63,12 +63,14 @@ export class World {
     for (const [tx, ty] of this.footprint(key, x, y, rot)) {
       if (!this.inside(tx, ty)) return false;
       const other = this.thingAt(tx, ty);
+      if (!other) continue;
+      if (other.key === key) return false;
+      // A door goes *into* a wall — it replaces that segment rather than
+      // standing inside it.
+      if (def.replaces && THINGS[other.key].joins) continue;
       // Overhead things share a tile with whatever is standing on it; that is
       // the whole difference between a ceiling light and a standing lamp.
-      if (other && (def.occupies !== false) && (THINGS[other.key].occupies !== false)) {
-        return false;
-      }
-      if (other && other.key === key) return false;
+      if (def.occupies !== false && THINGS[other.key].occupies !== false) return false;
     }
     return true;
   }
@@ -78,6 +80,12 @@ export class World {
     if (!def) return null;
     if (def.autoOrient) rot = this.orientFor(key, x, y, rot);
     if (!this.canPlace(key, x, y, rot)) return null;
+    if (def.replaces) {
+      for (const [tx, ty] of this.footprint(key, x, y, rot)) {
+        const other = this.thingAt(tx, ty);
+        if (other && THINGS[other.key].joins) this.remove(tx, ty);
+      }
+    }
     const tiles = this.footprint(key, x, y, rot);
     const thing = {
       id: this.nextId++, key, x, y, rot,
@@ -169,8 +177,7 @@ export class World {
       world.place('wall', x0, y);
       world.place('wall', x1, y);
     }
-    world.remove(x0 + 8, y1);
-    world.place('door', x0 + 8, y1);
+    world.place('door', x0 + 8, y1);      // straight into the wall
     world.place('ceilinglight', x0 + 8, y0 + 6);
     return world;
   }
