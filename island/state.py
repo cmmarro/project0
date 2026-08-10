@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 import queue
 import random
+import re
 import threading
 import time
 
@@ -52,6 +53,57 @@ def bearing(from_xy, to_xy) -> str:
     ns = "north" if dy < -1.5 else "south" if dy > 1.5 else ""
     ew = "east" if dx > 1.5 else "west" if dx < -1.5 else ""
     return (ns + ew) or "close by"
+
+
+# Nobody exchanged names in the water. Say yours and they'll use it; don't and
+# you stay "the stranger" for the whole run.
+# Case-insensitive on the lead-in, case-sensitive on the name itself: that's
+# what keeps "I'm Jo" apart from "I'm thirsty".
+_INTRO = re.compile(
+    r"(?i:\b(?:i'?m|i am|my name'?s|my name is|name'?s|they call me|call me|"
+    r"the name'?s|the name is))\s+"
+    r"([A-Z][A-Za-z'\-]{1,14})\b"
+)
+_NOT_A_NAME = {
+    "Sorry", "Here", "There", "Not", "Just", "Fine", "Ok", "Okay", "Good",
+    "Going", "Later", "Thirsty", "Hungry", "Tired", "Alone", "Looking",
+    "Trying", "Afraid", "Sure", "Still", "Only", "Really", "Done", "With",
+}
+
+
+def spoken_name(text: str) -> str | None:
+    """Pull a self-introduction out of a line the player typed, if there is one."""
+    m = _INTRO.search(text or "")
+    if not m:
+        return None
+    name = m.group(1)
+    return None if name in _NOT_A_NAME else name
+
+
+class Conversation:
+    """A stand-and-talk conversation, started by the player.
+
+    While one is open the people in it stay put and stop re-planning, so a
+    back-and-forth can actually happen instead of your second sentence landing
+    on an empty beach. The clock does not stop: standing around talking costs
+    everyone the same water it always did, and someone desperate enough will
+    walk off mid-sentence.
+    """
+
+    def __init__(self, members: list[str]):
+        self.members = list(members)          # castaway keys, nearest first
+        self.lines: list[dict] = []
+        self.thinking: list[str] = []         # who is composing a reply
+        self.round = 0
+        self.closed = False
+
+    def add(self, who: str, name: str, colour: str, text: str, stamp: str):
+        self.lines.append({"key": who, "who": name, "colour": colour,
+                           "text": text, "t": stamp})
+        del self.lines[:-60]
+
+    def recent(self, n: int = 6) -> list[str]:
+        return [l["text"] for l in self.lines[-n:]]
 
 
 class Game:
@@ -101,6 +153,7 @@ class Game:
         self.brain_lock = threading.Lock()
         self.next_convo_at = time.time() + 40
         self.last_llm_at = 0.0
+        self.conversation: Conversation | None = None
 
         self.event("You come to on the sand beside a split supply crate. "
                    "The boat is gone. As far as you can tell, so is everyone who was on it.", "system")
@@ -128,7 +181,8 @@ class Game:
         return [c for c in self.castaways if c is not npc]
 
     def allegiance_phrase(self, npc: Castaway) -> str:
-        names = [self.by_key[k].prompt_name for k in sorted(npc.allies) if k in self.by_key]
+        names = [self.name_for(npc, self.by_key[k])
+                 for k in sorted(npc.allies) if k in self.by_key]
         if not names:
             return "alone"
         if len(names) == 1:
@@ -165,12 +219,52 @@ class Game:
         n = (name or "").strip().lower()
         if not n:
             return None
-        if n in ("player", "you", "the player"):
+        if n in ("player", "you", "the player", "the stranger", "stranger"):
+            return self.player
+        if self.player.given_name and n == self.player.given_name.lower():
             return self.player
         for a in self.actors:
             if n in (a.key, a.short.lower(), a.name.lower()):
                 return a
         return None
+
+    # -- who knows whose name -------------------------------------------------
+
+    def name_for(self, observer, subject) -> str:
+        """What ``observer`` calls ``subject``.
+
+        Names are not free. The castaways introduce themselves to each other
+        when they meet, but you washed up mute — until you actually tell one of
+        them your name, you are "the stranger" in their heads and in their
+        prompts.
+        """
+        if subject is observer:
+            return subject.name
+        if not subject.is_human:
+            return subject.name
+        if getattr(observer, "knows_name", None) and "player" in observer.knows_name:
+            return self.player.given_name or "the stranger"
+        return "the stranger"
+
+    def introduce_player(self, name: str, to: list) -> list:
+        """The player said their own name out loud. Whoever heard it keeps it."""
+        name = name.strip()[:16]
+        if not name:
+            return []
+        first = self.player.given_name is None
+        self.player.given_name = name
+        learned = []
+        for c in to:
+            if isinstance(c, Castaway) and "player" not in c.knows_name:
+                c.knows_name.add("player")
+                c.remember(f"The stranger's name is {name}.")
+                c.adjust_trust("player", 1)
+                learned.append(c.short)
+        if learned:
+            self.event(f"You tell {', '.join(learned)} your name."
+                       + (" It's the first thing anyone here has known about you."
+                          if first else ""), "meeting")
+        return learned
 
     def nearest_other(self, actor, key=None, radius=2.5, only_down=False):
         named = self.actor_by_name(key) if key else None
@@ -192,7 +286,12 @@ class Game:
     # -- logging --------------------------------------------------------------
 
     def event(self, text: str, kind: str = "world", actor=None):
+        # The id matters: the client used to notice new entries by counting
+        # them, which stops working the moment the log hits its cap and every
+        # poll returns the same length forever.
+        self._log_n = getattr(self, "_log_n", 0) + 1
         self.log.append({
+            "n": self._log_n,
             "t": f"D{self.day} {self.clock_str()}",
             "kind": kind,
             "who": getattr(actor, "name", actor if isinstance(actor, str) else None),
@@ -253,6 +352,7 @@ class Game:
             for npc in self.castaways:
                 self._advance(npc, dt, gm)
             self._contacts()
+            self._check_conversation()
             self._warnings()
             self._hints()
             self._schedule()
@@ -307,6 +407,11 @@ class Game:
             verbs.drink(self, npc)
         elif npc.hunger < 14 and (npc.inventory.get("coconut") or npc.inventory.get("fish")):
             verbs.eat(self, npc)
+
+        # Standing in a conversation. Whatever they agreed to do is queued up
+        # in npc.task and waiting; it starts the moment the talking stops.
+        if npc.held:
+            return
 
         t = npc.task
         if t["phase"] == "travel":
@@ -429,8 +534,13 @@ class Game:
     def _mark_met(self, a, b):
         if a.is_human:
             self.player_met.add(b.key)
-        else:
-            a.met.add(b.key)
+            return
+        a.met.add(b.key)
+        a.met_on[b.key] = self.day
+        # Two castaways swap names when they meet — that's what people do. The
+        # player has to actually say theirs, so it isn't learned here.
+        if not b.is_human:
+            a.knows_name.add(b.key)
 
     def _warnings(self):
         """Tell the player they're dying before they are dead."""
@@ -513,7 +623,7 @@ class Game:
     def _schedule(self):
         now = time.time()
         for npc in self.castaways:
-            if npc.down or npc.busy:
+            if npc.down or npc.busy or npc.held:
                 continue
             idle = npc.task["phase"] == "idle" and npc.task["action"] in ("idle", "rest", "follow")
             if idle and now >= npc.next_plan_at:
@@ -521,11 +631,12 @@ class Game:
                 npc.busy = True
                 self.jobs.put(("plan", npc.key))
 
-        if now < self.next_convo_at:
+        if now < self.next_convo_at or self.conversation:
             return
         for i, a in enumerate(self.castaways):
             for b in self.castaways[i + 1:]:
                 if (not a.busy and not b.busy and not a.down and not b.down
+                        and not a.held and not b.held
                         and a.has_met(b) and a.distance_to(b) <= 3.5):
                     self.next_convo_at = now + CONVO_COOLDOWN
                     a.busy = b.busy = True
@@ -561,12 +672,16 @@ class Game:
             self._throttle()
             out = self.brain.plan(npc, self)
         with self.lock:
-            npc.thought = (out.get("thought") or npc.thought)[:160]
+            was = npc.thought
+            npc.thought = (out.get("thought") or npc.thought)[:120]
             npc.emotion = out.get("emotion", npc.emotion)
             if self.set_allies(npc, out.get("working_with")):
                 self.event(f"{npc.short} is working {self.allegiance_phrase(npc)}.", "allegiance", npc)
             self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
-            self.event(npc.thought, "thought", npc)
+            # A small model will produce the same thought five times running.
+            # Once is atmosphere; five times is the log unreadable.
+            if npc.thought != was:
+                self.event(npc.thought, "thought", npc)
 
     def _job_first_contact(self, npc: Castaway, other):
         with self.brain_lock:
@@ -613,19 +728,22 @@ class Game:
                 return
             self.said(a, line)
             last, speaker, listener = line, b, a
+            spoken = [line]
 
         for _ in range(CONVO_TURNS - 1):
             with self.lock:
-                if speaker.down or listener.down or self.over:
+                if speaker.down or listener.down or self.over or speaker.held or listener.held:
                     return
                 heard = list(self.transcript[-3:])
             with self.brain_lock:
                 self._throttle()
-                out = self.brain.speak(speaker, self, listener.name, last, heard)
+                out = self.brain.speak(speaker, self, listener.name, last, heard,
+                                       avoid=spoken)
             with self.lock:
                 line = (out.get("say") or "").strip()
                 if not line:
                     break
+                spoken.append(line)
                 speaker.emotion = out.get("emotion", speaker.emotion)
                 speaker.remember(out.get("memory", ""))
                 speaker.adjust_trust(listener.key, int(out.get("trust_speaker", 0) or 0))
@@ -634,17 +752,189 @@ class Game:
                 last = line
                 speaker, listener = listener, speaker
 
-    # -- player speech (synchronous, so the UI can wait on it) ----------------
+    # =========================================================================
+    # talking to people
+    # =========================================================================
 
-    def player_says(self, text: str) -> dict:
+    def in_earshot(self) -> list[Castaway]:
+        near = [c for c in self.castaways
+                if not c.down and c.has_met(self.player)
+                and self.player.distance_to(c) <= EARSHOT]
+        near.sort(key=self.player.distance_to)
+        return near
+
+    # -- a proper conversation, where people stand still ----------------------
+
+    def conversation_start(self, who: str | None = None) -> dict:
+        """Get somebody to stop and talk. Everyone in earshot if you ask for it."""
+        with self.lock:
+            if self.over or self.player.down:
+                return {"ok": False, "error": "Not now."}
+            near = self.in_earshot()
+            if not near:
+                return {"ok": False, "error": "Nobody is close enough to talk to."}
+            if who:
+                target = self.actor_by_name(who)
+                near = [c for c in near if c is target] or near[:1]
+            convo = Conversation([c.key for c in near])
+            for c in near:
+                c.held = True
+            self.conversation = convo
+            names = " and ".join(c.short for c in near)
+            self.event(f"You get {names} to stop and talk."
+                       + (" Everyone stands there while the light goes."
+                          if len(near) > 1 else ""), "meeting")
+            return self.conversation_snapshot()
+
+    def conversation_invite(self, who: str) -> dict:
+        with self.lock:
+            convo = self.conversation
+            target = self.actor_by_name(who)
+            if not convo or not isinstance(target, Castaway):
+                return self.conversation_snapshot()
+            if (target.key not in convo.members and not target.down
+                    and target.has_met(self.player)
+                    and self.player.distance_to(target) <= EARSHOT):
+                convo.members.append(target.key)
+                target.held = True
+                self.event(f"{target.short} comes over and joins it.", "meeting")
+            return self.conversation_snapshot()
+
+    def conversation_end(self, reason: str = "") -> dict:
+        with self.lock:
+            convo, self.conversation = self.conversation, None
+            if convo:
+                convo.closed = True
+                now = time.time()
+                for k in convo.members:
+                    npc = self.by_key.get(k)
+                    if isinstance(npc, Castaway):
+                        npc.held = False
+                        # Whatever they agreed to, let them get on with it before
+                        # the planner second-guesses them.
+                        npc.next_plan_at = max(npc.next_plan_at, now + PLAN_COOLDOWN)
+                self.event(reason or "You break it up and everyone goes back to it.", "system")
+            return {"ok": True, "conversation": None}
+
+    def _check_conversation(self):
+        """Somebody dying of thirst does not stand there being talked at."""
+        convo = self.conversation
+        if not convo:
+            return
+        for k in list(convo.members):
+            npc = self.by_key.get(k)
+            if not isinstance(npc, Castaway):
+                continue
+            desperate = npc.thirst <= 6 and not npc.inventory.get("water")
+            if npc.down or desperate or self.player.distance_to(npc) > EARSHOT + 3:
+                convo.members.remove(k)
+                npc.held = False
+                npc.next_plan_at = 0.0
+                self.event(
+                    f"{npc.short} has stopped listening — "
+                    + ("collapsed." if npc.down else
+                       "walks off mid-sentence. There's only so long you can talk about water."),
+                    "alert", npc)
+        if not convo.members:
+            self.conversation_end("You're talking to nobody.")
+
+    def conversation_say(self, text: str) -> dict:
+        """Add your line and set the room replying. Returns straight away."""
+        text = (text or "").strip()[:400]
+        with self.lock:
+            convo = self.conversation
+            if not convo:
+                return {"ok": False, "error": "You're not talking to anybody."}
+            if text:
+                members = [self.by_key[k] for k in convo.members if k in self.by_key]
+                name = spoken_name(text)
+                if name:
+                    self.introduce_player(name, members)
+                self.said(self.player, text)
+                convo.add("player", "You", self.player.colour, text,
+                          f"D{self.day} {self.clock_str()}")
+            convo.round += 1
+            convo.thinking = list(convo.members)
+        threading.Thread(target=self._conversation_round, args=(convo, text), daemon=True).start()
+        return self.conversation_snapshot()
+
+    def _conversation_round(self, convo: Conversation, text: str):
+        """Everyone in the room answers, in turn, hearing what came before."""
+        try:
+            with self.lock:
+                members = [self.by_key[k] for k in convo.members if k in self.by_key]
+                group = [self.name_for(members[0], self.player)] + [m.name for m in members] \
+                    if members else []
+                avoid = convo.recent(6)
+            also_heard: list[str] = []
+            for npc in members:
+                if convo.closed or self.conversation is not convo:
+                    return
+                with self.lock:
+                    speaker_name = self.name_for(npc, self.player)
+                with self.brain_lock:
+                    self._throttle()
+                    out = self.brain.speak(npc, self, speaker_name, text, also_heard,
+                                           group=group, avoid=avoid)
+                with self.lock:
+                    if convo.closed:
+                        return
+                    line = (out.get("say") or "").strip()
+                    npc.emotion = out.get("emotion", npc.emotion)
+                    npc.remember(out.get("memory", ""))
+                    npc.adjust_trust("player", int(out.get("trust_speaker", 0) or 0))
+                    if line:
+                        self.said(npc, line)
+                        convo.add(npc.key, npc.name, npc.colour, line,
+                                  f"D{self.day} {self.clock_str()}")
+                        also_heard.append(f"{npc.name}: {line}")
+                        avoid.append(line)
+                    # They're held, so a route just sits there until you let
+                    # them go — which is exactly what agreeing to something is.
+                    self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
+                    if npc.key in convo.thinking:
+                        convo.thinking.remove(npc.key)
+        except Exception as exc:
+            self.brain.last_error = f"conversation: {type(exc).__name__}: {exc}"
+        finally:
+            with self.lock:
+                convo.thinking = []
+
+    def conversation_snapshot(self) -> dict:
+        with self.lock:
+            convo = self.conversation
+            if not convo:
+                return {"ok": True, "conversation": None}
+            here = {c.key for c in self.in_earshot()}
+            return {"ok": True, "conversation": {
+                "round": convo.round,
+                "lines": list(convo.lines),
+                "thinking": [self.by_key[k].short for k in convo.thinking if k in self.by_key],
+                "members": [{
+                    "key": k, "name": self.by_key[k].name, "short": self.by_key[k].short,
+                    "colour": self.by_key[k].colour,
+                    "emotion": self.by_key[k].emotion,
+                    "knows_you": "player" in self.by_key[k].knows_name,
+                    "trust": self.by_key[k].trust_of("player"),
+                } for k in convo.members if k in self.by_key],
+                "can_invite": [{"key": c.key, "short": c.short, "colour": c.colour}
+                               for c in self.in_earshot() if c.key not in convo.members],
+                "gone": [self.by_key[k].short for k in convo.members
+                         if k in self.by_key and k not in here],
+                "your_name": self.player.given_name,
+            }}
+
+    # -- shouting into the air (no modal; whoever's nearby may answer) --------
+
+    def player_says(self, text: str, wait: bool = True) -> dict:
         text = text.strip()[:400]
         if not text:
             return {"heard_by": [], "replies": []}
         with self.lock:
-            listeners = [c for c in self.castaways
-                         if not c.down and c.has_met(self.player)
-                         and self.player.distance_to(c) <= EARSHOT]
-            listeners.sort(key=self.player.distance_to)
+            listeners = self.in_earshot()
+            name = spoken_name(text)
+            if name and listeners:
+                self.introduce_player(name, listeners)
             self.said(self.player, text)
             if not listeners:
                 self.event("Nobody is close enough to hear you.", "system")
@@ -652,13 +942,24 @@ class Game:
             for c in listeners:
                 c.busy = True
 
+        if not wait:
+            threading.Thread(target=self._player_replies, args=(listeners, text),
+                             daemon=True).start()
+            return {"heard_by": [c.short for c in listeners], "replies": [], "pending": True}
+        return self._player_replies(listeners, text)
+
+    def _player_replies(self, listeners, text: str) -> dict:
         replies = []
         also_heard: list[str] = []
+        avoid: list[str] = []
         try:
             for npc in listeners[:MAX_REPLIES]:
+                with self.lock:
+                    speaker_name = self.name_for(npc, self.player)
                 with self.brain_lock:
                     self._throttle()
-                    out = self.brain.speak(npc, self, self.player.prompt_name, text, also_heard)
+                    out = self.brain.speak(npc, self, speaker_name, text, also_heard,
+                                           avoid=avoid)
                 with self.lock:
                     line = (out.get("say") or "").strip()
                     npc.emotion = out.get("emotion", npc.emotion)
@@ -667,9 +968,12 @@ class Game:
                     if line:
                         self.said(npc, line)
                         also_heard.append(f"{npc.name}: {line}")
+                        avoid.append(line)
                         replies.append({"who": npc.name, "colour": npc.colour,
                                         "line": line, "emotion": npc.emotion})
                     self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
+        except Exception as exc:
+            self.brain.last_error = f"say: {type(exc).__name__}: {exc}"
         finally:
             with self.lock:
                 for c in listeners:
@@ -760,6 +1064,10 @@ class Game:
                 "seed": self.seed,
                 "factions": [[self.by_key[k].short for k in g if k in self.by_key]
                              for g in self.factions() if len(g) > 1],
+                "earshot": [{"key": c.key, "short": c.short, "colour": c.colour}
+                            for c in self.in_earshot()],
+                "your_name": self.player.given_name,
+                "talk": self.conversation_snapshot()["conversation"],
             }
 
 

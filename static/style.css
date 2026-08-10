@@ -316,6 +316,97 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
 }
 .actions button:hover { border-color: var(--gold); color: var(--gold); }
 
+/* ---- getting someone to stand still and talk ---- */
+
+.talkwith { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.talkwith button {
+  all: unset; cursor: pointer; font-size: 12px; padding: 4px 11px;
+  border: 1px solid var(--line); border-radius: 999px; color: var(--ink);
+}
+.talkwith button:hover { background: rgba(242, 193, 78, .12); }
+.talkwith button.group { border-color: var(--gold); color: var(--gold); }
+
+#convo {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 11, .84);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 25;
+  padding: 20px;
+}
+.convosheet {
+  width: min(620px, 100%);
+  max-height: min(88vh, 760px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.convo-who { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; flex: 0 0 auto; }
+.who-chip {
+  font-size: 12px; padding: 3px 10px; border: 1px solid var(--line);
+  border-radius: 999px; display: inline-flex; gap: 6px; align-items: baseline;
+}
+.who-chip em { font-style: normal; font-size: 10px; opacity: .65; }
+.convo-who .invite {
+  all: unset; cursor: pointer; font-size: 11px; padding: 3px 10px;
+  border: 1px dashed var(--line); border-radius: 999px; color: var(--dim);
+}
+.convo-who .invite:hover { border-color: var(--gold); color: var(--gold); }
+
+.convo-lines {
+  flex: 1 1 auto;
+  min-height: 230px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px;
+  background: #0e1418;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.convo-empty { color: var(--dim); font-style: italic; margin: auto; text-align: center; }
+.cline { display: flex; flex-direction: column; gap: 2px; }
+.cline .head { display: flex; gap: 6px; align-items: baseline; font-size: 11px; }
+.cline .name { font-weight: 700; }
+.cline .when { color: #4d6070; font-size: 10px; font-variant-numeric: tabular-nums; }
+.cline .bubble {
+  background: #1b242b; border: 1px solid #24303a; border-left: 3px solid var(--dim);
+  border-radius: 5px; padding: 7px 10px; font-size: 14px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.cline.mine { align-items: flex-end; }
+.cline.mine .bubble { background: #1e2119; border-left-color: var(--gold); }
+
+.convo-thinking { font-size: 12px; color: var(--dim); font-style: italic; padding: 7px 2px 0; }
+
+#convo-form { display: flex; gap: 6px; margin-top: 10px; flex: 0 0 auto; }
+#convo-input {
+  flex: 1; min-width: 0; background: #0c1114; border: 1px solid var(--line);
+  color: var(--ink); padding: 10px 12px; border-radius: 5px; font: inherit;
+}
+#convo-input:focus { outline: none; border-color: var(--gold); }
+#convo-send {
+  all: unset; cursor: pointer; padding: 10px 18px; border: 1px solid var(--gold);
+  border-radius: 5px; color: var(--gold); font-size: 13px;
+}
+#convo-send:hover { background: rgba(242, 193, 78, .12); }
+#convo-send:disabled { opacity: .4; cursor: default; }
+
+.convo-foot {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 10px; flex: 0 0 auto;
+}
+#convo-note { flex: 1; }
+#convo-leave {
+  all: unset; cursor: pointer; font-size: 12px; padding: 6px 14px;
+  border: 1px solid var(--line); border-radius: 5px; color: var(--dim);
+}
+#convo-leave:hover { border-color: var(--warn); color: var(--warn); }
+
 /* ---- sheets (settings, help, ending) ---- */
 
 #settings, #help {
@@ -402,7 +493,10 @@ code { background: #0c1114; padding: 1px 4px; border-radius: 3px; font-size: 11p
 
 /* narrow screens: stack, and let the whole thing scroll */
 @media (max-width: 1200px), (max-height: 780px) {
-  html, body { overflow: auto; }
+  /* height:100% would pin the document to the viewport and leave the scroll
+     stuck on <body>, which some browsers and every screenshot tool disagree
+     about. Let the page be as tall as it is and scroll normally. */
+  html, body { overflow: auto; height: auto; min-height: 100%; }
   #app { flex-direction: column; height: auto; min-height: 100%; }
   #stage { min-height: 62vh; }
   #panel { flex: 1 1 auto; max-width: none; border-left: none; border-top: 1px solid var(--line); }

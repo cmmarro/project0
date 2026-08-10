@@ -65,7 +65,7 @@ PLAN_SCHEMA = {
     "properties": {
         "thought": {
             "type": "string",
-            "description": "One short line of what you're thinking. The others can see roughly what you're doing, so keep it to something observable.",
+            "description": "The one short line you'd mutter to yourself. Under ten words. Not your reasoning, not a list of your levels — just the thing in your head, like \"water first, then the timber\".",
         },
         "emotion": {"type": "string", "enum": EMOTIONS},
         "working_with": {
@@ -178,6 +178,7 @@ WRONG: "I am Barnaby Ferreira (he/him), a 34-year-old insurance adjuster, and I
         must survive."
 WRONG: "I need to react to my current state. Thirst is 38/100 and energy is 0."
 WRONG: "*wipes his forehead* Water. We need water."
+WRONG: "Well then," said Barnaby, eyeing the stranger. "I suppose I will."
 RIGHT: "There's water west of here. I'm going. Come or don't."
 RIGHT: "You've been sat on that crate all morning."
 RIGHT: "Don't touch the timber. That's the raft."
@@ -185,6 +186,20 @@ RIGHT: "Don't touch the timber. That's the raft."
 One or two sentences. Say the thing a tired, frightened, specific person would
 actually say out loud. Everyone already knows who you are — never introduce
 yourself or restate your situation.
+
+FIVE THINGS THAT RUIN A LINE
+1. Greeting. You have already met everyone listed below. Nobody says hello to
+   the same person twice in one day. No "hello", no "nice to meet you", no
+   "good to see you". Start with the actual thing you want to say.
+2. Repeating. Do not say a line that has just been said, by you or by anyone
+   else. If you have nothing new, say something short and move on.
+3. Narrating. No "said Barnaby", no "he muttered", no describing yourself from
+   outside. You are speaking, not writing a novel.
+4. Inventing. Only the places listed above exist, and you only know what you
+   have seen or been told. If you do not know where water is, say you do not
+   know — do not invent a spring, an item, or a plan that nobody mentioned.
+5. Drifting. If someone asked you a question, your first sentence answers that
+   question. Then say whatever else you want.
 
 HOW TO BEHAVE
 Stay in character. You are a person on a beach, not an assistant. Never offer
@@ -206,9 +221,19 @@ The "say" field is speech only — the exact words out of your mouth.
 Never state your name, age, job, or your thirst/hunger numbers. Never explain
 your reasoning. Never write *actions* in asterisks. One or two short sentences.
 
+NEVER greet anyone. You have already met them. No "hello", no "nice to meet
+you", no introducing yourself.
+NEVER repeat a line that was just said, by you or anyone else.
+NEVER narrate — no "said Barnaby", no third person, no quotation marks.
+NEVER invent a place, an item or a fact. You only know what you have seen. If
+you don't know, say you don't know.
+If you were asked a question, your FIRST sentence answers it.
+
 WRONG: "I am Odell Kaminski, a deckhand, and my thirst is 38/100."
+WRONG: "Hello there! Nice to meet you."
 WRONG: "I need to react to my current state."
 RIGHT: "Water's west. I'm going."
+RIGHT: "No idea. I've not been past the rocks."
 RIGHT: "You touch that timber and we're going to have a problem."
 
 You are a tired, frightened person on a beach. Your survival comes first."""
@@ -233,33 +258,51 @@ _META_I = re.compile(
 # matters here — it's what separates a name from "I am counting the timber".
 _META_NAME = re.compile(r"\bI(?: am|'m) [A-Z][a-z]+ [A-Z][a-z]+")
 
+# Third-person prose. Small models slip into writing the scene instead of being
+# in it: '"Well then," said Barnaby, eyeing the stranger\'s retreating back.'
+_NARRATION = re.compile(
+    r"\b(said|says|asked|asks|replied|replies|muttered|mutters|growled|shouted|"
+    r"sighed|added|adds|answered|answers)\s+[A-Z][a-z]+"
+    r"|[,.!?][\"”]\s*(he|she|they)\b"
+    r"|^\s*[A-Z][a-z]+ (said|says|replied|muttered|sighed|shrugged|nodded)\b",
+)
+# The memory field leaking into the mouth: "I remember that Marisol put three
+# things into shared stores yesterday."
+_MEMORY_VOICE = re.compile(r"^\s*i(?:'ll| will)? remember\b", re.I)
+
 _STAGE = re.compile(r"\*[^*]{0,80}\*|\[[^\]]{0,80}\]")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
+_TRIM = " \t\"'\u201c\u201d\u2018\u2019{}[]`"
+_TRIM = " \t\"'“”‘’{}[]`"
 
 
-def tidy_line(text: str, limit: int = 260) -> str:
+def tidy_line(text: str, limit: int = 260, speech: bool = True) -> str:
     """Salvage a speakable line from whatever a small model produced.
 
     Local models narrate their own prompt back — "I am Barnaby Ferreira
     (he/him), a 34-year-old adjuster…" — and run past any sensible length. Drop
     the sentences that are the model talking about itself rather than a person
     talking, strip stage directions, and keep it readable.
+
+    ``speech=False`` keeps the length cap and the stage-direction strip but
+    leaves the rest alone, for fields nobody says out loud \u2014 a memory that
+    begins "I remember" is a perfectly good memory.
     """
-    line = (text or "").strip()
+    line = (text or "").strip().strip(_TRIM).strip()
     if not line:
         return ""
-
-    if len(line) > 1 and line[0] in "\"'\u201c\u2018" and line[-1] in "\"'\u201d\u2019":
-        line = line[1:-1].strip()
 
     kept = []
     for raw in _SENTENCE.split(line):
         raw = raw.strip()
         if not raw:
             continue
-        if _META_I.search(raw) or _META_NAME.search(raw):
+        if speech and (_META_I.search(raw) or _META_NAME.search(raw)
+                       or _NARRATION.search(raw) or _MEMORY_VOICE.search(raw)):
             continue
         cleaned = re.sub(r"\s+", " ", _STAGE.sub(" ", raw)).strip()
+        if speech:
+            cleaned = cleaned.strip(_TRIM).strip()
         if not cleaned or cleaned in ".!?":
             continue
         kept.append(cleaned)
@@ -272,6 +315,50 @@ def tidy_line(text: str, limit: int = 260) -> str:
         stop = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
         out = cut[:stop + 1] if stop > limit * 0.5 else cut.rstrip() + "\u2026"
     return out.strip()
+
+
+# --- not saying the same thing twice -----------------------------------------
+
+_GREETING = re.compile(
+    r"^\s*(well |ah |oh |so |right |hey |and )*"
+    r"(hello|hi|hey|greetings|good (morning|day|evening|to see)|nice to meet|"
+    r"pleased to meet|how do you do)\b",
+    re.I,
+)
+
+
+def _words(s: str) -> set[str]:
+    return set(re.sub(r"[^a-z0-9 ]+", " ", (s or "").lower()).split())
+
+
+def too_similar(line: str, other: str, threshold: float = 0.62) -> bool:
+    """Is this line effectively the one that was just said?
+
+    Small models loop. A greeting comes back three times, or the player's own
+    words get read straight back at them. Word overlap catches both without
+    tripping on two people who merely both mention water.
+    """
+    a, b = _words(line), _words(other)
+    if not a or not b:
+        return False
+    if len(a) <= 3 and len(b) <= 3:      # "Hello Barnaby" vs "Hello again Barnaby"
+        return bool(a & b) and abs(len(a) - len(b)) <= 1
+    return len(a & b) / max(len(a), len(b)) >= threshold
+
+
+def is_stale(line: str, recent=(), known: bool = True) -> bool:
+    """True if this line is a re-greeting or an echo, and should not be said.
+
+    ``known`` is whether the speaker has already met the person they're
+    answering. Greeting somebody you met yesterday is the single most common
+    thing a small model does wrong in this game.
+    """
+    line = (line or "").strip()
+    if not line:
+        return True
+    if known and _GREETING.match(line):
+        return True
+    return any(too_similar(line, r) for r in recent)
 
 
 def _inv(inventory: dict[str, int]) -> str:
@@ -292,6 +379,7 @@ class Brain:
         self.last_error: str | None = None
         self.calls = 0
         self._lock = threading.Lock()
+        self._recent_canned: list[str] = []
         self.provider = None
         self.reconfigure()
 
@@ -355,7 +443,7 @@ class Brain:
         if "say" in out:
             out["say"] = tidy_line(out.get("say", "")) or fallback
         if "thought" in out:
-            out["thought"] = tidy_line(out.get("thought", ""), limit=120)
+            out["thought"] = tidy_line(out.get("thought", ""), limit=90)
         if "memory" in out:
             out["memory"] = tidy_line(out.get("memory", ""), limit=160)
         return out
@@ -370,14 +458,19 @@ class Brain:
 
         known = []
         for other in game.actors:
-            if other is npc:
-                continue
-            if not npc.has_met(other):
+            if other is npc or not npc.has_met(other):
                 continue
             seen = npc.distance_to(other) <= 6
             where = f"right here, {other.where()}" if seen else "somewhere else on the island"
+            met_day = npc.met_on.get(other.key)
+            since = (" you met them today" if met_day == game.day
+                     else f" you met them on day {met_day}" if met_day
+                     else " you have met them")
+            named = (game.name_for(npc, other) if npc.knows_name_of(other)
+                     or not other.is_human else
+                     "the stranger, whose name you still do not know")
             known.append(
-                f"  - {other.prompt_name}: {where}. "
+                f"  - {named}:{since}, so no introductions. {where.capitalize()}. "
                 f"{'You can see them ' + other.activity_label() + '. ' if seen else ''}"
                 f"{npc.trust_label(other.key)}."
             )
@@ -417,31 +510,65 @@ means sharing what you gather, and it means depending on them."""
             return self._fallback_plan(npc, game)
         return self._polish(out)
 
-    def speak(self, npc, game, speaker_name: str, line: str, also_heard: list[str]) -> dict:
+    def speak(self, npc, game, speaker_name: str, line: str, also_heard: list[str],
+              group: list[str] | None = None, avoid: list[str] | None = None) -> dict:
+        """Answer whoever just spoke.
+
+        ``avoid`` is what has already been said in this exchange. If the model
+        produces one of those again — or a greeting for somebody it met
+        yesterday — it gets one more go before the line is thrown away.
+        """
+        avoid = [a for a in (avoid or []) if a]
         heard = ""
         if also_heard:
             heard = "\nAlso just said, in front of you:\n" + "\n".join(f"  {h}" for h in also_heard)
         recent = "\n".join(f"  {t}" for t in game.transcript[-8:]) or "  (nothing recently)"
-        user = f"""{self._situation(npc, game)}
 
-WHAT'S BEEN SAID
+        room = ""
+        if group and len(group) > 1:
+            room = (f"\nYou are all standing together talking: {', '.join(group)}. "
+                    "Everyone here hears everything. Answer for yourself, not for them.\n")
+
+        pointed = ("Answer the question they actually asked, and answer it in your "
+                   "first sentence. " if "?" in line else
+                   "Respond to what they just said, not to something said earlier. ")
+
+        base = f"""{self._situation(npc, game)}
+
+WHAT'S BEEN SAID (background, already spoken — do not repeat any of it)
 {recent}
 {heard}
-
+{room}
 {speaker_name} says to you: "{line}"
 
-Answer them, and decide what you do next. If they've asked you to do something,
-it is entirely your call whether you do it — weigh who is asking and what it
-costs you."""
-        out = self._call(self._system(npc), user, SPEAK_SCHEMA)
-        if out is None:
-            return self._fallback_speak(npc, game, line)
-        return self._polish(out, fallback=self._canned(npc))
+{pointed}You have already met {speaker_name}, so do not greet them and do not
+introduce yourself. Then decide what you do next. If they've asked you to do
+something, it is entirely your call whether you do it — weigh who is asking
+and what it costs you."""
+
+        other = game.actor_by_name(speaker_name)
+        known = npc.has_met(other) if other is not None else True
+        out = None
+        for attempt in range(2):
+            user = base if not attempt else base + (
+                "\n\nWhat you were about to say has already been said. Say something "
+                "different, or say one short thing and get back to work.")
+            got = self._call(self._system(npc), user, SPEAK_SCHEMA)
+            if got is None:
+                return self._fallback_speak(npc, game, line)
+            out = self._polish(got)
+            if not is_stale(out.get("say", ""), avoid + [line], known):
+                out["say"] = out.get("say") or self._canned(npc)
+                return out
+        # Twice round and still an echo. Keep what they decided, drop the words:
+        # silence reads better than a third "hello".
+        out["say"] = ""
+        return out
 
     def opener(self, npc, game, partner, topic: str) -> dict:
         user = f"""{self._situation(npc, game)}
 
-You've ended up standing next to {partner.prompt_name} and there's
+You've ended up standing next to {game.name_for(npc, partner)} and there's
 something you want to raise: {topic}
 
 Say the first thing. Don't be polite about it if you don't feel polite."""
@@ -479,7 +606,18 @@ This is the first thing you say to them. It does not have to be gracious."""
     ]
 
     def _canned(self, npc=None) -> str:
-        return random.choice(self._CANNED)
+        """A fallback line, never the one we just used.
+
+        Three people all saying "Fine. Whatever." in a row is worse than any
+        one of them saying nothing, and when a local model is struggling these
+        get used a lot.
+        """
+        with self._lock:
+            pool = [c for c in self._CANNED if c not in self._recent_canned] or list(self._CANNED)
+            line = random.choice(pool)
+            self._recent_canned.append(line)
+            del self._recent_canned[:-4]
+        return line
 
     # Offline, we still want "you fish, I'll do the wood" to visibly work, so the
     # fallback does a crude keyword read of what was said. It is not pretending to
@@ -519,7 +657,8 @@ This is the first thing you say to them. It does not have to be gracious."""
         }
 
     def _fallback_plan(self, npc, game) -> dict:
-        keep = [game.by_key[k].prompt_name for k in npc.allies if k in game.by_key]
+        keep = [game.name_for(npc, game.by_key[k])
+                for k in npc.allies if k in game.by_key]
         if npc.thirst < 40:
             if npc.inventory.get("water"):
                 return {"thought": "drinking what I've got", "emotion": "wary", "working_with": keep,

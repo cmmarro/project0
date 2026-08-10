@@ -15,9 +15,12 @@ let me = { x: 16, y: 17 };
 const keys = new Set();
 const smooth = {};
 let talking = false;
-let filter = 'all';
+let filter = 'talk';
 let pinned = true;              // chat stuck to the bottom
-let lastLogLen = 0;
+let logSig = '';                // what the log looked like last paint
+let convo = null;               // open conversation, or null
+let convoBusy = false;
+let convoSig = '';
 
 // ---------------------------------------------------------------- boot
 
@@ -41,6 +44,7 @@ async function poll() {
     const r = await fetch(`/api/state?x=${me.x.toFixed(2)}&y=${me.y.toFixed(2)}`);
     S = await r.json();
     paintPanel();
+    setConvo(S.talk);
   } catch (e) { /* server restarting; keep drawing */ }
 }
 
@@ -49,6 +53,10 @@ async function poll() {
 const talkInput = () => el('talk');
 
 addEventListener('keydown', e => {
+  if (convo) {                       // in a conversation: the modal owns the keyboard
+    if (e.key === 'Escape') endConvo();
+    return;
+  }
   const sheetOpen = !el('settings').classList.contains('hidden') || !el('help').classList.contains('hidden');
   if (document.activeElement === talkInput()) {
     if (e.key === 'Escape') talkInput().blur();
@@ -57,6 +65,7 @@ addEventListener('keydown', e => {
   if (sheetOpen) return;
   if (e.key === 'Enter') { talkInput().focus(); e.preventDefault(); return; }
   keys.add(e.key.toLowerCase());
+  if (e.key.toLowerCase() === 't') { startConvo(); e.preventDefault(); return; }
   const verb = { e: 'gather', q: 'drink', f: 'eat', r: 'rest' }[e.key.toLowerCase()];
   if (verb) { act(verb); e.preventDefault(); }
 });
@@ -71,7 +80,7 @@ function tileAt(x, y) {
 const walkable = (x, y) => !BLOCKED.has(tileAt(x, y));
 
 function move(dt) {
-  if (!island || (S && (S.over || S.player.down))) return;
+  if (!island || convo || (S && (S.over || S.player.down))) return;
   let dx = 0, dy = 0;
   if (keys.has('a') || keys.has('arrowleft')) dx -= 1;
   if (keys.has('d') || keys.has('arrowright')) dx += 1;
@@ -302,9 +311,11 @@ function paintPanel() {
     return `<div class="person ${c.down ? 'down' : ''}">
       <div class="top"><span class="name" style="color:${c.colour}">${c.name}</span>
         <span class="who">${c.pronouns} · ${c.role}</span></div>
-      <div class="act">${c.down ? 'Collapsed. Needs water.' : escapeHtml(c.activity)} · ${c.emotion}</div>
+      <div class="act">${c.down ? 'Collapsed. Needs water.' : escapeHtml(c.activity)} · ${c.emotion}${c.held ? ' · standing and talking' : ''}</div>
       <div class="allegiance">working ${escapeHtml(c.allegiance)}</div>
-      <div class="trust">${feel}</div>
+      <div class="trust">${feel} · ${c.knows_you
+        ? `knows you as ${escapeHtml(S.your_name || 'you')}`
+        : 'calls you the stranger'}</div>
       <div class="mini">
         ${['thirst', 'hunger', 'energy'].map(k =>
           `<div class="track" title="${k} ${c[k]}"><div class="fill" style="width:${c[k]}%;background:${tone(c[k])}"></div></div>`).join('')}
@@ -326,11 +337,16 @@ function paintPanel() {
 
   paintLog();
 
-  const near = S.castaways.filter(x => x.met && !x.down &&
-    Math.hypot(x.x - me.x, x.y - me.y) <= 4.5).map(x => x.short);
+  const near = S.earshot || [];
   el('earshot').textContent = near.length
-    ? `In earshot: ${near.join(', ')}.`
+    ? `In earshot: ${near.map(x => x.short).join(', ')}. What you type is said out loud.`
     : 'Nobody is close enough to hear you.';
+
+  // Getting someone to stand still and talk is a separate act from shouting.
+  el('talkwith').innerHTML = near.length
+    ? near.map(c => `<button data-talk="${c.key}" style="border-color:${c.colour}">Talk to ${escapeHtml(c.short)}</button>`).join('')
+      + (near.length > 1 ? '<button data-talk="" class="group">Get everyone together (T)</button>' : '')
+    : '';
 
   const atCamp = Math.hypot(island.landmarks.camp.x - me.x, island.landmarks.camp.y - me.y) <= 3;
   const downNear = S.castaways.find(x => x.down && Math.hypot(x.x - me.x, x.y - me.y) <= 2.5);
@@ -352,12 +368,25 @@ function paintPanel() {
 
 // ---- chat ----
 
+// What each filter lets through. Thoughts are off unless you ask for them:
+// a small model will mutter the same half-sentence five times running and
+// bury the only line anyone actually said.
+const SHOWN = {
+  talk: e => e.kind === 'speech',
+  all: e => e.kind !== 'thought',
+  everything: () => true,
+};
+
 function paintLog() {
   const box = el('log');
-  const entries = S.log.filter(e => filter === 'all' || e.kind === 'speech');
-  if (entries.length === lastLogLen) return;
-  const grew = entries.length > lastLogLen;
-  lastLogLen = entries.length;
+  const entries = S.log.filter(SHOWN[filter] || SHOWN.all);
+  // Counting entries doesn't work: the server caps the log, so once it's full
+  // the length never changes again and the panel freezes. Key off the ids.
+  const sig = filter + '|' + entries.length + '|' + (entries.length ? entries[entries.length - 1].n : 0);
+  if (sig === logSig) return;
+  const grew = logSig && entries.length && entries[entries.length - 1].n > (paintLog.lastN || 0);
+  paintLog.lastN = entries.length ? entries[entries.length - 1].n : 0;
+  logSig = sig;
 
   box.innerHTML = entries.map(e => {
     if (e.kind === 'speech') {
@@ -389,7 +418,7 @@ el('jump').addEventListener('click', () => {
 document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {
   filter = b.dataset.filter;
   document.querySelectorAll('[data-filter]').forEach(x => x.classList.toggle('on', x === b));
-  lastLogLen = -1;
+  logSig = '';
   pinned = true;
   paintLog();
 }));
@@ -404,7 +433,8 @@ document.querySelectorAll('h2[data-toggle]').forEach(h =>
 el('panel').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.act) act(b.dataset.act, b.dataset.target || '');
+  if (b.dataset.talk !== undefined) startConvo(b.dataset.talk || null);
+  else if (b.dataset.act) act(b.dataset.act, b.dataset.target || '');
   else if (b.dataset.build) act('build', b.dataset.build);
   else if (b.dataset.take) act('take', b.dataset.take);
 });
@@ -451,8 +481,12 @@ el('talkform').addEventListener('submit', async e => {
     const data = await r.json();
     S = data.state;
     pinned = true;
+    logSig = '';
     paintPanel();
-    if (!data.replies.length && !data.heard_by.length) toast('Nobody heard you.');
+    // The reply is on its way, not in this response — your own line is already
+    // in the log, which is the bit that used to hang for ten seconds.
+    if (!data.heard_by.length) toast('Nobody heard you.');
+    else if (data.pending) toast(`${data.heard_by.join(' and ')} heard you.`);
   } catch (err) {
     toast('Lost the connection.');
   } finally {
@@ -460,6 +494,107 @@ el('talkform').addEventListener('submit', async e => {
     btn.disabled = false;
     btn.textContent = 'Say';
     talkInput().focus();
+  }
+});
+
+// ---------------------------------------------------------------- conversation
+// Shouting into the air is fine for one line, but you can't hold a
+// conversation with someone who wanders off to fetch timber halfway through
+// it. A conversation pins everyone in it in place — and costs everyone the
+// time it takes, because the clock keeps running.
+
+async function talkApi(body) {
+  const r = await fetch('/api/talk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (data.error) { toast(data.error); return null; }
+  setConvo(data.conversation);
+  return data;
+}
+
+async function startConvo(who) {
+  if (convo) return;
+  const near = (S && S.earshot) || [];
+  if (!near.length) { toast('Nobody is close enough to talk to.'); return; }
+  await talkApi({ do: 'start', who: who || null });
+  el('convo-input').focus();
+}
+
+async function endConvo() {
+  if (!convo) return;
+  setConvo(null);
+  await fetch('/api/talk', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ do: 'end' }),
+  });
+}
+
+function setConvo(next) {
+  const wasOpen = !!convo;
+  convo = next || null;
+  el('convo').classList.toggle('hidden', !convo);
+  if (!convo) { convoSig = ''; return; }
+  if (!wasOpen) el('convo-input').focus();
+  paintConvo();
+}
+
+function paintConvo() {
+  const names = convo.members.map(m =>
+    `<span class="who-chip" style="border-color:${m.colour};color:${m.colour}">${escapeHtml(m.short)}
+      <em>${escapeHtml(m.emotion || '')}</em></span>`).join('');
+  const invites = (convo.can_invite || []).map(c =>
+    `<button class="invite" data-invite="${c.key}">+ ${escapeHtml(c.short)}</button>`).join('');
+  el('convo-title').textContent = convo.members.length > 1
+    ? `Talking with ${convo.members.map(m => m.short).join(' and ')}`
+    : `Talking with ${convo.members[0] ? convo.members[0].short : 'nobody'}`;
+  el('convo-who').innerHTML = names + invites;
+
+  const sig = convo.lines.length + '|' + convo.thinking.join(',') + '|' + convo.members.length;
+  if (sig !== convoSig) {
+    convoSig = sig;
+    const box = el('convo-lines');
+    box.innerHTML = convo.lines.map(l => `
+      <div class="cline ${l.key === 'player' ? 'mine' : ''}">
+        <div class="head"><span class="name" style="color:${l.colour}">${escapeHtml(l.who)}</span>
+          <span class="when">${l.t}</span></div>
+        <div class="bubble" style="border-left-color:${l.colour}">${escapeHtml(l.text)}</div>
+      </div>`).join('') ||
+      '<div class="convo-empty">They stopped and they\'re looking at you. Say something.</div>';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  const thinking = convo.thinking || [];
+  el('convo-thinking').classList.toggle('hidden', !thinking.length);
+  el('convo-thinking').textContent = thinking.length
+    ? `${thinking.join(' and ')} ${thinking.length > 1 ? 'are' : 'is'} thinking…` : '';
+
+  el('convo-note').innerHTML = convo.your_name
+    ? `They know you as <b>${escapeHtml(convo.your_name)}</b>.`
+    : 'They don\'t know your name. Tell them — <i>"I\'m Jo"</i>.';
+}
+
+el('convo-who').addEventListener('click', e => {
+  const b = e.target.closest('[data-invite]');
+  if (b) talkApi({ do: 'invite', who: b.dataset.invite });
+});
+el('convo-close').addEventListener('click', endConvo);
+el('convo-leave').addEventListener('click', endConvo);
+el('convo-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const input = el('convo-input');
+  const text = input.value.trim();
+  if (!text || convoBusy) return;
+  convoBusy = true;
+  input.value = '';
+  el('convo-send').disabled = true;
+  try {
+    await talkApi({ do: 'say', text });
+  } finally {
+    convoBusy = false;
+    el('convo-send').disabled = false;
+    input.focus();
   }
 });
 

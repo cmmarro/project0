@@ -243,6 +243,84 @@ def main():
     check("the loner is not folded into it",
           all(w.key not in g or g == {w.key} for g in blocs))
 
+    # --- 8. a conversation holds people still ------------------------------
+    print("\n8. Standing and talking")
+    with game.lock:
+        for c in game.castaways:
+            c.x, c.y = game.player.x + 1.0, game.player.y
+            c.thirst = 80.0
+    stub(game, speak=[
+        {"say": "Then say it plainly. What do you want?", "emotion": "wary", "memory": "",
+         "trust_speaker": 0, "action": "gather", "target": wood_site},
+        {"say": "He's right. Out with it.", "emotion": "wary", "memory": "",
+         "trust_speaker": 0, "action": "keep_doing", "target": ""},
+    ])
+    started = game.conversation_start()
+    check("everyone in earshot is pulled into it",
+          len(started["conversation"]["members"]) == 2,
+          str([m["short"] for m in started["conversation"]["members"]]))
+    check("and they are held in place", all(c.held for c in game.castaways))
+
+    before = [(c.x, c.y) for c in game.castaways]
+    game.conversation_say("We need to decide who does what.")
+    settle(game, 5)
+    lines = game.conversation.lines
+    check("your line goes in immediately, without waiting for a model",
+          lines[0]["key"] == "player", str(lines[:1]))
+    check("everybody in the room answers", len([l for l in lines if l["key"] != "player"]) == 2,
+          str([l["who"] for l in lines]))
+    check("nobody wandered off mid-conversation",
+          before == [(c.x, c.y) for c in game.castaways])
+    check("what they agreed to is queued, not lost",
+          game.castaways[0].task["target"] == wood_site, str(game.castaways[0].task))
+
+    game.conversation_end()
+    check("breaking it up releases them", not any(c.held for c in game.castaways))
+    settle(game, 2)
+    check("and then they actually go", game.castaways[0].task["phase"] != "idle",
+          str(game.castaways[0].task))
+
+    print("\n9. Somebody dying doesn't stand there listening")
+    game.conversation_start()
+    with game.lock:
+        victim = game.castaways[0]
+        victim.thirst = 1.0
+        victim.inventory.pop("water", None)
+    settle(game, 1.5)
+    check("they walk off mid-sentence", not victim.held, f"held={victim.held}")
+    check("and they're out of the conversation",
+          victim.key not in (game.conversation.members if game.conversation else []))
+    game.conversation_end()
+
+    # --- 10. names are not free --------------------------------------------
+    print("\n10. Names")
+    c0 = game.castaways[0]
+    check("they start out calling you the stranger",
+          game.name_for(c0, game.player) == "the stranger")
+    from island.state import spoken_name
+    check("a self-introduction is recognised", spoken_name("Hi, you can call me Jojo") == "Jojo")
+    check("and 'I'm thirsty' is not a name", spoken_name("I'm thirsty") is None)
+    with game.lock:
+        game.introduce_player("Jojo", [c0])
+    check("once you say it, they use it", game.name_for(c0, game.player) == "Jojo")
+    check("someone who wasn't there still doesn't know",
+          game.name_for(game.castaways[1], game.player) == "the stranger")
+    check("castaways swap names with each other on sight",
+          c0.knows_name_of(game.castaways[1]))
+
+    # The chat panel used to spot new entries by counting them, which stops
+    # working the instant the log hits its cap: same length every poll, forever.
+    print("\n11. The log never goes silent")
+    ns = [e["n"] for e in game.log]
+    check("every entry has a rising id", ns == sorted(ns) and len(set(ns)) == len(ns))
+    with game.lock:
+        capped = len(game.log)
+        for i in range(200):
+            game.event(f"filler {i}", "world")
+        check("the log is capped", len(game.log) <= 150, f"{len(game.log)} entries")
+        check("but the ids keep climbing past it, so 'has it changed?' still works",
+              game.log[-1]["n"] > capped + 150, f"last id {game.log[-1]['n']}")
+
     print()
     if FAILS:
         print(f"  {len(FAILS)} failed: {', '.join(FAILS)}\n")

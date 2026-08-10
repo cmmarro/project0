@@ -208,7 +208,7 @@ def main():
         httpd.shutdown()
 
     print("\nSalvaging what a small model says")
-    from island.brain import tidy_line
+    from island.brain import is_stale, tidy_line, too_similar
     salvage = [
         ("I am Barnaby Ferreira (he/him), a 34-year-old adjuster forced into a war for survival", ""),
         ("I need to react to my current state. Thirst is high (38/100).", ""),
@@ -216,6 +216,12 @@ def main():
         ("Fine. But I'm counting what goes in that pile.", "Fine. But I'm counting what goes in that pile."),
         ("I am Odell Kaminski. Water is west of here.", "Water is west of here."),
         ("I am thirsty and there is no water left.", "I am thirsty and there is no water left."),
+        # Straight from a playtest: third-person prose with the closing brace
+        # of the JSON object left on the end of the line.
+        ('"Well then," said Barnaby, eyeing the stranger\'s retreating back. '
+         '"I suppose I\'ll do the same." }', "I suppose I'll do the same."),
+        ("I remember that the stranger needs water too, like me.", ""),
+        ("He sounds worried. Water's west.", "He sounds worried. Water's west."),
     ]
     for raw, want in salvage:
         got = tidy_line(raw)
@@ -223,6 +229,34 @@ def main():
     long = "So anyway. " * 60
     check("a rambling answer is cut to something readable", len(tidy_line(long)) <= 261,
           f"{len(tidy_line(long))} chars")
+    check("a memory keeps its own voice",
+          tidy_line("I remember that Marisol shared.", speech=False)
+          == "I remember that Marisol shared.")
+
+    print("\nNot saying the same thing twice")
+    check("a greeting to someone you've met is thrown away", is_stale("Hello there! Nice to meet you."))
+    check("...and so is the third one", is_stale("Hello again Barnaby."))
+    check("but a greeting at first contact is fine",
+          not is_stale("Hello there! Nice to meet you.", known=False))
+    check("your own words read back at you are caught",
+          is_stale("Hye guys.", ["Hye guys."]))
+    check("a near-repeat is caught too",
+          too_similar("Fine whatever the direction of water.",
+                      "Fine, whatever the direction of the water"))
+    check("two people both mentioning water is not a repeat",
+          not too_similar("Water's west of here, past the rocks.",
+                          "I've got eight coconuts and no fire to cook on."))
+    check("a real answer survives", not is_stale("No idea. I've not been past the rocks.",
+                                                 ["Where's the water?"]))
+
+    print("\nFallback lines")
+    from island.brain import Brain
+    b = Brain.__new__(Brain)
+    b._lock = threading.Lock()
+    b._recent_canned = []
+    runs = [b._canned() for _ in range(6)]
+    check("the same canned line is never used twice running",
+          all(a != c for a, c in zip(runs, runs[1:])), " / ".join(runs[:3]))
 
     print("\nReasoning models")
     think = "<think>The user wants me to decide. Let me weigh the options.</think>\n" \

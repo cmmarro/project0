@@ -92,6 +92,12 @@ canned lines. Fine for seeing how it moves; not worth playing.
 - **E** gather · **Q** drink · **F** eat · **R** rest
 - **Enter** jumps to the text box — whatever you type is *said out loud*, and
   only people standing near you can hear it
+- **T** gets everyone nearby to **stop and have a proper conversation**. They
+  stand still until you break it up, so you can go back and forth instead of
+  shouting one line at someone who's already walking away.
+
+**Tell them your name.** To them you're "the stranger" until you say otherwise.
+Type *"I'm Jo"* and everyone in earshot will remember it and start using it.
 
 **Don't die of thirst.** The strip under the map always tells you where you are
 and what to press. Walk to the spring, press **E** a few times to fill up, then
@@ -136,6 +142,15 @@ blocks if they arrive anyway.
 model repeating its prompt. The game strips the worst of it, and **Prompt size:
 auto** already sends local models a much shorter brief. If it's still bad, a 7B
 instruct model behaves far better than a 2B.
+
+**They keep saying hello, or repeating each other.** Also a small model. The
+game now refuses greetings between people who've already met, and drops a reply
+that's just an echo of the line before it — but the smaller the model, the more
+often it has nothing else to offer. A 7B fixes it properly.
+
+**The log is all muttering and I can't find what anyone said.** Click **talk**
+at the top of the log. **+ events** adds what happened, **+ thoughts** adds
+their inner monologue — that last one is off by default for exactly this reason.
 
 **"Test connection" says no model is loaded.** Load a model in LM Studio first,
 then press **refresh** in the game's settings.

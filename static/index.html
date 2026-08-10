@@ -35,6 +35,27 @@
       </div>
     </div>
 
+    <div id="convo" class="hidden">
+      <div class="sheet convosheet">
+        <div class="sheet-head">
+          <h3 id="convo-title">Talking</h3>
+          <button id="convo-close" title="end the conversation">×</button>
+        </div>
+        <div id="convo-who" class="convo-who"></div>
+        <div id="convo-lines" class="convo-lines"></div>
+        <div id="convo-thinking" class="convo-thinking hidden"></div>
+        <form id="convo-form" autocomplete="off">
+          <input id="convo-input" type="text" maxlength="300"
+                 placeholder="Say something — they're standing here listening…">
+          <button type="submit" id="convo-send" class="primary">Say</button>
+        </form>
+        <div class="convo-foot">
+          <span id="convo-note" class="dim small"></span>
+          <button id="convo-leave">Break it up</button>
+        </div>
+      </div>
+    </div>
+
     <div id="help" class="hidden">
       <div class="sheet">
         <div class="sheet-head"><h3>How to stay alive</h3><button id="help-close">×</button></div>
@@ -45,7 +66,12 @@
           <kbd>F</kbd><span>eat</span>
           <kbd>R</kbd><span>rest, to get energy back</span>
           <kbd>Enter</kbd><span>talk — you say it out loud, and only people nearby hear it</span>
+          <kbd>T</kbd><span>get everyone nearby to stop and have a proper conversation</span>
         </div>
+        <p class="small dim">
+          Nobody exchanged names in the water, so to them you're <b>the stranger</b>.
+          Tell them yours — <i>"I'm Jo"</i> — and they'll start using it.
+        </p>
         <p class="small dim">
           <b>Thirst kills first.</b> Walk to the spring, press <b>E</b> a few times to fill up,
           then press <b>Q</b> to drink. The bar under your name is your clock.
@@ -164,10 +190,11 @@
 
     <section class="block chatblock">
       <h2>
-        Chat
+        Log
         <span class="filters">
-          <button data-filter="all" class="on">everything</button>
-          <button data-filter="talk">talk only</button>
+          <button data-filter="talk" class="on">talk</button>
+          <button data-filter="all">+ events</button>
+          <button data-filter="everything">+ thoughts</button>
         </span>
       </h2>
       <div id="log"></div>
@@ -175,6 +202,7 @@
     </section>
 
     <section class="block" id="say-block">
+      <div id="talkwith" class="talkwith"></div>
       <form id="talkform" autocomplete="off">
         <input id="talk" type="text" maxlength="300" placeholder="Say something out loud…">
         <button type="submit" id="talkbtn">Say</button>

@@ -84,17 +84,46 @@ the fallback chain exists for.
 ## Playing
 
 `WASD` / arrows to move. `E` gather, `Q` drink, `F` eat, `R` rest — or use the
-buttons. `Enter` jumps to the talk box.
+buttons. `Enter` jumps to the talk box. `T` gets everyone nearby to stop and talk.
 
-Talking is **proximity speech, not a dialogue menu**. What you type is said out
-loud where you're standing, and whoever is within about four tiles hears it. If
-more than one of them is in earshot, they both answer — and the second one sees
-the first one's reply before composing their own, so a three-way conversation is
-genuinely three-way. Out of earshot, your words go nowhere.
+### Two ways to talk
+
+**Say it out loud** (`Enter`). What you type is said where you're standing, and
+whoever is within about four tiles hears it. Nobody stops what they're doing.
+It's one line, thrown at whoever happens to be there — good for "the spring's
+dry" and useless for anything that needs a second sentence, because by then
+they've walked off to fetch timber.
+
+**Stand and talk** (`T`, or the *Talk to…* buttons). This opens a conversation:
+everyone in it stops where they are and stays there until you break it up, so
+you can actually go back and forth. Everyone in the room answers, in turn, each
+hearing what the last one said — and you can pull anyone else in earshot in with
+a `+ name` chip.
+
+Holding people still is not free. The clock doesn't pause for a conversation,
+their thirst runs the whole time, and someone desperate enough will walk off
+mid-sentence rather than stand there listening to you. Whatever they agree to
+during it is queued up and starts the moment the talking stops.
 
 They talk to each other on their own when they end up in the same place. It lands
 in the same log you're reading. If you're not close enough, you miss it, and you
 only find out what was decided from how they behave afterwards.
+
+### Nobody knows your name
+
+You washed up without introducing yourself, so to them you are **the stranger** —
+in the log, in their memories, and in every prompt they're given. Say your name
+(*"I'm Jo"*, *"call me Jo"*) and everyone in earshot keeps it, remembers being
+told, and uses it from then on. People who weren't there still don't know it.
+The castaways swap names with each other when they meet, because that's what
+people do; you have to volunteer yours.
+
+### Keeping the log readable
+
+The log filters three ways: **talk** is only what was said, **+ events** adds
+what happened, **+ thoughts** adds what they're muttering to themselves. Thoughts
+are off by default — a small model will mutter the same half-sentence five times
+running and bury the one line somebody actually said.
 
 ## Design
 
@@ -160,6 +189,32 @@ cannot invent a capability it doesn't have. The returned action is routed
 through pathfinding and then executed by the real verb over game time — agreeing
 to fetch timber means walking to the timber and gathering it.
 
+Because the line and the intent come back from **one** call, they can't drift
+apart. Asked to meet somewhere, a survivor answered "let me finish my coconut
+first" and returned `take` — so she took a coconut from the stores, ate it, and
+*then* walked over. Nothing scripted that; saying it and doing it are the same
+decision.
+
+### What gets thrown away
+
+Small models fail in a small number of recognisable ways, and the ones that
+reach the player are worth catching:
+
+- **Narration.** `"Well then," said Barnaby, eyeing the stranger's retreating
+  back. "I suppose I'll do the same." }` — third-person prose with the JSON's
+  closing brace still attached. The narrating sentence is dropped and the
+  spoken one survives.
+- **Re-greeting.** Nobody says "nice to meet you" to someone they met
+  yesterday, but a 2B model will do it every turn. Greetings are refused once
+  the speaker has met the listener.
+- **Echoes.** A line that's mostly the same words as the one it's answering —
+  the player types "Hye guys" and hears "Hye guys" back — gets one retry with
+  an explicit nudge, then is dropped. Silence reads better than a third hello.
+- **The prompt, read back.** Self-introductions, thirst numbers, and the memory
+  field arriving in the mouth ("I remember that the stranger needs water too").
+
+Every one of those is a line from a real playtest, and each has a test.
+
 Memories are written by the model in its own voice, capped at fourteen, and fed
 back in on the next call. Trust is a number that changes how the relationship is
 described in the next prompt. That loop — act in the world, read it back as
@@ -171,6 +226,9 @@ They see their own body, their own inventory, the camp, and only what's within
 about six tiles of them. They don't see each other's memories, they don't get
 told what you said to someone out of earshot, and they don't know anyone else's
 private plans or secrets. Information asymmetry is real, which is why gossip matters.
+
+Nor do they know your name until you say it — and the ones who weren't standing
+there when you did still don't.
 
 ## Layout
 

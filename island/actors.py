@@ -133,8 +133,10 @@ class Player(Actor):
         super().__init__("player", "You", "#f2c14e", pos)
         self.short = "you"
         # Nobody exchanged names in the water. This is how the castaways
-        # refer to you in their own heads and in their prompts.
+        # refer to you in their own heads and in their prompts, until you
+        # actually tell one of them what you're called.
         self.prompt_name = "the stranger"
+        self.given_name: str | None = None
 
 
 class Castaway(Actor):
@@ -154,6 +156,10 @@ class Castaway(Actor):
         self.memories: list[str] = []
         self.trust: dict[str, int] = {}      # actor key -> -15..15
         self.met: set[str] = set()           # actor keys they've made contact with
+        self.met_on: dict[str, int] = {}     # ...and the day it happened
+        # Whose name they actually know. They swap names with each other on
+        # meeting; the player has to volunteer theirs.
+        self.knows_name: set[str] = set()
         self.emotion = "wary"
         self.thought = "alone on the sand, working out where to start"
         # Who they've thrown in with, by actor key. Empty means going it alone.
@@ -162,6 +168,9 @@ class Castaway(Actor):
 
         self.next_plan_at = 0.0
         self.busy = False
+        # Standing in a conversation. They stay put and stop re-planning until
+        # it breaks up — or until they're thirsty enough to walk off mid-word.
+        self.held = False
 
     def trait(self, name: str) -> float:
         return self.traits.get(name, 0.5)
@@ -170,6 +179,9 @@ class Castaway(Actor):
 
     def has_met(self, other: Actor) -> bool:
         return other.key in self.met
+
+    def knows_name_of(self, other: Actor) -> bool:
+        return other.key in self.knows_name
 
     def trust_of(self, other_key: str) -> int:
         return self.trust.get(other_key, 0)
@@ -230,6 +242,8 @@ class Castaway(Actor):
             "emotion": self.emotion,
             "thought": self.thought,
             "busy": self.busy,
+            "held": self.held,
+            "knows_you": "player" in self.knows_name,
             "seen": seen,
             "role": self.role,
             "pronouns": self.pronouns,

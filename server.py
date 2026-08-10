@@ -135,10 +135,35 @@ def restart():
 
 @app.post("/api/say")
 def say():
+    """Say it out loud. Your line lands in the log now; replies arrive when the
+    model has them, which on a local backend can be a long few seconds."""
     data = request.get_json(silent=True) or {}
-    result = game.player_says(data.get("text", ""))
+    result = game.player_says(data.get("text", ""), wait=False)
     result["state"] = game.snapshot()
     return jsonify(result)
+
+
+@app.get("/api/talk")
+def talk_state():
+    return jsonify(game.conversation_snapshot())
+
+
+@app.post("/api/talk")
+def talk():
+    """Start, continue, or break up a stand-and-talk conversation.
+
+    Everyone in it stays put while it's open — which is the point, and also the
+    cost: the clock doesn't stop for a chat.
+    """
+    data = request.get_json(silent=True) or {}
+    what = data.get("do", "say")
+    if what == "start":
+        return jsonify(game.conversation_start(data.get("who")))
+    if what == "invite":
+        return jsonify(game.conversation_invite(data.get("who", "")))
+    if what == "end":
+        return jsonify(game.conversation_end())
+    return jsonify(game.conversation_say(data.get("text", "")))
 
 
 if __name__ == "__main__":
