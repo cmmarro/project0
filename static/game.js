@@ -21,6 +21,8 @@ let logSig = '';                // what the log looked like last paint
 let convo = null;               // open conversation, or null
 let convoBusy = false;
 let convoSig = '';
+let convoStamp = 0;             // bumped by every conversation action
+let convoPending = 0;           // conversation requests in flight
 
 // ---------------------------------------------------------------- boot
 
@@ -40,11 +42,15 @@ async function boot() {
 }
 
 async function poll() {
+  // A poll that was issued before — or during — a conversation action carries
+  // a stale answer, and applying it reopens the modal you just closed. Only
+  // trust a poll that both started and finished with nothing else in flight.
+  const stamp = convoStamp, quiet = convoPending === 0;
   try {
     const r = await fetch(`/api/state?x=${me.x.toFixed(2)}&y=${me.y.toFixed(2)}`);
     S = await r.json();
     paintPanel();
-    setConvo(S.talk);
+    if (quiet && stamp === convoStamp && convoPending === 0) setConvo(S.talk);
   } catch (e) { /* server restarting; keep drawing */ }
 }
 
@@ -316,6 +322,8 @@ function paintPanel() {
       <div class="trust">${feel} · ${c.knows_you
         ? `knows you as ${escapeHtml(S.your_name || 'you')}`
         : 'calls you the stranger'}</div>
+      ${(c.notes || []).length ? `<div class="notes">${
+        c.notes.map(n => `<div>“${escapeHtml(n)}”</div>`).join('')}</div>` : ''}
       <div class="mini">
         ${['thirst', 'hunger', 'energy'].map(k =>
           `<div class="track" title="${k} ${c[k]}"><div class="fill" style="width:${c[k]}%;background:${tone(c[k])}"></div></div>`).join('')}
@@ -504,14 +512,24 @@ el('talkform').addEventListener('submit', async e => {
 // time it takes, because the clock keeps running.
 
 async function talkApi(body) {
-  const r = await fetch('/api/talk', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (data.error) { toast(data.error); return null; }
-  setConvo(data.conversation);
-  return data;
+  convoStamp++;
+  convoPending++;
+  const mine = convoStamp;
+  try {
+    const r = await fetch('/api/talk', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if (data.error) { toast(data.error); return null; }
+    if (mine === convoStamp) setConvo(data.conversation);
+    return data;
+  } catch (e) {
+    toast('Lost the connection.');
+    return null;
+  } finally {
+    convoPending--;
+  }
 }
 
 async function startConvo(who) {
@@ -525,10 +543,7 @@ async function startConvo(who) {
 async function endConvo() {
   if (!convo) return;
   setConvo(null);
-  await fetch('/api/talk', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ do: 'end' }),
-  });
+  await talkApi({ do: 'end' });
 }
 
 function setConvo(next) {
@@ -536,39 +551,55 @@ function setConvo(next) {
   convo = next || null;
   el('convo').classList.toggle('hidden', !convo);
   if (!convo) { convoSig = ''; return; }
-  if (!wasOpen) el('convo-input').focus();
+  if (!wasOpen) { convoSig = ''; el('convo-input').focus(); }
   paintConvo();
 }
 
 function paintConvo() {
-  const names = convo.members.map(m =>
-    `<span class="who-chip" style="border-color:${m.colour};color:${m.colour}">${escapeHtml(m.short)}
-      <em>${escapeHtml(m.emotion || '')}</em></span>`).join('');
-  const invites = (convo.can_invite || []).map(c =>
-    `<button class="invite" data-invite="${c.key}">+ ${escapeHtml(c.short)}</button>`).join('');
-  el('convo-title').textContent = convo.members.length > 1
-    ? `Talking with ${convo.members.map(m => m.short).join(' and ')}`
-    : `Talking with ${convo.members[0] ? convo.members[0].short : 'nobody'}`;
-  el('convo-who').innerHTML = names + invites;
+  const thinking = convo.thinking || [];
+  // Everything here is redrawn from a polled snapshot 2.4 times a second, so
+  // only touch the DOM when something actually changed — otherwise the invite
+  // chips are rebuilt under the cursor mid-click.
+  const sig = [
+    convo.lines.length, thinking.join(','),
+    convo.members.map(m => m.key + m.emotion).join(','),
+    (convo.can_invite || []).map(c => c.key).join(','),
+    convo.your_name,
+  ].join('|');
+  if (sig === convoSig) return;
+  convoSig = sig;
 
-  const sig = convo.lines.length + '|' + convo.thinking.join(',') + '|' + convo.members.length;
-  if (sig !== convoSig) {
-    convoSig = sig;
-    const box = el('convo-lines');
-    box.innerHTML = convo.lines.map(l => `
-      <div class="cline ${l.key === 'player' ? 'mine' : ''}">
+  el('convo-title').textContent = convo.members.length
+    ? `Talking with ${convo.members.map(m => m.short).join(' and ')}`
+    : 'Talking to nobody';
+  el('convo-who').innerHTML =
+    convo.members.map(m =>
+      `<span class="who-chip" style="border-color:${m.colour};color:${m.colour}">${escapeHtml(m.short)}
+        <em>${escapeHtml(m.emotion || '')}</em></span>`).join('') +
+    (convo.can_invite || []).map(c =>
+      `<button class="invite" data-invite="${c.key}">+ ${escapeHtml(c.short)}</button>`).join('');
+
+  const box = el('convo-lines');
+  box.innerHTML = convo.lines.map(l => l.kind === 'silence'
+    ? `<div class="cline quiet">${escapeHtml(l.text)}</div>`
+    : `<div class="cline ${l.key === 'player' ? 'mine' : ''}">
         <div class="head"><span class="name" style="color:${l.colour}">${escapeHtml(l.who)}</span>
           <span class="when">${l.t}</span></div>
         <div class="bubble" style="border-left-color:${l.colour}">${escapeHtml(l.text)}</div>
       </div>`).join('') ||
-      '<div class="convo-empty">They stopped and they\'re looking at you. Say something.</div>';
-    box.scrollTop = box.scrollHeight;
-  }
+    '<div class="convo-empty">They stopped and they\'re looking at you. Say something.</div>';
+  box.scrollTop = box.scrollHeight;
 
-  const thinking = convo.thinking || [];
   el('convo-thinking').classList.toggle('hidden', !thinking.length);
   el('convo-thinking').textContent = thinking.length
     ? `${thinking.join(' and ')} ${thinking.length > 1 ? 'are' : 'is'} thinking…` : '';
+
+  // Don't let them get two questions ahead of a slow local model.
+  const input = el('convo-input');
+  el('convo-send').disabled = convoBusy || !!thinking.length;
+  input.placeholder = thinking.length
+    ? 'They\'re still answering…'
+    : 'Say something — they\'re standing here listening…';
 
   el('convo-note').innerHTML = convo.your_name
     ? `They know you as <b>${escapeHtml(convo.your_name)}</b>.`
@@ -585,7 +616,7 @@ el('convo-form').addEventListener('submit', async e => {
   e.preventDefault();
   const input = el('convo-input');
   const text = input.value.trim();
-  if (!text || convoBusy) return;
+  if (!text || convoBusy || (convo.thinking || []).length) return;
   convoBusy = true;
   input.value = '';
   el('convo-send').disabled = true;
@@ -593,7 +624,6 @@ el('convo-form').addEventListener('submit', async e => {
     await talkApi({ do: 'say', text });
   } finally {
     convoBusy = false;
-    el('convo-send').disabled = false;
     input.focus();
   }
 });

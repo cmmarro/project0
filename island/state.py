@@ -22,6 +22,7 @@ GATHER_MINUTES = 5
 BUILD_MINUTES = 6
 
 PLAN_COOLDOWN = 20          # real seconds between a castaway's unprompted decisions
+REFLECT_COOLDOWN = 150      # real seconds between a castaway rewriting what they carry
 CONVO_COOLDOWN = 100        # real seconds between castaway-to-castaway conversations
 CONVO_TURNS = 4
 EARSHOT = 4.5               # who hears you speak
@@ -96,10 +97,16 @@ class Conversation:
         self.thinking: list[str] = []         # who is composing a reply
         self.round = 0
         self.closed = False
+        # Talk faster than the model answers and you get two rounds in flight.
+        # This makes the second one wait rather than interleave its replies
+        # into the middle of the first.
+        self.turn = threading.Lock()
+        self.running = 0
 
-    def add(self, who: str, name: str, colour: str, text: str, stamp: str):
+    def add(self, who: str, name: str, colour: str, text: str, stamp: str,
+            kind: str = "speech"):
         self.lines.append({"key": who, "who": name, "colour": colour,
-                           "text": text, "t": stamp})
+                           "text": text, "t": stamp, "kind": kind})
         del self.lines[:-60]
 
     def recent(self, n: int = 6) -> list[str]:
@@ -257,7 +264,7 @@ class Game:
         for c in to:
             if isinstance(c, Castaway) and "player" not in c.knows_name:
                 c.knows_name.add("player")
-                c.remember(f"The stranger's name is {name}.")
+                c.remember(f"The stranger's name is {name}.", self.day)
                 c.adjust_trust("player", 1)
                 learned.append(c.short)
         if learned:
@@ -313,28 +320,28 @@ class Game:
 
     def notice_sharing(self, actor, count: int):
         for c in self._witnesses(actor):
-            c.remember(f"{actor.short} put {count} thing{'s' if count > 1 else ''} into the shared stores.")
+            c.remember(f"{actor.short} put {count} thing{'s' if count > 1 else ''} into the shared stores.", self.day)
             c.adjust_trust(actor.key, 1)
 
     def notice_taking(self, actor, item: str):
         for c in self._witnesses(actor):
-            c.remember(f"{actor.short} took {world.ITEM_LABEL.get(item, item)} out of the shared stores.")
+            c.remember(f"{actor.short} took {world.ITEM_LABEL.get(item, item)} out of the shared stores.", self.day)
 
     def notice_gift(self, actor, recipient, item: str):
         if isinstance(recipient, Castaway):
-            recipient.remember(f"{actor.short} handed me {world.ITEM_LABEL.get(item, item)} without being asked.")
+            recipient.remember(f"{actor.short} handed me {world.ITEM_LABEL.get(item, item)} without being asked.", self.day)
             recipient.adjust_trust(actor.key, 2)
         for c in self._witnesses(actor):
             if c is not recipient:
-                c.remember(f"{actor.short} gave {recipient.short} {world.ITEM_LABEL.get(item, item)}.")
+                c.remember(f"{actor.short} gave {recipient.short} {world.ITEM_LABEL.get(item, item)}.", self.day)
 
     def notice_rescue(self, actor, who):
         if isinstance(who, Castaway):
-            who.remember(f"I went down, and {actor.short} got water into me. I was not getting up on my own.")
+            who.remember(f"I went down, and {actor.short} got water into me. I was not getting up on my own.", self.day)
             who.adjust_trust(actor.key, 5)
         for c in self._witnesses(actor):
             if c is not who:
-                c.remember(f"{actor.short} brought {who.short} round after they collapsed.")
+                c.remember(f"{actor.short} brought {who.short} round after they collapsed.", self.day)
                 c.adjust_trust(actor.key, 2)
 
     # =========================================================================
@@ -398,6 +405,9 @@ class Game:
     # -- castaway task execution ---------------------------------------------
 
     def _advance(self, npc: Castaway, dt: float, gm: float):
+        # Everything they were told fades at the same rate whatever they're
+        # doing, including lying on the sand.
+        npc.mind.fade(gm)
         if npc.down:
             npc.stop()
             return
@@ -625,6 +635,15 @@ class Game:
         for npc in self.castaways:
             if npc.down or npc.busy or npc.held:
                 continue
+            # Sitting still is when you think. Resting is the only time they
+            # rewrite what they carry, so it costs them the same hours that
+            # everything else does.
+            if (npc.task["action"] == "rest" and now >= npc.next_reflect_at
+                    and len(npc.mind.working) >= 3):
+                npc.next_reflect_at = now + REFLECT_COOLDOWN
+                npc.busy = True
+                self.jobs.put(("reflect", npc.key))
+                continue
             idle = npc.task["phase"] == "idle" and npc.task["action"] in ("idle", "rest", "follow")
             if idle and now >= npc.next_plan_at:
                 npc.next_plan_at = now + PLAN_COOLDOWN
@@ -662,6 +681,8 @@ class Game:
                 self._job_convo(self.by_key[job[1]], self.by_key[job[2]])
             elif kind == "first_contact":
                 self._job_first_contact(self.by_key[job[1]], self.by_key[job[2]])
+            elif kind == "reflect":
+                self._job_reflect(self.by_key[job[1]])
         finally:
             with self.lock:
                 for npc in self.castaways:
@@ -683,6 +704,22 @@ class Game:
             if npc.thought != was:
                 self.event(npc.thought, "thought", npc)
 
+    def _job_reflect(self, npc: Castaway):
+        """They sit down and decide what's worth still knowing next week."""
+        with self.brain_lock:
+            self._throttle()
+            out = self.brain.reflect(npc, self)
+        with self.lock:
+            before = list(npc.mind.standing)
+            notes = npc.mind.set_standing(out.get("notes"))
+            npc.emotion = out.get("emotion", npc.emotion)
+            if notes and notes != before:
+                new = [n for n in notes if n not in before]
+                self.event(
+                    f"{npc.short} sits a while. " +
+                    (f"Something has settled: {new[0]}" if new
+                     else "Something has settled."), "reflection", npc)
+
     def _job_first_contact(self, npc: Castaway, other):
         with self.brain_lock:
             self._throttle()
@@ -692,7 +729,7 @@ class Game:
             line = (out.get("say") or "").strip()
             if line:
                 self.said(npc, line)
-            npc.remember(f"I met {other.name} on day {self.day}. Up to then I thought I was alone here.")
+            npc.remember(f"I met {other.name} on day {self.day}. Up to then I thought I was alone here.", self.day)
 
     def _pick_topic(self, a: Castaway, b: Castaway) -> str:
         options = []
@@ -745,7 +782,7 @@ class Game:
                     break
                 spoken.append(line)
                 speaker.emotion = out.get("emotion", speaker.emotion)
-                speaker.remember(out.get("memory", ""))
+                speaker.remember(out.get("memory", ""), self.day)
                 speaker.adjust_trust(listener.key, int(out.get("trust_speaker", 0) or 0))
                 self.said(speaker, line)
                 self.apply_intent(speaker, out.get("action", ""), out.get("target", ""))
@@ -770,6 +807,10 @@ class Game:
         with self.lock:
             if self.over or self.player.down:
                 return {"ok": False, "error": "Not now."}
+            # Starting a second one without ending the first would leave the
+            # first group held in place with nobody talking to them, forever.
+            if self.conversation:
+                self.conversation_end(None)
             near = self.in_earshot()
             if not near:
                 return {"ok": False, "error": "Nobody is close enough to talk to."}
@@ -813,7 +854,9 @@ class Game:
                         # Whatever they agreed to, let them get on with it before
                         # the planner second-guesses them.
                         npc.next_plan_at = max(npc.next_plan_at, now + PLAN_COOLDOWN)
-                self.event(reason or "You break it up and everyone goes back to it.", "system")
+                if reason is not None:
+                    self.event(reason or "You break it up and everyone goes back to it.",
+                               "system")
             return {"ok": True, "conversation": None}
 
     def _check_conversation(self):
@@ -854,6 +897,7 @@ class Game:
                 convo.add("player", "You", self.player.colour, text,
                           f"D{self.day} {self.clock_str()}")
             convo.round += 1
+            convo.running += 1
             convo.thinking = list(convo.members)
         threading.Thread(target=self._conversation_round, args=(convo, text), daemon=True).start()
         return self.conversation_snapshot()
@@ -861,51 +905,65 @@ class Game:
     def _conversation_round(self, convo: Conversation, text: str):
         """Everyone in the room answers, in turn, hearing what came before."""
         try:
-            with self.lock:
-                members = [self.by_key[k] for k in convo.members if k in self.by_key]
-                group = [self.name_for(members[0], self.player)] + [m.name for m in members] \
-                    if members else []
-                avoid = convo.recent(6)
-            also_heard: list[str] = []
-            for npc in members:
-                if convo.closed or self.conversation is not convo:
-                    return
-                with self.lock:
-                    speaker_name = self.name_for(npc, self.player)
-                with self.brain_lock:
-                    self._throttle()
-                    out = self.brain.speak(npc, self, speaker_name, text, also_heard,
-                                           group=group, avoid=avoid)
-                with self.lock:
-                    if convo.closed:
-                        return
-                    line = (out.get("say") or "").strip()
-                    npc.emotion = out.get("emotion", npc.emotion)
-                    npc.remember(out.get("memory", ""))
-                    npc.adjust_trust("player", int(out.get("trust_speaker", 0) or 0))
-                    if line:
-                        self.said(npc, line)
-                        convo.add(npc.key, npc.name, npc.colour, line,
-                                  f"D{self.day} {self.clock_str()}")
-                        also_heard.append(f"{npc.name}: {line}")
-                        avoid.append(line)
-                    # They're held, so a route just sits there until you let
-                    # them go — which is exactly what agreeing to something is.
-                    self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
-                    if npc.key in convo.thinking:
-                        convo.thinking.remove(npc.key)
+            with convo.turn:
+                self._one_round(convo, text)
         except Exception as exc:
             self.brain.last_error = f"conversation: {type(exc).__name__}: {exc}"
         finally:
             with self.lock:
-                convo.thinking = []
+                convo.running -= 1
+                # Only the last round in flight clears the indicator, or a
+                # queued second round would look like nobody was answering.
+                if convo.running <= 0:
+                    convo.thinking = []
+
+    def _one_round(self, convo: Conversation, text: str):
+        with self.lock:
+            members = [self.by_key[k] for k in convo.members if k in self.by_key]
+            group = ([self.name_for(members[0], self.player)] + [m.name for m in members]
+                     if members else [])
+            avoid = convo.recent(6)
+
+        also_heard: list[str] = []
+        for npc in members:
+            if convo.closed or self.conversation is not convo:
+                return
+            with self.lock:
+                speaker_name = self.name_for(npc, self.player)
+            with self.brain_lock:
+                self._throttle()
+                out = self.brain.speak(npc, self, speaker_name, text, also_heard,
+                                       group=group, avoid=avoid)
+            with self.lock:
+                if convo.closed:
+                    return
+                line = (out.get("say") or "").strip()
+                npc.emotion = out.get("emotion", npc.emotion)
+                npc.remember(out.get("memory", ""), self.day)
+                npc.adjust_trust("player", int(out.get("trust_speaker", 0) or 0))
+                stamp = f"D{self.day} {self.clock_str()}"
+                if line:
+                    self.said(npc, line)
+                    convo.add(npc.key, npc.name, npc.colour, line, stamp)
+                    also_heard.append(f"{npc.name}: {line}")
+                    avoid.append(line)
+                else:
+                    # The model had nothing that wasn't a repeat of something
+                    # already said. Show that, rather than leave a gap that
+                    # reads like the game is broken.
+                    convo.add(npc.key, npc.name, npc.colour,
+                              f"{npc.short} doesn't answer.", stamp, kind="silence")
+                # They're held, so a route just sits there until you let them
+                # go — which is exactly what agreeing to something is.
+                self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
+                if npc.key in convo.thinking:
+                    convo.thinking.remove(npc.key)
 
     def conversation_snapshot(self) -> dict:
         with self.lock:
             convo = self.conversation
             if not convo:
                 return {"ok": True, "conversation": None}
-            here = {c.key for c in self.in_earshot()}
             return {"ok": True, "conversation": {
                 "round": convo.round,
                 "lines": list(convo.lines),
@@ -919,8 +977,6 @@ class Game:
                 } for k in convo.members if k in self.by_key],
                 "can_invite": [{"key": c.key, "short": c.short, "colour": c.colour}
                                for c in self.in_earshot() if c.key not in convo.members],
-                "gone": [self.by_key[k].short for k in convo.members
-                         if k in self.by_key and k not in here],
                 "your_name": self.player.given_name,
             }}
 
@@ -963,7 +1019,7 @@ class Game:
                 with self.lock:
                     line = (out.get("say") or "").strip()
                     npc.emotion = out.get("emotion", npc.emotion)
-                    npc.remember(out.get("memory", ""))
+                    npc.remember(out.get("memory", ""), self.day)
                     npc.adjust_trust("player", int(out.get("trust_speaker", 0) or 0))
                     if line:
                         self.said(npc, line)
@@ -1026,6 +1082,10 @@ class Game:
         self.over = True
         self.ending = text
         self.event(text, "ending")
+        # The ending sits behind the conversation modal otherwise, so dying
+        # mid-sentence would look like the game had simply stopped.
+        if self.conversation:
+            self.conversation_end(None)
 
     # -- serialisation --------------------------------------------------------
 

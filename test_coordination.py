@@ -28,7 +28,7 @@ def check(label: str, ok: bool, detail: str = ""):
         FAILS.append(label)
 
 
-def stub(game, speak=(), opener=()):
+def stub(game, speak=(), opener=(), reflect=()):
     """Replace Brain._call with scripted structured-output payloads.
 
     Dispatches on which schema the caller asked for, so background planning
@@ -39,6 +39,7 @@ def stub(game, speak=(), opener=()):
     queues = {
         id(brain_mod.SPEAK_SCHEMA): list(speak),
         id(brain_mod.OPENER_SCHEMA): list(opener),
+        id(brain_mod.REFLECT_SCHEMA): list(reflect),
     }
 
     def _call(system, user, schema):
@@ -280,6 +281,19 @@ def main():
     check("and then they actually go", game.castaways[0].task["phase"] != "idle",
           str(game.castaways[0].task))
 
+    # Starting a second conversation without ending the first used to leave the
+    # first group held in place with nobody talking to them, forever.
+    game.conversation_start()
+    first = list(game.conversation.members)
+    game.conversation_start(game.castaways[1].short)
+    check("starting another conversation releases the last one",
+          not any(game.by_key[k].held for k in first
+                  if k not in game.conversation.members))
+    check("and the new one is the only one running",
+          len(game.conversation.members) == 1, str(game.conversation.members))
+    game.conversation_end()
+    check("nobody is left held afterwards", not any(c.held for c in game.castaways))
+
     print("\n9. Somebody dying doesn't stand there listening")
     game.conversation_start()
     with game.lock:
@@ -290,6 +304,36 @@ def main():
     check("they walk off mid-sentence", not victim.held, f"held={victim.held}")
     check("and they're out of the conversation",
           victim.key not in (game.conversation.members if game.conversation else []))
+    game.conversation_end()
+
+    # Two lines sent faster than the model answers used to interleave their
+    # replies into each other.
+    print("\n9b. Talking over yourself")
+    with game.lock:
+        for c in game.castaways:
+            c.x, c.y = game.player.x + 1.0, game.player.y
+            c.thirst = 80.0
+    game.conversation_start()
+    # The stub hands out numbered lines in order, so if the two rounds ever
+    # interleave their replies the numbers come back out of order.
+    ORDERED = ["Timber first.", "The rocks are north.", "Nobody watches the stores.",
+               "That squall took my fire.", "Coconuts again.", "My hands are shot.",
+               "Something moved past the wreck.", "Water tastes of iron."]
+    stub(game, speak=[
+        {"say": line, "emotion": "calm", "memory": "", "trust_speaker": 0,
+         "action": "keep_doing", "target": ""} for line in ORDERED
+    ])
+    game.conversation_say("First question.")
+    game.conversation_say("Second question, before you answered.")
+    settle(game, 18)
+    said = [l["text"] for l in game.conversation.lines
+            if l["key"] != "player" and l.get("kind") != "silence"]
+    order = [ORDERED.index(t) for t in said if t in ORDERED]
+    check("four replies, two rounds of two", len(order) == 4, str(said))
+    check("the second round waits rather than interleaving into the first",
+          order == sorted(order), str(order))
+    check("nobody is left marked as thinking", game.conversation.thinking == [],
+          str(game.conversation.thinking))
     game.conversation_end()
 
     # --- 10. names are not free --------------------------------------------
@@ -310,6 +354,115 @@ def main():
 
     # The chat panel used to spot new entries by counting them, which stops
     # working the instant the log hits its cap: same length every poll, forever.
+    # --- 12. what they keep, and what they let go of ------------------------
+    print("\n12. Memory")
+    from island.memory import HALF_LIFE_MINUTES, MemoryBank
+
+    m = MemoryBank()
+    check("a note goes in", m.remember("Della took two coconuts from the stores.", 1))
+    check("the same thing again reinforces instead of duplicating",
+          not m.remember("Della took two coconuts out of the stores.", 1)
+          and len(m.working) == 1, str(m.working))
+    check("...and it's heavier for having happened twice", m.working[0].weight > 1.0,
+          f"{m.working[0].weight:.2f}")
+    check("a different note is a different note",
+          m.remember("Silas will not say where he sleeps.", 1) and len(m.working) == 2)
+
+    m.fade(HALF_LIFE_MINUTES)
+    check("memories fade with time", all(x.weight < 1.05 for x in m.working),
+          str([round(x.weight, 2) for x in m.working]))
+    m.fade(HALF_LIFE_MINUTES * 4)
+    check("and eventually go entirely", m.working == [], str(m.working))
+
+    varied = [
+        "Della sleeps somewhere up past the ridge and won't say where.",
+        "There was smoke on the far headland this morning.",
+        "The tidepools are picked clean at low water.",
+        "Silas counted the timber twice while I watched.",
+        "Something got into the crate overnight.",
+        "I gave away my last coconut and regretted it before dark.",
+        "The reef cut my foot open on the second day.",
+        "Nobody has said out loud that the raft only takes two.",
+        "Rain came through the shelter roof in three places.",
+        "A gull followed me all the way back from the wreck.",
+        "The spring runs slower every afternoon.",
+        "My knife is missing and I did not lose it.",
+        "Della laughed when I said we would all get off this island.",
+        "There is a print in the sand bigger than mine.",
+        "The signal fire has been unlit for two nights running.",
+        "Salt has got into everything I own.",
+    ]
+    for note in varied:
+        m.remember(note, 2)
+    check("distinct memories stay distinct", len(m.working) >= 10,
+          f"{len(m.working)} kept of {len(varied)}")
+    check("working memory is capped, not unbounded",
+          0 < len(m.working) <= 12, f"{len(m.working)} kept of {len(varied)}")
+    check("only a handful ever reach a prompt", len(m.strongest()) <= 6,
+          str(len(m.strongest())))
+
+    m.set_standing([
+        "The stranger will take the raft the moment it floats.",
+        "Silas counts what everyone else puts in and adds nothing.",
+        "This is a long note that goes on and on and on and on and on and on and on and on",
+        "",
+        "A fourth thing.", "A fifth thing nobody asked for.",
+    ])
+    check("standing notes are capped at four", len(m.standing) == 4, str(m.standing))
+    check("blank ones are dropped", "" not in m.standing)
+    check("an over-long one is cut", all(len(n.split()) <= 17 for n in m.standing),
+          str([len(n.split()) for n in m.standing]))
+    before = list(m.standing)
+    m.set_standing(["Only this now."])
+    check("reflecting REPLACES rather than appends, so the prompt can't grow",
+          m.standing == ["Only this now."] and before != m.standing, str(m.standing))
+    m.set_standing([])
+    check("a model that returns nothing doesn't wipe them",
+          m.standing == ["Only this now."], str(m.standing))
+    check("standing notes reach the system prompt", "Only this now." in m.standing_block())
+
+    npc = game.castaways[0]
+    with game.lock:
+        npc.mind.set_standing(["The raft seats two and I intend to be on it."])
+    sys_prompt = game.brain._system(npc)
+    check("...and really are in the system prompt, not the situation block",
+          "The raft seats two and I intend to be on it." in sys_prompt
+          and "WHAT YOU HAVE DECIDED IS TRUE" in sys_prompt)
+    check("a castaway with no notes gets no empty heading",
+          "WHAT YOU HAVE DECIDED IS TRUE" not in game.brain._system(game.castaways[1]))
+
+    # The whole loop: they sit down, they think, and what they decided is in
+    # their system prompt from then on.
+    print("\n12b. Sitting down to think")
+    thinker = game.castaways[1]
+    with game.lock:
+        thinker.held = False
+        thinker.mind.standing = []
+        thinker.next_reflect_at = 0.0
+        thinker.stop("rest")
+        for note in ("The stranger gave me water and asked for nothing.",
+                     "Silas will not say where he sleeps.",
+                     "The raft is four days of work and nobody has started."):
+            thinker.mind.remember(note, 1)
+    stub(game, reflect=[{
+        "notes": ["The stranger is the only one here who has given me anything.",
+                  "Silas means to take the raft and go without us."],
+        "emotion": "wary",
+    }])
+    deadline = time.time() + 40
+    while time.time() < deadline and not thinker.mind.standing:
+        time.sleep(0.3)
+    check("resting triggers a reflection", bool(thinker.mind.standing),
+          str(thinker.mind.standing))
+    check("what they decided is now in their system prompt",
+          "Silas means to take the raft" in game.brain._system(thinker))
+    check("and it shows up in the log",
+          any(e["kind"] == "reflection" for e in game.log),
+          str([e["text"] for e in game.log if e["kind"] == "reflection"][:1]))
+    check("it also reaches the player's panel",
+          bool(thinker.snapshot(True)["notes"]), str(thinker.snapshot(True)["notes"]))
+    stub(game)
+
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]
     check("every entry has a rising id", ns == sorted(ns) and len(set(ns)) == len(ns))

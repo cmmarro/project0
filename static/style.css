@@ -225,6 +225,11 @@ h2[data-toggle]:hover { color: var(--ink); }
 .person.unknown { opacity: .65; font-style: italic; }
 .person.down { border-color: #572e26; }
 .trust { font-size: 11px; color: var(--dim); margin-top: 4px; }
+/* what they've decided is true — rewritten by them when they rest */
+.person .notes {
+  margin-top: 6px; padding-left: 8px; border-left: 2px solid #3a4a3c;
+  font-size: 11.5px; color: #9db3a4; font-style: italic; line-height: 1.5;
+}
 
 /* builds */
 .build { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 0; }
@@ -283,6 +288,7 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
 .note.hint .txt { color: #b79a63; font-style: italic; }
 .note.meeting .txt, .note.alert .txt, .note.ending .txt { color: var(--gold); }
 .note.allegiance .txt { color: #c98fd6; }
+.note.reflection .txt { color: #8fd6a8; font-style: italic; }
 .note.weather .txt { color: #7fa8c4; }
 .note.system .txt { color: var(--dim); }
 .note.danger .txt { color: var(--warn); font-weight: 600; }
@@ -379,6 +385,10 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .cline.mine { align-items: flex-end; }
+.cline.quiet {
+  color: var(--dim); font-style: italic; font-size: 12px;
+  text-align: center; padding: 2px 0;
+}
 .cline.mine .bubble { background: #1e2119; border-left-color: var(--gold); }
 
 .convo-thinking { font-size: 12px; color: var(--dim); font-style: italic; padding: 7px 2px 0; }

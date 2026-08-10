@@ -215,10 +215,43 @@ reach the player are worth catching:
 
 Every one of those is a line from a real playtest, and each has a test.
 
-Memories are written by the model in its own voice, capped at fourteen, and fed
-back in on the next call. Trust is a number that changes how the relationship is
-described in the next prompt. That loop — act in the world, read it back as
-text, act again — is the whole thing.
+Trust is a number that changes how the relationship is described in the next
+prompt. That loop — act in the world, read it back as text, act again — is the
+whole thing.
+
+### What they keep, and what they let go of
+
+Context is the scarce resource, and a memory list that only grows is the fastest
+way to exhaust it. So there are two tiers, and only one of them is allowed to
+change size.
+
+**Working memory** is what just happened, written by the model in its own voice.
+Each note carries a weight that halves about every day of game time, and below a
+floor it's gone. Saying the same thing twice doesn't add a second copy, it makes
+the existing one heavier — which is also why "I remember giving that coconut
+away" stopped appearing five times in a row in the log. Twelve are held; six
+reach a prompt.
+
+**Standing notes** are what they've decided is true, and they live in the
+*system* prompt rather than being appended to the situation. There is a fourth
+call for these:
+
+| call | when | returns |
+|---|---|---|
+| `reflect` | they've sat down to rest | up to four short things they intend to still know next week |
+
+It **replaces** the old set outright. That's the whole point: four lines on day
+one, four lines on day nine, so reflecting can never make the prompt bigger. All
+that changes is what the four lines say — and watching them change is watching
+somebody become a specific person. *"Silas means to take the raft and go without
+us"* is not in anybody's persona; it's a conclusion someone reached, sitting on
+the sand, from things that happened to them.
+
+Reflection isn't free either. It only happens while resting, and resting is
+hours you aren't drinking.
+
+The survivor cards show each castaway's standing notes, so you can read what
+they've concluded about you without them ever having said it out loud.
 
 ### What they aren't told
 
@@ -237,6 +270,7 @@ server.py               Flask routes
 island/world.py         procedural island — coastline, resource sites, pathfinding
 island/people.py        procedural cast — archetypes, trait axes, persona text
 island/actors.py        Actor / Player / Castaway — one body model for everyone
+island/memory.py        fading working memory, and the notes they rewrite when resting
 island/verbs.py         the shared verb table
 island/brain.py         prompts, schemas, offline fallbacks
 island/providers.py     model backends — Anthropic SDK, OpenAI-compatible HTTP
@@ -258,4 +292,6 @@ and the people are all different every time. Same seed, same run.
   decisions, no coordinated exclusion, no shared stash separate from the commons.
 - The raft still seats two regardless of cast size, so a four-person run is much
   crueller than a two-person one. Capacity should probably scale, or be rolled.
-- Named player, run summary, permadeath, and the rest of the roguelike frame.
+- Run summary, permadeath, and the rest of the roguelike frame.
+- Standing notes are per-person but not structurally *about* a person, so
+  two survivors can't compare their conclusions about a third.

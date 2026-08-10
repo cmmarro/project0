@@ -80,6 +80,20 @@ PLAN_SCHEMA = {
     "additionalProperties": False,
 }
 
+REFLECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "notes": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Up to four short things you have decided are true and want to still know in a week. Each under fifteen words, in your own voice. This REPLACES your old notes — anything you leave out, you are choosing to let go of.",
+        },
+        "emotion": {"type": "string", "enum": EMOTIONS},
+    },
+    "required": ["notes", "emotion"],
+    "additionalProperties": False,
+}
+
 OPENER_SCHEMA = {
     "type": "object",
     "properties": {
@@ -328,10 +342,13 @@ _GREETING = re.compile(
 
 
 def _words(s: str) -> set[str]:
-    return set(re.sub(r"[^a-z0-9 ]+", " ", (s or "").lower()).split())
+    """Content words. Apostrophes are closed up rather than split on, or
+    "water's west" and "water's gone" share a phantom "s" and look alike."""
+    flat = re.sub(r"[^a-z0-9 ]+", " ", re.sub(r"['\u2019]", "", (s or "").lower()))
+    return {w for w in flat.split() if len(w) > 1}
 
 
-def too_similar(line: str, other: str, threshold: float = 0.62) -> bool:
+def too_similar(line: str, other: str, threshold: float = 0.72) -> bool:
     """Is this line effectively the one that was just said?
 
     Small models loop. A greeting comes back three times, or the player's own
@@ -341,8 +358,9 @@ def too_similar(line: str, other: str, threshold: float = 0.62) -> bool:
     a, b = _words(line), _words(other)
     if not a or not b:
         return False
-    if len(a) <= 3 and len(b) <= 3:      # "Hello Barnaby" vs "Hello again Barnaby"
-        return bool(a & b) and abs(len(a) - len(b)) <= 1
+    # No special case for short lines: one shared word out of two is how
+    # "Water's west" and "Water's gone" differ, and eating the second one is
+    # worse than letting a rare echo through.
     return len(a & b) / max(len(a), len(b)) >= threshold
 
 
@@ -431,9 +449,16 @@ class Brain:
         return getattr(self.provider, "kind", "") == "openai"
 
     def _system(self, npc) -> str:
+        # Standing notes belong here rather than in the situation block: they
+        # are part of who this person is now, they change only when the
+        # castaway rests and rewrites them, and because they replace rather
+        # than accumulate the prompt cannot grow over a run.
+        notes = npc.mind.standing_block()
         if self._compact():
-            return "\n\n".join([compact_guide(), npc.persona_short, COMPACT_CONDUCT])
-        return "\n\n".join([world_guide(), npc.persona, CONDUCT])
+            parts = [compact_guide(), npc.persona_short, notes, COMPACT_CONDUCT]
+        else:
+            parts = [world_guide(), npc.persona, notes, CONDUCT]
+        return "\n\n".join(p for p in parts if p)
 
     @staticmethod
     def _polish(out: dict, fallback: str = "") -> dict:
@@ -476,7 +501,8 @@ class Brain:
             )
         others = "\n".join(known) if known else "  - Nobody. As far as you know you are the only person on this island."
 
-        mem = "\n".join(f"  - {m}" for m in npc.memories[-8:]) or "  - (nothing in particular yet)"
+        mem = "\n".join(f"  - {m.text}" for m in npc.mind.strongest()) \
+            or "  - (nothing in particular yet)"
 
         return f"""RIGHT NOW
 Day {game.day}, {game.clock_str()}{', dark' if game.is_night() else ''}. {game.weather}.
@@ -576,6 +602,43 @@ Say the first thing. Don't be polite about it if you don't feel polite."""
         if out is None:
             return {"say": self._canned(npc), "emotion": "calm"}
         return self._polish(out, fallback=self._canned(npc))
+
+    def reflect(self, npc, game) -> dict:
+        """Sitting down to rest, they decide what's worth still knowing.
+
+        This is the only call that writes to the system prompt. It replaces the
+        standing notes outright, so reflecting cannot make the prompt bigger —
+        it can only change what the four lines say.
+        """
+        held = "\n".join(f"  - {n}" for n in npc.mind.standing) or "  - (nothing yet)"
+        recent = "\n".join(f"  - {m.text}" for m in npc.mind.strongest(8)) or "  - (nothing)"
+        user = f"""{self._situation(npc, game)}
+
+You've stopped and sat down. Nobody is talking to you and nothing needs doing
+this minute.
+
+WHAT YOU HAVE BEEN CARRYING
+{held}
+
+WHAT HAS HAPPENED LATELY
+{recent}
+
+Rewrite what you carry. Four things at most, each a short sentence. Anything
+you leave out you are choosing to let go of, and most of it should go — the
+weather, who fetched what, all of it fades.
+
+Keep what changes how you will act: what you have decided about a person, what
+you have decided about getting off this island, and anything you are not going
+to say out loud. Be specific about people by name."""
+        out = self._call(self._system(npc), user, REFLECT_SCHEMA)
+        if out is None:
+            return {"notes": [], "emotion": npc.emotion}
+        notes = out.get("notes")
+        if isinstance(notes, str):
+            notes = [notes]
+        out["notes"] = [tidy_line(str(n), limit=110, speech=False)
+                        for n in (notes or []) if str(n).strip()]
+        return out
 
     def first_contact(self, npc, game, other) -> dict:
         alone_days = game.day

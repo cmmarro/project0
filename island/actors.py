@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 
 from . import world
+from .memory import MemoryBank
 
 
 def clamp(v, lo=0.0, hi=100.0):
@@ -153,7 +154,9 @@ class Castaway(Actor):
         self.role = person["role"]
         self.pronouns = person["pronouns"]
 
-        self.memories: list[str] = []
+        # Two tiers: fading notes about what happened, and a handful of
+        # standing convictions they rewrite themselves when they rest.
+        self.mind = MemoryBank()
         self.trust: dict[str, int] = {}      # actor key -> -15..15
         self.met: set[str] = set()           # actor keys they've made contact with
         self.met_on: dict[str, int] = {}     # ...and the day it happened
@@ -167,6 +170,7 @@ class Castaway(Actor):
         self.allies: set[str] = set()
 
         self.next_plan_at = 0.0
+        self.next_reflect_at = 0.0
         self.busy = False
         # Standing in a conversation. They stay put and stop re-planning until
         # it breaks up — or until they're thirsty enough to walk off mid-word.
@@ -201,12 +205,12 @@ class Castaway(Actor):
             return "you think they're alright"
         return "you'd trust them with your life"
 
-    def remember(self, note: str):
-        note = (note or "").strip()
-        if not note:
-            return
-        self.memories.append(note)
-        del self.memories[:-14]
+    @property
+    def memories(self) -> list[str]:
+        return self.mind.texts()
+
+    def remember(self, note: str, day: int = 1):
+        self.mind.remember(note, day)
 
     # -- movement -------------------------------------------------------------
 
@@ -249,5 +253,6 @@ class Castaway(Actor):
             "pronouns": self.pronouns,
             "trust_player": self.trust_of("player"),
             "allies": sorted(self.allies),
+            "notes": list(self.mind.standing),
         })
         return base
