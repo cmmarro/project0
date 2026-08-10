@@ -7,10 +7,19 @@ Run:  pip install -r requirements.txt
 
 from __future__ import annotations
 
+import logging
 import os
 import pathlib
+import threading
+import webbrowser
 
+import flask.cli
 from flask import Flask, jsonify, request, send_from_directory
+
+# This is a single-player game on localhost, so the dev-server banner and a log
+# line for every poll are just noise in the window the player is looking at.
+flask.cli.show_server_banner = lambda *a, **k: None
+logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
 from island import providers, settings, world
 from island.state import Game, start
@@ -125,7 +134,18 @@ def say():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    banner = "online — " + game.brain.model if game.brain.online else "OFFLINE (no API key; canned dialogue)"
-    print(f"\n  Castaway: {banner}")
-    print(f"  http://127.0.0.1:{port}\n")
-    app.run(host="0.0.0.0", port=port, threaded=True, debug=False)
+    url = f"http://127.0.0.1:{port}"
+    backend = game.brain.model if game.brain.online else "not set up yet — pick one in the browser"
+
+    print("\n  ---------------------------------------------")
+    print("   Castaway is running.")
+    print(f"   Open this in your browser:  {url}")
+    print(f"   Survivors are played by:    {backend}")
+    print("   Press Ctrl+C here to stop.")
+    print("  ---------------------------------------------\n")
+
+    # Pop the browser open so nobody has to copy a URL. ISLAND_NO_BROWSER=1 to skip.
+    if os.environ.get("ISLAND_NO_BROWSER") != "1":
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+
+    app.run(host="127.0.0.1", port=port, threaded=True, debug=False)

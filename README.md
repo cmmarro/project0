@@ -13,6 +13,10 @@ than any one person can manage alone.
 
 ## Running it
 
+**Never used a terminal? Read [GETTING-STARTED.md](GETTING-STARTED.md) instead** —
+it's the same thing with none of the assumptions. On Windows you can just
+double-click `run.bat`; on Mac or Linux, `./run.sh`.
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python server.py              # http://127.0.0.1:5000
