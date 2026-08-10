@@ -12,8 +12,12 @@ from __future__ import annotations
 import json
 import time
 
-from island import verbs, world
+from island import settings, verbs, world
 from island.state import Game, start
+
+# Run against known settings, not whatever the developer last saved in the UI.
+settings._current = dict(settings.DEFAULTS)
+settings._current["prompt_style"] = "full"
 
 FAILS: list[str] = []
 
@@ -39,7 +43,8 @@ def stub(game, speak=(), opener=()):
 
     def _call(system, user, schema):
         # Mimic the real thing closely enough to catch schema drift.
-        assert "THE SITUATION" in system, "world guide missing from system prompt"
+        assert ("THE SITUATION" in system or "WHERE YOU ARE" in system), \
+            "world guide missing from system prompt"
         assert schema["additionalProperties"] is False
         q = queues.get(id(schema))
         if q is None:          # a plan call: let the offline fallback handle it
@@ -75,7 +80,7 @@ def main():
     print("\nCastaway — coordination proof\n")
 
     game = Game(seed=42, cast_size=2)
-    game.brain.client = object()          # pretend we're online so _call is used
+    game.brain.provider = object()        # pretend we're online so _call is used
     stub(game)
     start(game)
     freeze_plans(game)

@@ -41,6 +41,15 @@ Load a model in LM Studio, start its server, hit **refresh** to pull the model
 list, then **Test connection** — that runs a real structured call and tells you
 which mode it negotiated, so "connected" means connected.
 
+Small local models need help in three places, all handled for you: **prompt
+size** (a much shorter brief goes to local backends by default, because a 2B
+model drowns in five thousand characters and starts reciting them back),
+**reasoning** (a model cannot emit `<think>` while output is schema-constrained,
+so thinking is switched off via `chat_template_kwargs` and in words, and stripped
+if it arrives anyway), and **the reply itself** (lines are salvaged — stage
+directions removed, self-introductions and thirst-number narration dropped, and
+the result cut to something readable).
+
 Backends disagree about how to ask for JSON, and local models disagree about how
 well they produce it, so the provider negotiates rather than assuming. It tries
 `json_schema`, then `json_object`, then plain text with the schema described in

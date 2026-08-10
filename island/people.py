@@ -210,6 +210,15 @@ What you don't say: {secret}
 
 How you talk: {arch['voice']}"""
 
+    # A stripped version for small local models, which lose the thread in a
+    # long prompt and start reciting it back.
+    short_persona = (
+        f"You are {name}, {label}, once a {arch['role']}. "
+        f"{arch['competence']} "
+        f"{_trait_sentences(traits).split('.')[0]}. "
+        f"{_wants(arch, traits).split('.')[0]}."
+    )
+
     return {
         "key": key,
         "name": name,
@@ -220,6 +229,7 @@ How you talk: {arch['voice']}"""
         "role": arch["role"],
         "traits": traits,
         "persona": persona,
+        "persona_short": short_persona,
     }
 
 

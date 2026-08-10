@@ -16,7 +16,9 @@ from http.server import HTTPServer
 sys.path.insert(0, "tools")
 import mock_openai_server as mock  # noqa: E402
 
-from island import providers  # noqa: E402
+from island import providers, settings  # noqa: E402
+
+settings._current = dict(settings.DEFAULTS)
 from island.brain import PLAN_SCHEMA, SPEAK_SCHEMA  # noqa: E402
 
 FAILS: list[str] = []
@@ -204,6 +206,38 @@ def main():
     finally:
         mock.REQUIRE_TOKEN = False
         httpd.shutdown()
+
+    print("\nSalvaging what a small model says")
+    from island.brain import tidy_line
+    salvage = [
+        ("I am Barnaby Ferreira (he/him), a 34-year-old adjuster forced into a war for survival", ""),
+        ("I need to react to my current state. Thirst is high (38/100).", ""),
+        ("*wipes his forehead* Water. We need it before dark.", "Water. We need it before dark."),
+        ("Fine. But I'm counting what goes in that pile.", "Fine. But I'm counting what goes in that pile."),
+        ("I am Odell Kaminski. Water is west of here.", "Water is west of here."),
+        ("I am thirsty and there is no water left.", "I am thirsty and there is no water left."),
+    ]
+    for raw, want in salvage:
+        got = tidy_line(raw)
+        check(f"{'drops' if want == '' else 'keeps'}: {raw[:38]}…", got == want, f"got {got!r}")
+    long = "So anyway. " * 60
+    check("a rambling answer is cut to something readable", len(tidy_line(long)) <= 261,
+          f"{len(tidy_line(long))} chars")
+
+    print("\nReasoning models")
+    think = "<think>The user wants me to decide. Let me weigh the options.</think>\n" \
+            '{"say": "Water is west. I am going.", "emotion": "determined"}'
+    got = providers.extract_json(think)
+    check("a <think> block is stripped before parsing",
+          isinstance(got, dict) and got.get("say", "").startswith("Water"), str(got))
+    p_nt = providers.OpenAICompatProvider("http://x/v1", "m", no_think=True)
+    body = p_nt._payload("SYS", "USR", {"type": "object", "properties": {}}, 100, "json_schema")
+    check("thinking is switched off in the request body",
+          body.get("chat_template_kwargs") == {"enable_thinking": False}, str(body.get("chat_template_kwargs")))
+    check("and asked for in words too", "/no_think" in body["messages"][0]["content"])
+    p_t = providers.OpenAICompatProvider("http://x/v1", "m", no_think=False)
+    body2 = p_t._payload("SYS", "USR", {"type": "object", "properties": {}}, 100, "json_schema")
+    check("and left alone when unticked", "chat_template_kwargs" not in body2)
 
     print("\nUnreachable backend")
     dead = providers.OpenAICompatProvider("http://127.0.0.1:9/v1", "nope", timeout=3)

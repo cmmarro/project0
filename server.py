@@ -124,6 +124,15 @@ def test_config():
         return jsonify({"ok": False, "message": str(exc)})
 
 
+@app.post("/api/restart")
+def restart():
+    """New island, new cast, same backend settings."""
+    global game
+    game = Game()
+    start(game)
+    return jsonify({"ok": True, "seed": game.seed})
+
+
 @app.post("/api/say")
 def say():
     data = request.get_json(silent=True) or {}

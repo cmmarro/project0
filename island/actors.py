@@ -146,6 +146,7 @@ class Castaway(Actor):
         super().__init__(person["key"], person["name"], person["colour"], pos)
         self.short = person["short"]
         self.persona = person["persona"]
+        self.persona_short = person.get("persona_short", person["persona"])
         self.traits = person["traits"]
         self.role = person["role"]
         self.pronouns = person["pronouns"]

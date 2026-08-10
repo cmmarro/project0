@@ -30,10 +30,15 @@ class ProviderError(Exception):
 # --- schema-tolerant parsing -------------------------------------------------
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
+_THINK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
 
 
 def extract_json(text: str) -> dict | None:
     """Get an object out of a response that may be wrapped in prose or fences."""
+    if not text:
+        return None
+    # Reasoning models put <think>…</think> in front of the answer.
+    text = _THINK.sub(" ", text).strip()
     if not text:
         return None
     candidates = [text]
@@ -196,7 +201,7 @@ class OpenAICompatProvider(BaseProvider):
     kind = "openai"
 
     def __init__(self, base_url: str, model: str, api_key: str = "",
-                 temperature: float = 0.8, timeout: int = 120):
+                 temperature: float = 0.8, timeout: int = 120, no_think: bool = True):
         self.base = self.normalise(base_url)
         self.model = model
         # No placeholder token. LM Studio validates the format of whatever you
@@ -205,10 +210,15 @@ class OpenAICompatProvider(BaseProvider):
         self.api_key = (api_key or "").strip()
         self.temperature = temperature
         self.timeout = timeout
+        # Reasoning models can't emit <think> under a schema constraint — the
+        # generation is grammar-locked from the first token, so the request
+        # fails or comes back mangled. Ask them to skip it.
+        self.no_think = no_think
+        self.send_template_kwargs = no_think
         # Which response_format modes this backend will accept. Each gets struck
         # off the first time it's rejected, so we stop asking. LM Studio takes
         # json_schema or text and has no json_object; other servers differ again.
-        self.modes = ["json_schema", "json_object", "text"]
+        self.modes = ["json_schema", "json_schema_loose", "json_object", "text"]
         self.mode_used: str | None = None
         self.label = f"{self.base} · {model or '(no model set)'}"
 
@@ -274,7 +284,11 @@ class OpenAICompatProvider(BaseProvider):
     def _payload(self, system: str, user: str, schema: dict, max_tokens: int, mode: str) -> dict:
         # Only json_schema enforces the shape server-side. The other two modes
         # have to ask for it in words, so the schema goes into the system prompt.
-        sys_text = system if mode == "json_schema" else f"{system}\n\n{schema_hint(schema)}"
+        enforced = mode.startswith("json_schema")
+        sys_text = system if enforced else f"{system}\n\n{schema_hint(schema)}"
+        if self.no_think:
+            sys_text += ("\n\nAnswer immediately with the JSON object. Do not reason step by "
+                         "step, do not write <think> tags, do not explain yourself. /no_think")
         body = {
             "model": self.model,
             "messages": [
@@ -285,11 +299,17 @@ class OpenAICompatProvider(BaseProvider):
             "temperature": self.temperature,
             "stream": False,
         }
-        if mode == "json_schema":
-            body["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "reply", "strict": True, "schema": schema},
-            }
+        if self.send_template_kwargs:
+            # Qwen3 and friends read this to switch reasoning off. Backends that
+            # don't know it usually ignore it; the ones that 400 get retried without.
+            body["chat_template_kwargs"] = {"enable_thinking": False}
+        if enforced:
+            spec = {"name": "reply", "schema": schema}
+            if mode == "json_schema":
+                # Some backends want it, some reject it. If strict fails we retry
+                # the same mode without it before giving up on schemas entirely.
+                spec["strict"] = True
+            body["response_format"] = {"type": "json_schema", "json_schema": spec}
         elif mode == "json_object":
             body["response_format"] = {"type": "json_object"}
         # text mode sends no response_format at all — every backend accepts that.
@@ -303,6 +323,24 @@ class OpenAICompatProvider(BaseProvider):
                 data = self._request("/chat/completions",
                                      self._payload(system, user, schema, max_tokens, mode))
             except ProviderError as exc:
+                if self.send_template_kwargs and "chat_template_kwargs" in str(exc):
+                    # Backend doesn't accept that hint. Drop it and retry this mode.
+                    self.send_template_kwargs = False
+                    try:
+                        data = self._request("/chat/completions",
+                                             self._payload(system, user, schema, max_tokens, mode))
+                    except ProviderError as exc2:
+                        exc = exc2
+                    else:
+                        failures.append(f"{mode}: retried without chat_template_kwargs")
+                        data = data
+                        choices = data.get("choices") or []
+                        if choices:
+                            content = (choices[0].get("message") or {}).get("content") or ""
+                            parsed = extract_json(content)
+                            if parsed is not None:
+                                self.mode_used = mode
+                                return coerce(schema, parsed)
                 failures.append(f"{mode}: {exc}")
                 if "HTTP 4" in str(exc) and mode != "text":
                     # This backend doesn't offer that mode. Stop asking for it.
@@ -347,6 +385,7 @@ class OpenAICompatProvider(BaseProvider):
         )
         described = {
             "json_schema": "structured output (json_schema) — the strongest mode",
+            "json_schema_loose": "structured output (json_schema without the strict flag)",
             "json_object": "JSON-object mode; this backend has no json_schema, so replies get repaired",
             "text": "plain text with the schema asked for in the prompt — the loosest mode, "
                     "expect the occasional rough turn",
@@ -374,5 +413,6 @@ def build(settings: dict) -> BaseProvider | None:
             api_key=settings.get("api_key", ""),
             temperature=float(settings.get("temperature", 0.8)),
             timeout=int(settings.get("timeout", 120)),
+            no_think=bool(settings.get("no_think", True)),
         )
     raise ProviderError(f"unknown provider {provider!r}")

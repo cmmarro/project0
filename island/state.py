@@ -28,7 +28,7 @@ MEET_RADIUS = 2.6           # close enough to make contact
 SIGHT = 6.5                 # close enough to see someone you haven't met
 MAX_REPLIES = 2             # how many people answer one thing you say out loud
 
-DECAY = {"thirst": 0.20, "hunger": 0.11, "energy": 0.09}
+DECAY = {"thirst": 0.09, "hunger": 0.05, "energy": 0.045}
 
 WEATHERS = [
     ("clear", "Clear and bright"),
@@ -73,6 +73,9 @@ class Game:
             spot = world.random_start(rng, taken, min_gap=7.0)
             taken.append(spot)
             self.castaways.append(Castaway(person, spot))
+        self.player.inventory.update({"water": 2, "coconut": 1})
+        for c in self.castaways:
+            c.give_item("water", 1)
         self.actors = [self.player, *self.castaways]
         self.by_key = {a.key: a for a in self.actors}
         self.player_met: set[str] = set()
@@ -87,6 +90,7 @@ class Game:
         self.weather_key, self.weather = WEATHERS[0]
         self.next_weather_at = 0.0
         self.next_hint_at = time.time() + 30
+        self._warned: set[str] = set()
 
         self.transcript: list[str] = []
         self.log: list[dict] = []
@@ -249,6 +253,7 @@ class Game:
             for npc in self.castaways:
                 self._advance(npc, dt, gm)
             self._contacts()
+            self._warnings()
             self._hints()
             self._schedule()
             if self.player.down and not self.over:
@@ -426,6 +431,68 @@ class Game:
             self.player_met.add(b.key)
         else:
             a.met.add(b.key)
+
+    def _warnings(self):
+        """Tell the player they're dying before they are dead."""
+        p = self.player
+        water = next((n for n, items in world.HARVEST.items() if "water" in items), "the spring")
+        checks = [
+            ("thirst30", p.thirst < 30 and p.thirst > 0,
+             f"You're badly thirsty. There's water at {water} — "
+             + (f"{self._bearing_to(water)} of you. " if self._bearing_to(water) else "")
+             + "Stand there and press E, then press Q to drink."),
+            ("thirst0", p.thirst <= 0,
+             "You have no water left and it is starting to kill you. Get to "
+             f"{water} now."),
+            ("hunger25", p.hunger < 25, "You're very hungry. Coconuts are at the palm grove; press E there, then F."),
+            ("energy20", p.energy < 20, "You're exhausted. Press R to rest for a while."),
+        ]
+        for key, hit, text in checks:
+            if hit and key not in self._warned:
+                self._warned.add(key)
+                self.event(text, "danger")
+            elif not hit and key in self._warned and not key.endswith("0"):
+                self._warned.discard(key)
+
+    def _bearing_to(self, place: str) -> str:
+        data = world.LANDMARKS.get(place)
+        if not data:
+            return ""
+        b = bearing((self.player.x, self.player.y), data["pos"])
+        return "" if b == "close by" else b
+
+    def player_context(self) -> dict:
+        """What's under the player's feet and what they should press."""
+        p = self.player
+        here = world.landmark_at(p.x, p.y, radius=2.8)
+        items = world.HARVEST.get(here or "")
+        where = f"At {here}" if here else world.describe_position(p.x, p.y).capitalize()
+
+        if p.down:
+            return {"where": "You've collapsed", "advice": "Someone would have to get water into you.",
+                    "urgent": True}
+
+        bits = []
+        if items:
+            bits.append(f"<b>E</b> to gather {'/'.join(items)}")
+        if p.inventory.get("water"):
+            bits.append("<b>Q</b> to drink")
+        if any(p.inventory.get(f) for f in ("coconut", "fish")):
+            bits.append("<b>F</b> to eat")
+        if here == "camp":
+            bits.append("build and store things here")
+        if not bits:
+            water = next((n for n, i in world.HARVEST.items() if "water" in i), None)
+            if water:
+                b = self._bearing_to(water)
+                bits.append(f"nothing here — water is at {water}" + (f", {b}" if b else ""))
+
+        urgent = p.thirst < 30 or p.hunger < 20 or p.health < 50
+        if p.thirst < 30 and not p.inventory.get("water"):
+            water = next((n for n, i in world.HARVEST.items() if "water" in i), "the spring")
+            b = self._bearing_to(water)
+            bits.insert(0, f"<b>you need water</b> — {water}" + (f" is {b}" if b else ""))
+        return {"where": where, "advice": " · ".join(bits), "urgent": urgent}
 
     def _hints(self):
         now = time.time()
@@ -689,6 +756,7 @@ class Game:
                 "provider": getattr(self.brain.provider, "kind", "offline"),
                 "llm_error": self.brain.last_error, "llm_calls": self.brain.calls,
                 "here": world.landmark_at(self.player.x, self.player.y, radius=2.8),
+                "context": self.player_context(),
                 "seed": self.seed,
                 "factions": [[self.by_key[k].short for k in g if k in self.by_key]
                              for g in self.factions() if len(g) > 1],

@@ -30,6 +30,8 @@ async function loadConfig() {
   cfgEl('cfg-effort').value = CFG.effort;
   cfgEl('cfg-maxtok').value = CFG.max_tokens;
   cfgEl('cfg-timeout').value = CFG.timeout;
+  cfgEl('cfg-style').value = CFG.prompt_style || 'auto';
+  cfgEl('cfg-nothink').checked = CFG.no_think !== false;
   syncProvider();
   status(d.online ? `connected — ${d.backend}` : (d.error || 'offline'), d.online ? 'ok' : 'warn');
 }
@@ -44,6 +46,8 @@ function formValues() {
     effort: cfgEl('cfg-effort').value,
     max_tokens: parseInt(cfgEl('cfg-maxtok').value, 10) || 1200,
     timeout: parseInt(cfgEl('cfg-timeout').value, 10) || 120,
+    prompt_style: cfgEl('cfg-style').value,
+    no_think: cfgEl('cfg-nothink').checked,
   };
 }
 

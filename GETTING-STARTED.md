@@ -93,8 +93,15 @@ canned lines. Fine for seeing how it moves; not worth playing.
 - **Enter** jumps to the text box — whatever you type is *said out loud*, and
   only people standing near you can hear it
 
+**Don't die of thirst.** The strip under the map always tells you where you are
+and what to press. Walk to the spring, press **E** a few times to fill up, then
+**Q** to drink. You start with two waters, which is enough to get there.
+
 You start alone and you don't know whether anyone else survived. Walk around
-until you find someone. The log on the right tells you what you're hearing.
+until you find someone — the log tells you when something's near. The chat panel
+shows what everyone says; **talk only** filters out the world events.
+
+If you die, there's a button to wash up on a fresh island.
 
 To stop the game, close the black window (or press **Ctrl+C** in it).
 
@@ -117,6 +124,18 @@ off, because LM Studio checks the shape of whatever you send.
 **"'response_format.type' must be 'json_schema' or 'text'".** You're on an older
 build of this game — `git pull` (or re-download the ZIP) and try again. LM Studio
 has no JSON-object mode, which the game used to try as a fallback.
+
+**A smarter model fails but a small one works.** Almost always a reasoning
+model. With structured output on, generation is locked to the schema from the
+first token, so the model can't produce its `<think>` block and the request dies.
+Leave **"Tell reasoning models not to think"** ticked in settings (it is by
+default), or turn thinking off in LM Studio. The game also strips `<think>`
+blocks if they arrive anyway.
+
+**Survivors recite their own description instead of talking.** That's a small
+model repeating its prompt. The game strips the worst of it, and **Prompt size:
+auto** already sends local models a much shorter brief. If it's still bad, a 7B
+instruct model behaves far better than a 2B.
 
 **"Test connection" says no model is loaded.** Load a model in LM Studio first,
 then press **refresh** in the game's settings.

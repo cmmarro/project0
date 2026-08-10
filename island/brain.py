@@ -14,6 +14,7 @@ Without an API key, deterministic fallbacks keep the game playable.
 from __future__ import annotations
 
 import random
+import re
 import threading
 
 from . import providers, settings, world
@@ -42,8 +43,8 @@ SPEAK_SCHEMA = {
         },
         "trust_speaker": {
             "type": "integer",
-            "enum": [-3, -2, -1, 0, 1, 2, 3],
-            "description": "How this exchange moved your trust in the person who just spoke to you. 0 is the normal answer.",
+            "description": "How this exchange moved your trust in the person who just spoke to you, "
+                           "from -3 to 3. 0 is the normal answer.",
         },
         "action": {
             "type": "string",
@@ -91,6 +92,26 @@ OPENER_SCHEMA = {
 
 
 # --- Prompt pieces -----------------------------------------------------------
+
+def compact_guide() -> str:
+    """A much shorter brief, for small local models that lose the thread."""
+    places = ", ".join(f"{n} ({'/'.join(world.HARVEST[n])})" if n in world.HARVEST else n
+                       for n in world.LANDMARKS)
+    return f"""WHERE YOU ARE
+Shipwrecked on a small island. No radio, no rescue coming. You must get off it
+or live here.
+
+PLACES: {places}.
+Camp is where the crate washed up; you build there from shared stores.
+The raft seats {RAFT_CAPACITY} and takes more work than one person can do alone.
+
+YOU CAN: gather, go_to <place>, build <thing>, take <item>, deposit, give <item>,
+eat, drink, rest, revive <name>, follow <name>, board.
+Everyone here can do exactly the same things. Nobody is in charge.
+
+Thirst kills fastest. Water is at the spring. If thirst or hunger hits zero you
+start dying, and you collapse when your condition runs out."""
+
 
 def world_guide() -> str:
     places = "\n".join(f"  - {n}: {d['desc']}" for n, d in world.LANDMARKS.items())
@@ -148,25 +169,109 @@ Everyone here has exactly this list. The others can do everything you can do, an
 you can do everything they can. Nobody has special powers and nobody is in charge."""
 
 
-CONDUCT = """HOW TO PLAY YOURSELF
+CONDUCT = """HOW TO WRITE YOUR LINE
+The "say" field is the words that come out of your mouth. Nothing else goes in
+it. Not your name, not your age, not your job, not your thirst number, not your
+reasoning, not a description of what you are doing. Just speech.
+
+WRONG: "I am Barnaby Ferreira (he/him), a 34-year-old insurance adjuster, and I
+        must survive."
+WRONG: "I need to react to my current state. Thirst is 38/100 and energy is 0."
+WRONG: "*wipes his forehead* Water. We need water."
+RIGHT: "There's water west of here. I'm going. Come or don't."
+RIGHT: "You've been sat on that crate all morning."
+RIGHT: "Don't touch the timber. That's the raft."
+
+One or two sentences. Say the thing a tired, frightened, specific person would
+actually say out loud. Everyone already knows who you are — never introduce
+yourself or restate your situation.
+
+HOW TO BEHAVE
 Stay in character. You are a person on a beach, not an assistant. Never offer
-help, never summarise, never mention being an AI, never break character.
+help, never summarise, never mention being an AI or a model or a prompt.
 
-Speak in one to three sentences. Speech only — no asterisks, no stage directions,
-no narrating your own actions.
+React to how things actually are. If you are badly thirsty it is in your voice.
+If someone sat at camp while you hauled timber, you noticed.
 
-React to the state of things as they actually are. If you are badly thirsty, it
-is in your voice. If someone has been sitting at camp while you hauled timber,
-you have noticed. If you overheard something, it stays with you.
+You are not anybody's helper. Your own survival comes first, and whether these
+other people help or hurt that is a real question. Keep your own stash and your
+own counsel if you want — but the raft is more work than one person can do, and
+the island is not big enough to avoid anyone for long.
 
-You are not anybody's helper. Your own survival comes first, and it is a real
-question whether these other people make that more likely or less. Working with
-someone is worth it when it is worth it. If you'd rather keep your own stash and
-your own counsel, do that — but be aware the raft is more work than one person
-can do alone, and the island is not big enough to avoid anyone for long.
+Trust moves slowly. Zero is the normal answer."""
 
-Trust moves slowly. Zero is the normal answer. Save 2 or 3 for something that
-actually cost the other person something."""
+
+COMPACT_CONDUCT = """RULES
+The "say" field is speech only — the exact words out of your mouth.
+Never state your name, age, job, or your thirst/hunger numbers. Never explain
+your reasoning. Never write *actions* in asterisks. One or two short sentences.
+
+WRONG: "I am Odell Kaminski, a deckhand, and my thirst is 38/100."
+WRONG: "I need to react to my current state."
+RIGHT: "Water's west. I'm going."
+RIGHT: "You touch that timber and we're going to have a problem."
+
+You are a tired, frightened person on a beach. Your survival comes first."""
+
+
+# Shapes that mean the model narrated its prompt instead of speaking a line.
+# Checked per sentence, against the raw text, before anything is stripped.
+_META_I = re.compile(
+    r"\d+\s*/\s*100"
+    r"|\b(he/him|she/her|they/them)\b"
+    r"|\bas (an? )?(ai|assistant|language model|character)\b"
+    r"|\bi (need|have) to (react|respond|answer|decide|choose)\b"
+    r"|\bmy current (state|situation|status)\b"
+    r"|\b(the|this) (user|player|prompt|schema|instruction)s?\b"
+    r"|\bjson\b"
+    r"|\b\d+[- ]year[- ]old\b"
+    r"|^\s*as \w+,\s*i\b"
+    r"|\b(thirst|hunger|energy|condition) is (high|low|critical|at)\b",
+    re.I,
+)
+# Self-introduction: "I am Firstname Lastname", "I'm Odell Kaminski". Case
+# matters here — it's what separates a name from "I am counting the timber".
+_META_NAME = re.compile(r"\bI(?: am|'m) [A-Z][a-z]+ [A-Z][a-z]+")
+
+_STAGE = re.compile(r"\*[^*]{0,80}\*|\[[^\]]{0,80}\]")
+_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+
+def tidy_line(text: str, limit: int = 260) -> str:
+    """Salvage a speakable line from whatever a small model produced.
+
+    Local models narrate their own prompt back — "I am Barnaby Ferreira
+    (he/him), a 34-year-old adjuster…" — and run past any sensible length. Drop
+    the sentences that are the model talking about itself rather than a person
+    talking, strip stage directions, and keep it readable.
+    """
+    line = (text or "").strip()
+    if not line:
+        return ""
+
+    if len(line) > 1 and line[0] in "\"'\u201c\u2018" and line[-1] in "\"'\u201d\u2019":
+        line = line[1:-1].strip()
+
+    kept = []
+    for raw in _SENTENCE.split(line):
+        raw = raw.strip()
+        if not raw:
+            continue
+        if _META_I.search(raw) or _META_NAME.search(raw):
+            continue
+        cleaned = re.sub(r"\s+", " ", _STAGE.sub(" ", raw)).strip()
+        if not cleaned or cleaned in ".!?":
+            continue
+        kept.append(cleaned)
+        if len(" ".join(kept)) > limit:
+            break
+
+    out = " ".join(kept).strip(" -\u2013\u2014:")
+    if len(out) > limit:
+        cut = out[:limit]
+        stop = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
+        out = cut[:stop + 1] if stop > limit * 0.5 else cut.rstrip() + "\u2026"
+    return out.strip()
 
 
 def _inv(inventory: dict[str, int]) -> str:
@@ -228,8 +333,32 @@ class Brain:
 
     # -- prompt assembly ------------------------------------------------------
 
+    def _compact(self) -> bool:
+        """Small local models do better with far less text."""
+        style = settings.get().get("prompt_style", "auto")
+        if style == "compact":
+            return True
+        if style == "full":
+            return False
+        return getattr(self.provider, "kind", "") == "openai"
+
     def _system(self, npc) -> str:
+        if self._compact():
+            return "\n\n".join([compact_guide(), npc.persona_short, COMPACT_CONDUCT])
         return "\n\n".join([world_guide(), npc.persona, CONDUCT])
+
+    @staticmethod
+    def _polish(out: dict, fallback: str = "") -> dict:
+        """Strip the model's narration out of anything meant to be spoken."""
+        if not isinstance(out, dict):
+            return out
+        if "say" in out:
+            out["say"] = tidy_line(out.get("say", "")) or fallback
+        if "thought" in out:
+            out["thought"] = tidy_line(out.get("thought", ""), limit=120)
+        if "memory" in out:
+            out["memory"] = tidy_line(out.get("memory", ""), limit=160)
+        return out
 
     def _situation(self, npc, game) -> str:
         stores = _inv(game.stores)
@@ -284,7 +413,9 @@ the dark, the water? What actually moves you closer to getting off this island?
 And decide who, if anyone, you are doing this with: throwing in with someone
 means sharing what you gather, and it means depending on them."""
         out = self._call(self._system(npc), user, PLAN_SCHEMA)
-        return out if out is not None else self._fallback_plan(npc, game)
+        if out is None:
+            return self._fallback_plan(npc, game)
+        return self._polish(out)
 
     def speak(self, npc, game, speaker_name: str, line: str, also_heard: list[str]) -> dict:
         heard = ""
@@ -303,7 +434,9 @@ Answer them, and decide what you do next. If they've asked you to do something,
 it is entirely your call whether you do it — weigh who is asking and what it
 costs you."""
         out = self._call(self._system(npc), user, SPEAK_SCHEMA)
-        return out if out is not None else self._fallback_speak(npc, game, line)
+        if out is None:
+            return self._fallback_speak(npc, game, line)
+        return self._polish(out, fallback=self._canned(npc))
 
     def opener(self, npc, game, partner, topic: str) -> dict:
         user = f"""{self._situation(npc, game)}
@@ -313,7 +446,9 @@ something you want to raise: {topic}
 
 Say the first thing. Don't be polite about it if you don't feel polite."""
         out = self._call(self._system(npc), user, OPENER_SCHEMA)
-        return out if out is not None else {"say": self._canned(npc), "emotion": "calm"}
+        if out is None:
+            return {"say": self._canned(npc), "emotion": "calm"}
+        return self._polish(out, fallback=self._canned(npc))
 
     def first_contact(self, npc, game, other) -> dict:
         alone_days = game.day
@@ -325,27 +460,26 @@ alone with that belief for {alone_days} days.
 
 This is the first thing you say to them. It does not have to be gracious."""
         out = self._call(self._system(npc), user, OPENER_SCHEMA)
-        return out if out is not None else {"say": self._canned(npc), "emotion": "wary"}
+        if out is None:
+            return {"say": self._canned(npc), "emotion": "wary"}
+        return self._polish(out, fallback=self._canned(npc))
 
     # -- offline fallbacks ----------------------------------------------------
 
-    _CANNED = {
-        "wren": [
-            "Mm. Noted.",
-            "Talk later. There's timber that isn't carrying itself.",
-            "If you want to be useful, the spring needs someone.",
-            "That's a lot of words for a plan with no timber in it.",
-        ],
-        "odell": [
-            "Ha — that's not the worst idea I've heard today. It's close, but it isn't the worst.",
-            "Excellent views on this island. Terrible service.",
-            "Give me a moment. I'm rallying. I'm very nearly rallied.",
-            "You're right. You're right, and I'd thank you not to tell Wren I said so.",
-        ],
-    }
+    # Offline / total-failure lines. Deliberately characterless: they belong to
+    # nobody in particular, because the cast is different every run.
+    _CANNED = [
+        "Mm. Noted.",
+        "Talk later. There's work that isn't doing itself.",
+        "If you want to be useful, the water needs someone.",
+        "That's a lot of words for a plan with no timber in it.",
+        "Say that again and mean it.",
+        "Right. And who's carrying it?",
+        "Fine. But I'm counting.",
+    ]
 
-    def _canned(self, npc) -> str:
-        return random.choice(self._CANNED[npc.key])
+    def _canned(self, npc=None) -> str:
+        return random.choice(self._CANNED)
 
     # Offline, we still want "you fish, I'll do the wood" to visibly work, so the
     # fallback does a crude keyword read of what was said. It is not pretending to

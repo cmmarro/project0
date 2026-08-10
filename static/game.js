@@ -7,13 +7,17 @@ const BLOCKED = new Set(['~', 'j', 'p', 'r', 'f', 'x']);
 
 const canvas = document.getElementById('island');
 const ctx = canvas.getContext('2d');
+const el = id => document.getElementById(id);
 
 let island = null;              // static map data
 let S = null;                   // latest server snapshot
-let me = { x: 16, y: 17 };      // client-side player position (authoritative-ish)
+let me = { x: 16, y: 17 };
 const keys = new Set();
-const smooth = {};              // key -> {x, y} interpolated positions
+const smooth = {};
 let talking = false;
+let filter = 'all';
+let pinned = true;              // chat stuck to the bottom
+let lastLogLen = 0;
 
 // ---------------------------------------------------------------- boot
 
@@ -26,6 +30,10 @@ async function boot() {
   await poll();
   setInterval(poll, 420);
   requestAnimationFrame(frame);
+  if (!localStorage.getItem('castaway-helped')) {
+    el('help').classList.remove('hidden');
+    localStorage.setItem('castaway-helped', '1');
+  }
 }
 
 async function poll() {
@@ -38,15 +46,19 @@ async function poll() {
 
 // ---------------------------------------------------------------- input
 
+const talkInput = () => el('talk');
+
 addEventListener('keydown', e => {
-  if (document.activeElement === talkInput) {
-    if (e.key === 'Escape') talkInput.blur();
+  const sheetOpen = !el('settings').classList.contains('hidden') || !el('help').classList.contains('hidden');
+  if (document.activeElement === talkInput()) {
+    if (e.key === 'Escape') talkInput().blur();
     return;
   }
-  if (e.key === 'Enter') { talkInput.focus(); e.preventDefault(); return; }
+  if (sheetOpen) return;
+  if (e.key === 'Enter') { talkInput().focus(); e.preventDefault(); return; }
   keys.add(e.key.toLowerCase());
   const verb = { e: 'gather', q: 'drink', f: 'eat', r: 'rest' }[e.key.toLowerCase()];
-  if (verb) act(verb);
+  if (verb) { act(verb); e.preventDefault(); }
 });
 addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
@@ -76,16 +88,11 @@ function move(dt) {
 // ---------------------------------------------------------------- drawing
 
 const PALETTE = {
-  '~': ['#123449', '#0f2c3f'],
-  'w': ['#2a6785', '#296078'],
-  's': ['#d9c9a0', '#d2c096'],
-  'g': ['#3f6b41', '#3a6a3c'],
-  'j': ['#254b2c', '#22462a'],
-  'p': ['#356b3f', '#31633a'],
-  'r': ['#6a6a68', '#61615f'],
-  'h': ['#8a8a6d', '#838367'],
-  'f': ['#3f8fb5', '#3a86ab'],
-  'x': ['#5a4632', '#53412e'],
+  '~': ['#123449', '#0f2c3f'], 'w': ['#2a6785', '#296078'],
+  's': ['#d9c9a0', '#d2c096'], 'g': ['#3f6b41', '#3a6a3c'],
+  'j': ['#254b2c', '#22462a'], 'p': ['#356b3f', '#31633a'],
+  'r': ['#6a6a68', '#61615f'], 'h': ['#8a8a6d', '#838367'],
+  'f': ['#3f8fb5', '#3a86ab'], 'x': ['#5a4632', '#53412e'],
   'c': ['#c2ac82', '#bba57b'],
 };
 
@@ -113,6 +120,11 @@ function drawMap() {
         ctx.beginPath();
         ctx.arc(x * TILE + TILE / 2, y * TILE + TILE * 0.55, TILE * 0.34, 0, 7);
         ctx.fill();
+      } else if (t === 'f') {
+        ctx.fillStyle = '#7fd6f5';
+        ctx.beginPath();
+        ctx.arc(x * TILE + TILE / 2, y * TILE + TILE / 2, TILE * 0.24, 0, 7);
+        ctx.fill();
       } else if (t === 'g' && hash(x, y) % 7 === 0) {
         ctx.fillStyle = '#4a7a4c';
         ctx.fillRect(x * TILE + 6, y * TILE + 8, 4, 4);
@@ -136,16 +148,22 @@ function drawLandmarks() {
   ctx.textAlign = 'center';
   for (const [name, l] of Object.entries(island.landmarks)) {
     const px = l.x * TILE + TILE / 2, py = l.y * TILE + TILE / 2;
-    ctx.fillStyle = 'rgba(10,14,17,.55)';
-    const w = ctx.measureText(name).width + 10;
-    ctx.fillRect(px - w / 2, py - 22, w, 14);
-    ctx.fillStyle = '#cbd8e0';
-    ctx.fillText(name, px, py - 12);
+    const harvests = island.harvest[name];
+    const label = harvests ? `${name} · ${harvests.join('/')}` : name;
+    const w = ctx.measureText(label).width + 10;
+    ctx.fillStyle = 'rgba(10,14,17,.66)';
+    ctx.fillRect(px - w / 2, py - 23, w, 14);
+    ctx.fillStyle = harvests ? '#d9e6ee' : '#9fb1bd';
+    ctx.fillText(label, px, py - 13);
+    ctx.strokeStyle = harvests ? 'rgba(217,230,238,.35)' : 'rgba(140,160,175,.25)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, TILE * 1.1, 0, 7);
+    ctx.stroke();
     if (name === 'camp') {
-      ctx.strokeStyle = 'rgba(242,193,78,.5)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = 'rgba(242,193,78,.45)';
       ctx.beginPath();
-      ctx.arc(px, py, TILE * 2.6, 0, 7);
+      ctx.arc(px, py, TILE * 3, 0, 7);
       ctx.stroke();
     }
   }
@@ -170,22 +188,20 @@ function drawPerson(px, py, colour, label, opts = {}) {
     ctx.arc(x, y - 8, 5.2, 0, 7);
     ctx.fill();
   }
-
   if (opts.busy) {
     ctx.fillStyle = '#f2c14e';
     ctx.beginPath();
     ctx.arc(x + 9, y - 13, 2.6, 0, 7);
     ctx.fill();
   }
-
   if (label) {
     ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
     ctx.textAlign = 'center';
     const w = ctx.measureText(label).width + 8;
-    ctx.fillStyle = 'rgba(10,14,17,.7)';
-    ctx.fillRect(x - w / 2, y - 30, w, 13);
+    ctx.fillStyle = 'rgba(10,14,17,.75)';
+    ctx.fillRect(x - w / 2, y - 31, w, 13);
     ctx.fillStyle = opts.unknown ? '#9aa8b2' : colour;
-    ctx.fillText(label, x, y - 20);
+    ctx.fillText(label, x, y - 21);
   }
 }
 
@@ -206,7 +222,6 @@ function frame(ts) {
   if (island) {
     drawMap();
     drawLandmarks();
-
     if (S) {
       for (const c of S.castaways) {
         if (!c.seen) continue;
@@ -216,13 +231,8 @@ function frame(ts) {
       }
     }
     drawPerson(me.x, me.y, '#f2c14e', 'you', { down: S && S.player.down });
-
     if (S && S.night) {
       ctx.fillStyle = 'rgba(10,20,45,.42)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    if (S && S.weather_key === 'storm') {
-      ctx.fillStyle = 'rgba(120,140,160,.13)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
   }
@@ -231,29 +241,29 @@ function frame(ts) {
 
 // ---------------------------------------------------------------- panel
 
-const el = id => document.getElementById(id);
+function tone(v) { return v > 60 ? '#6bbf8a' : v > 30 ? '#d8a44e' : '#e0603f'; }
 
-function bar(label, v, colour) {
-  return `<div class="bar"><span>${label}</span>
-    <div class="track"><div class="fill" style="width:${v}%;background:${colour}"></div></div>
+function bar(label, v) {
+  return `<div class="bar ${v <= 25 ? 'critical' : ''}"><span>${label}</span>
+    <div class="track"><div class="fill" style="width:${v}%;background:${tone(v)}"></div></div>
     <span class="num">${v}</span></div>`;
 }
-function tone(v) { return v > 60 ? '#6bbf8a' : v > 30 ? '#d8a44e' : '#e0603f'; }
 
 function chips(obj, opts = {}) {
   const ks = Object.keys(obj || {}).filter(k => obj[k] > 0);
   if (!ks.length) return '<span class="chip empty">empty</span>';
-  return ks.map(k => {
-    const take = opts.takeable ? `<button data-take="${k}">take</button>` : '';
-    return `<span class="chip">${k} ×${obj[k]}${take}</span>`;
-  }).join('');
+  return ks.map(k => `<span class="chip">${k} ×${obj[k]}` +
+    (opts.takeable ? `<button data-take="${k}">take</button>` : '') + '</span>').join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
 function paintPanel() {
   if (!S) return;
   el('clock').textContent = `Day ${S.day} · ${S.clock}`;
   el('weather').textContent = S.weather;
-  el('here').textContent = S.here ? `at ${S.here}` : '';
   el('seed').textContent = `island ${S.seed}`;
   const tag = el('llm');
   const kinds = { anthropic: 'claude', openai: 'local model', offline: 'offline' };
@@ -262,12 +272,16 @@ function paintPanel() {
   tag.title = (S.llm_error ? S.llm_error + ' — ' : '') +
     `${S.model} · ${S.llm_calls} calls · click to change`;
 
+  // context bar: what's here and what to press
+  const c = S.context || {};
+  el('ctx-where').textContent = c.where || '—';
+  el('ctx-do').innerHTML = c.advice || '';
+  el('context').classList.toggle('urgent', !!c.urgent);
+
   const p = S.player;
   el('you-bars').innerHTML =
-    bar('thirst', p.thirst, tone(p.thirst)) +
-    bar('hunger', p.hunger, tone(p.hunger)) +
-    bar('energy', p.energy, tone(p.energy)) +
-    bar('condition', p.health, tone(p.health));
+    bar('thirst', p.thirst) + bar('hunger', p.hunger) +
+    bar('energy', p.energy) + bar('condition', p.health);
   el('you-inv').innerHTML = chips(p.inventory);
 
   const blocs = (S.factions || []).filter(f => f.length > 1);
@@ -277,80 +291,117 @@ function paintPanel() {
 
   el('others').innerHTML = S.castaways.map(c => {
     if (!c.met) {
-      return `<div class="person unknown"><div class="top"><span class="name">
-        ${c.seen ? 'someone, over there' : 'someone else may be out here'}</span></div>
+      return `<div class="person unknown"><div class="top"><span class="name">${
+        c.seen ? 'someone, over there' : 'someone else may be out here'}</span></div>
         <div class="act">You haven't met them.</div></div>`;
     }
-    const trust = c.trust_player;
-    const feel = trust <= -8 ? 'has written you off' : trust <= -3 ? "doesn't trust you"
-      : trust < 3 ? 'undecided about you' : trust < 8 ? 'thinks you\'re alright'
+    const t = c.trust_player;
+    const feel = t <= -8 ? 'has written you off' : t <= -3 ? "doesn't trust you"
+      : t < 3 ? 'undecided about you' : t < 8 ? "thinks you're alright"
       : 'would trust you with their life';
     return `<div class="person ${c.down ? 'down' : ''}">
       <div class="top"><span class="name" style="color:${c.colour}">${c.name}</span>
-        <span class="emo">${c.pronouns} · ${c.role}</span></div>
-      <div class="act" style="opacity:.6">${c.emotion}</div>
-      <div class="act">${c.down ? 'Collapsed. Needs water.' : c.activity}</div>
-      <div class="act" style="opacity:.75">“${c.thought}”</div>
-      <div class="allegiance">working ${c.allegiance}</div>
+        <span class="who">${c.pronouns} · ${c.role}</span></div>
+      <div class="act">${c.down ? 'Collapsed. Needs water.' : escapeHtml(c.activity)} · ${c.emotion}</div>
+      <div class="allegiance">working ${escapeHtml(c.allegiance)}</div>
       <div class="trust">${feel}</div>
       <div class="mini">
-        <div class="track"><div class="fill" style="height:100%;width:${c.thirst}%;background:${tone(c.thirst)}"></div></div>
-        <div class="track"><div class="fill" style="height:100%;width:${c.hunger}%;background:${tone(c.hunger)}"></div></div>
-        <div class="track"><div class="fill" style="height:100%;width:${c.energy}%;background:${tone(c.energy)}"></div></div>
+        ${['thirst', 'hunger', 'energy'].map(k =>
+          `<div class="track" title="${k} ${c[k]}"><div class="fill" style="width:${c[k]}%;background:${tone(c[k])}"></div></div>`).join('')}
       </div>
       <div class="row">${chips(c.inventory)}</div>
     </div>`;
   }).join('');
 
   el('stores').innerHTML = chips(S.stores, { takeable: true });
-
   el('builds').innerHTML = Object.entries(S.structures).map(([n, s]) => {
-    const pct = Math.round((s.progress / s.needed) * 100);
+    const pct = s.done ? 100 : Math.round((s.progress / s.needed) * 100);
     const cost = Object.entries(S.recipes[n]).map(([k, v]) => `${v} ${k}`).join(', ');
     return `<div class="build">
       <span class="nm">${n}</span>
-      <div class="track"><div class="fill" style="width:${s.done ? 100 : pct}%"></div></div>
-      ${s.done ? '<span class="cost">done</span>'
-        : `<button data-build="${n}" title="${cost}">work</button>`}
-    </div>` + (s.started || s.done ? '' : `<div class="cost" style="margin:-2px 0 4px 68px">${cost}</div>`);
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div>
+      ${s.done ? '<span class="cost">done</span>' : `<button data-build="${n}" title="${cost}">work</button>`}
+    </div>` + (s.started || s.done ? '' : `<div class="cost" style="margin:-2px 0 5px 66px">${cost}</div>`);
   }).join('');
 
-  el('log').innerHTML = S.log.slice().reverse().map(e => {
-    const who = e.who && e.kind === 'speech'
-      ? `<span class="who" style="color:${e.colour || '#dbe3e8'}">${e.who}:</span> ` : '';
-    return `<div class="entry ${e.kind}"><span class="t">${e.t}</span>
-      <span class="txt">${who}${escapeHtml(e.text)}</span></div>`;
-  }).join('');
+  paintLog();
 
-  const near = S.castaways.filter(c => c.met && !c.down &&
-    Math.hypot(c.x - me.x, c.y - me.y) <= 4.5).map(c => c.short);
+  const near = S.castaways.filter(x => x.met && !x.down &&
+    Math.hypot(x.x - me.x, x.y - me.y) <= 4.5).map(x => x.short);
   el('earshot').textContent = near.length
     ? `In earshot: ${near.join(', ')}.`
     : 'Nobody is close enough to hear you.';
 
   const atCamp = Math.hypot(island.landmarks.camp.x - me.x, island.landmarks.camp.y - me.y) <= 3;
-  const downNear = S.castaways.find(c => c.down && Math.hypot(c.x - me.x, c.y - me.y) <= 2.5);
+  const downNear = S.castaways.find(x => x.down && Math.hypot(x.x - me.x, x.y - me.y) <= 2.5);
   const buttons = [['gather', 'Gather (E)'], ['drink', 'Drink (Q)'], ['eat', 'Eat (F)'], ['rest', 'Rest (R)']];
   if (atCamp) buttons.push(['deposit', 'Deposit all']);
   if (downNear) buttons.push(['revive', `Revive ${downNear.short}`]);
   if (S.structures.raft.done && atCamp) buttons.push(['board', 'Board the raft']);
   const give = Object.keys(p.inventory).filter(k => p.inventory[k] > 0);
   el('actions').innerHTML = buttons.map(([a, l]) => `<button data-act="${a}">${l}</button>`).join('')
-    + (give.length ? give.map(k => `<button data-act="give" data-target="${k}">Give ${k}</button>`).join('') : '');
+    + give.map(k => `<button data-act="give" data-target="${k}">Give ${k}</button>`).join('');
 
   if (S.over) {
     el('ending').classList.remove('hidden');
     el('ending-text').textContent = S.ending || '';
+  } else {
+    el('ending').classList.add('hidden');
   }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+// ---- chat ----
+
+function paintLog() {
+  const box = el('log');
+  const entries = S.log.filter(e => filter === 'all' || e.kind === 'speech');
+  if (entries.length === lastLogLen) return;
+  const grew = entries.length > lastLogLen;
+  lastLogLen = entries.length;
+
+  box.innerHTML = entries.map(e => {
+    if (e.kind === 'speech') {
+      const mine = e.who === 'You';
+      return `<div class="msg ${mine ? 'mine' : ''}">
+        <div class="head"><span class="name" style="color:${e.colour || '#f2c14e'}">${escapeHtml(e.who || '')}</span>
+          <span class="when">${e.t}</span></div>
+        <div class="bubble" style="border-left-color:${e.colour || '#f2c14e'}">${escapeHtml(e.text)}</div>
+      </div>`;
+    }
+    return `<div class="note ${e.kind}"><span class="when">${e.t.split(' ')[1] || ''}</span>
+      <span class="txt">${escapeHtml(e.text)}</span></div>`;
+  }).join('');
+
+  if (pinned) box.scrollTop = box.scrollHeight;
+  else if (grew) el('jump').classList.remove('hidden');
 }
+
+el('log').addEventListener('scroll', () => {
+  const box = el('log');
+  pinned = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  if (pinned) el('jump').classList.add('hidden');
+});
+el('jump').addEventListener('click', () => {
+  pinned = true;
+  el('log').scrollTop = el('log').scrollHeight;
+  el('jump').classList.add('hidden');
+});
+document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {
+  filter = b.dataset.filter;
+  document.querySelectorAll('[data-filter]').forEach(x => x.classList.toggle('on', x === b));
+  lastLogLen = -1;
+  pinned = true;
+  paintLog();
+}));
+
+// ---- collapsibles ----
+
+document.querySelectorAll('h2[data-toggle]').forEach(h =>
+  h.addEventListener('click', () => h.parentElement.classList.toggle('collapsed')));
 
 // ---------------------------------------------------------------- actions
 
-document.getElementById('panel').addEventListener('click', e => {
+el('panel').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.act) act(b.dataset.act, b.dataset.target || '');
@@ -378,22 +429,20 @@ function toast(msg) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
 }
 
 // ---------------------------------------------------------------- talking
 
-const talkInput = el('talk');
-const talkBtn = el('talkbtn');
-
 el('talkform').addEventListener('submit', async e => {
   e.preventDefault();
-  const text = talkInput.value.trim();
+  const text = talkInput().value.trim();
   if (!text || talking) return;
   talking = true;
-  talkInput.value = '';
-  talkBtn.disabled = true;
-  talkBtn.textContent = '…';
+  talkInput().value = '';
+  const btn = el('talkbtn');
+  btn.disabled = true;
+  btn.textContent = '…';
   try {
     const r = await fetch('/api/say', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -401,16 +450,28 @@ el('talkform').addEventListener('submit', async e => {
     });
     const data = await r.json();
     S = data.state;
+    pinned = true;
     paintPanel();
     if (!data.replies.length && !data.heard_by.length) toast('Nobody heard you.');
   } catch (err) {
     toast('Lost the connection.');
   } finally {
     talking = false;
-    talkBtn.disabled = false;
-    talkBtn.textContent = 'Say';
-    talkInput.focus();
+    btn.disabled = false;
+    btn.textContent = 'Say';
+    talkInput().focus();
   }
+});
+
+// ---------------------------------------------------------------- help / restart
+
+el('helpbtn').addEventListener('click', () => el('help').classList.remove('hidden'));
+el('help-close').addEventListener('click', () => el('help').classList.add('hidden'));
+el('help-ok').addEventListener('click', () => el('help').classList.add('hidden'));
+el('restart').addEventListener('click', async () => {
+  el('restart').textContent = 'washing up…';
+  await fetch('/api/restart', { method: 'POST' });
+  location.reload();
 });
 
 boot();
