@@ -16,6 +16,7 @@ from __future__ import annotations
 import random
 import re
 import threading
+import time
 
 from . import providers, settings, world
 from .verbs import ACTION_NAMES, EMOTE_NAMES, RAFT_CAPACITY, RECIPES
@@ -429,6 +430,11 @@ class Brain:
     def __init__(self) -> None:
         self.last_error: str | None = None
         self.calls = 0
+        # Rolling seconds per call. The simulation reads this to decide how
+        # fast the world should run: a bigger model thinking for twenty
+        # seconds shouldn't cost the castaways an hour and a half of daylight
+        # that a 2B gets for nine minutes.
+        self.latency = 0.0
         self._lock = threading.Lock()
         self._recent_canned: list[str] = []
         self.provider = None
@@ -461,6 +467,7 @@ class Brain:
             return None
         with self._lock:
             self.calls += 1
+        started = time.monotonic()
         try:
             out = self.provider.complete(system, user, schema,
                                          int(settings.get().get("max_tokens", 1200)))
@@ -469,6 +476,10 @@ class Brain:
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
             return None
+        finally:
+            took = time.monotonic() - started
+            with self._lock:
+                self.latency = took if not self.latency else self.latency * 0.7 + took * 0.3
 
     # -- prompt assembly ------------------------------------------------------
 

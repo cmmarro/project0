@@ -363,6 +363,20 @@ test_coordination.py    end-to-end proof with the model stubbed
 test_providers.py       backend proof against the mock, clean and degraded
 ```
 
+### The clock runs at the speed of the mind
+
+All the survival pacing was tuned against a 2B answering in about the time the
+throttle allows. Load a 30B and the *same conversation* costs seven times the
+daylight, purely because you picked a better model — a three-person round goes
+from 13 game-minutes to 90.
+
+So the clock is scaled by measured latency: `Game.tempo()` reads a rolling
+average of seconds-per-call and slows the world to match, so a model call burns
+about the same amount of game time on any backend. Capped at 1.0 so a fast one
+can't run the island past the tuning, floored at 0.25 so it can't crawl. The HUD
+shows `world ×0.5` when it's engaged. The world waits with you, which is right —
+you're waiting on a mind.
+
 Each run generates a new island *and* a new cast from one seed
 (`Game(seed=..., cast_size=...)`), so the resource layout, the walking distances,
 and the people are all different every time. Same seed, same run.

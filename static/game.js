@@ -289,7 +289,14 @@ function paintPanel() {
   tag.textContent = kinds[S.provider] || (S.online ? 'live' : 'offline');
   tag.className = 'tag ' + (S.online ? 'live' : 'off');
   tag.title = (S.llm_error ? S.llm_error + ' — ' : '') +
-    `${S.model} · ${S.llm_calls} calls · click to change`;
+    `${S.model} · ${S.llm_calls} calls` +
+    (S.latency ? ` · ${S.latency}s to think` : '') + ' · click to change';
+  // A slow model doesn't get to cost the survivors their daylight, so the
+  // world slows to match. Worth saying out loud, or it reads as a stutter.
+  el('tempo').textContent = S.tempo && S.tempo < 0.95 ? `world ×${S.tempo}` : '';
+  el('tempo').title = `Your model takes ${S.latency}s to answer, so the island `
+    + 'is running slower to keep a conversation costing the same daylight it '
+    + 'would on a fast one.';
 
   // context bar: what's here and what to press
   const c = S.context || {};

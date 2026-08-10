@@ -637,6 +637,37 @@ def main():
     check("deciding something fresh throws out what was lined up", p2.then is None,
           "talking to someone should override yesterday's plan")
 
+    # --- 16. the world waits for a slow mind --------------------------------
+    print("\n16. Adaptive clock")
+    from island.state import REFERENCE_CALL, SLOWEST
+    seen = {}
+    for lat in (0.0, 2.0, REFERENCE_CALL, 6.0, 20.0):
+        game.brain.latency = lat
+        seen[lat] = game.tempo()
+    check("an unmeasured or offline backend runs at full speed", seen[0.0] == 1.0)
+    check("a backend faster than the tuning doesn't speed the world up",
+          seen[2.0] == 1.0, str(seen[2.0]))
+    check("a slower one slows the world proportionally",
+          abs(seen[6.0] - 0.5) < 0.01, str(seen[6.0]))
+    check("and it never crawls below the floor", seen[20.0] == SLOWEST, str(seen[20.0]))
+    check("so a model call burns about the same daylight either way",
+          abs(REFERENCE_CALL * seen[REFERENCE_CALL] - 6.0 * seen[6.0]) < 0.1,
+          f"3s x{seen[REFERENCE_CALL]} = {REFERENCE_CALL * seen[REFERENCE_CALL]:.1f} vs "
+          f"6s x{seen[6.0]} = {6.0 * seen[6.0]:.1f} game-min")
+
+    with game.lock:
+        game.brain.latency = 6.0
+        before = game.minutes
+        game.step(1.0)
+        slow = game.minutes - before
+        game.brain.latency = 0.0
+        before = game.minutes
+        game.step(1.0)
+        fast = game.minutes - before
+    check("the clock really is driven by it", slow < fast * 0.6,
+          f"{slow:.2f} game-min/s slow vs {fast:.2f} fast")
+    game.brain.latency = 0.0
+
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]
     check("every entry has a rising id", ns == sorted(ns) and len(set(ns)) == len(ns))

@@ -18,6 +18,14 @@ from .brain import Brain
 
 TICK = 0.2
 GAME_MINUTES_PER_SECOND = 1.5
+
+# How fast the world runs is really a question about how long a mind takes.
+# All the survival pacing was tuned against a 2B answering in about the time
+# the throttle allows; on a 30B the same conversation costs seven times the
+# daylight, purely because you loaded a better model. So the clock is scaled
+# by how long the backend actually takes, and the world waits with you.
+REFERENCE_CALL = 3.0        # seconds per call the pacing was tuned against
+SLOWEST = 0.25              # never crawl below a quarter speed
 GATHER_MINUTES = 5
 BUILD_MINUTES = 6
 
@@ -177,6 +185,18 @@ class Game:
     def clock_str(self) -> str:
         m = int(self.minutes % (24 * 60))
         return f"{m // 60:02d}:{m % 60:02d}"
+
+    def tempo(self) -> float:
+        """How fast the world should run, given how slowly the model thinks.
+
+        A call ought to cost roughly the same amount of *game* time on any
+        backend. Capped at 1.0 so a fast one can't run the island past the
+        pacing everything else was tuned for.
+        """
+        seen = self.brain.latency
+        if not seen or not self.brain.online:
+            return 1.0
+        return max(SLOWEST, min(1.0, REFERENCE_CALL / seen))
 
     def is_night(self) -> bool:
         h = (self.minutes % (24 * 60)) / 60
@@ -363,7 +383,7 @@ class Game:
         with self.lock:
             if self.over:
                 return
-            gm = dt * GAME_MINUTES_PER_SECOND
+            gm = dt * GAME_MINUTES_PER_SECOND * self.tempo()
             self.minutes += gm
             self._weather(gm)
             self._bodies(gm)
@@ -1338,6 +1358,7 @@ class Game:
                 "online": self.brain.online, "model": self.brain.model,
                 "provider": getattr(self.brain.provider, "kind", "offline"),
                 "llm_error": self.brain.last_error, "llm_calls": self.brain.calls,
+                "tempo": round(self.tempo(), 2), "latency": round(self.brain.latency, 1),
                 "here": world.landmark_at(self.player.x, self.player.y, radius=2.8),
                 "context": self.player_context(),
                 "seed": self.seed,
