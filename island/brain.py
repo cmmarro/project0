@@ -18,7 +18,7 @@ import re
 import threading
 
 from . import providers, settings, world
-from .verbs import ACTION_NAMES, RAFT_CAPACITY, RECIPES
+from .verbs import ACTION_NAMES, EMOTE_NAMES, RAFT_CAPACITY, RECIPES
 
 EMOTIONS = [
     "calm", "wary", "hopeful", "frustrated", "exhausted",
@@ -88,9 +88,13 @@ REFLECT_SCHEMA = {
             "items": {"type": "string"},
             "description": "Up to four short things you have decided are true and want to still know in a week. Each under fifteen words, in your own voice. This REPLACES your old notes — anything you leave out, you are choosing to let go of.",
         },
+        "realisation": {
+            "type": "string",
+            "description": "Something you only see now that you have the whole day in front of you at once — a connection between things that happened, or a decision that follows from them. One sentence, in your own voice. \"\" if nothing joined up tonight, which is most nights.",
+        },
         "emotion": {"type": "string", "enum": EMOTIONS},
     },
-    "required": ["notes", "emotion"],
+    "required": ["notes", "realisation", "emotion"],
     "additionalProperties": False,
 }
 
@@ -120,7 +124,12 @@ Camp is where the crate washed up; you build there from shared stores.
 The raft seats {RAFT_CAPACITY} and takes more work than one person can do alone.
 
 YOU CAN: gather, go_to <place>, build <thing>, take <item>, deposit, give <item>,
-eat, drink, rest, revive <name>, follow <name>, board.
+eat, drink, rest, revive <name>, follow <name>, think, board,
+emote <wave|beckon|laugh|cry|scream|shrug|turn_away>.
+A scream carries across the whole island; everything else only reaches people
+standing near you.
+`think` = stop and go back over everything you know. Costs time and energy.
+Use it when something doesn't add up or a decision matters.
 Everyone here can do exactly the same things. Nobody is in charge.
 
 Thirst kills fastest. Water is at the spring. If thirst or hunger hits zero you
@@ -177,7 +186,20 @@ WHAT YOU CAN DO
   rest                stop and get your energy back
   revive <name>       pour water into someone who has collapsed
   follow <name>       stay close to someone
+  think               stop where you are and go back over everything you know
+  emote <kind>        say it without words. One of: wave, beckon, laugh, cry, scream, shrug, turn_away
+                      A scream carries right across the island — four times
+                      further than your voice does. It is the only way to reach
+                      somebody you have not found yet, and everyone who hears
+                      it learns roughly where you are.
   board               get on the raft and leave, if it's finished
+
+Most of the time you act on what's in front of you. `think` is for when that
+isn't enough: when two things you've been told can't both be true, when
+somebody's account of themselves doesn't add up, when you're about to commit
+to a plan you can't take back, or when you're deciding whether to throw in
+with someone and it matters that you get it right. It costs you time and
+energy, standing there. Use it when it's worth that.
 
 Everyone here has exactly this list. The others can do everything you can do, and
 you can do everything they can. Nobody has special powers and nobody is in charge."""
@@ -555,16 +577,28 @@ means sharing what you gather, and it means depending on them."""
             room = (f"\nYou are all standing together talking: {', '.join(group)}. "
                     "Everyone here hears everything. Answer for yourself, not for them.\n")
 
+        asked = "?" in line
         pointed = ("Answer the question they actually asked, and answer it in your "
-                   "first sentence. " if "?" in line else
+                   "first sentence. " if asked else
                    "Respond to what they just said, not to something said earlier. ")
+
+        # Asked something, they cast back for it. Ordinary turns carry the six
+        # loudest things they know; a question can reach past that into the
+        # rest of the bank, for the handful of notes that actually bear on it.
+        dug = ""
+        if asked and hasattr(npc, "mind"):
+            top = npc.mind.strongest()
+            found = npc.mind.recall(line, already=top)
+            if found:
+                dug = ("\nYou have to think for a second, and it comes back to you:\n"
+                       + "\n".join(f"  - {m.text}" for m in found) + "\n")
 
         base = f"""{self._situation(npc, game)}
 
 WHAT'S BEEN SAID (background, already spoken — do not repeat any of it)
 {recent}
 {heard}
-{room}
+{room}{dug}
 {speaker_name} says to you: "{line}"
 
 {pointed}You have already met {speaker_name}, so do not greet them and do not
@@ -603,41 +637,73 @@ Say the first thing. Don't be polite about it if you don't feel polite."""
             return {"say": self._canned(npc), "emotion": "calm"}
         return self._polish(out, fallback=self._canned(npc))
 
-    def reflect(self, npc, game) -> dict:
-        """Sitting down to rest, they decide what's worth still knowing.
+    def reflect(self, npc, game, night: bool = True, deliberate: bool = False) -> dict:
+        """Last thing at night, they work out what today was worth keeping.
 
-        This is the only call that writes to the system prompt. It replaces the
-        standing notes outright, so reflecting cannot make the prompt bigger —
-        it can only change what the four lines say.
+        This is the only call that writes to the system prompt, and it replaces
+        the standing notes outright, so consolidating cannot make the prompt
+        bigger — it can only change what the four lines say.
+
+        It also gets the one chance in the game to look at everything at once,
+        which is where a connection can come from that no single moment would
+        have produced. Whatever it finds, they wake up with.
         """
         held = "\n".join(f"  - {n}" for n in npc.mind.standing) or "  - (nothing yet)"
-        recent = "\n".join(f"  - {m.text}" for m in npc.mind.strongest(8)) or "  - (nothing)"
+        # This is the only place the whole bank goes in. Every other call gets
+        # the strongest handful, because a prompt that carries everything a
+        # castaway has ever noticed is a prompt a small model cannot read.
+        pool = npc.mind.all() if (deliberate or night) else npc.mind.strongest(8)
+        recent = "\n".join(f"  - {m.text}" for m in pool) or "  - (nothing)"
+        if night:
+            opening = ("It's dark and you've stopped for the night. Nobody is talking "
+                       "to you. This is the first time today you've had the whole of "
+                       "it in front of you at once.")
+            second = """
+Second — and only if it's really there — say what joined up tonight that you
+couldn't see this morning. Two things you'd been carrying separately that turn
+out to be the same thing. Something a person has done twice. What somebody is
+actually after. Leave it empty if nothing did; most nights nothing does."""
+        elif deliberate:
+            opening = ("You have stopped where you stand, because something has been "
+                       "bothering you and you want it straight. Everything you are "
+                       "carrying is below — not just the loud parts.")
+        else:
+            opening = ("You've sat down to get your breath back. Nobody is talking to "
+                       "you and nothing needs doing for a minute.")
+            second = ("""
+Second, if going back over all of it has shown you something you'd missed, say
+it. That is why you stopped. Empty if it hasn't.""" if deliberate else """
+Leave the realisation empty. This is a breather in the middle of a working day,
+not the end of one — nothing has had time to join up yet.""")
+
         user = f"""{self._situation(npc, game)}
 
-You've stopped and sat down. Nobody is talking to you and nothing needs doing
-this minute.
+{opening}
 
 WHAT YOU HAVE BEEN CARRYING
 {held}
 
-WHAT HAS HAPPENED LATELY
+WHAT HAS HAPPENED
 {recent}
 
-Rewrite what you carry. Four things at most, each a short sentence. Anything
-you leave out you are choosing to let go of, and most of it should go — the
-weather, who fetched what, all of it fades.
+Two things.
 
-Keep what changes how you will act: what you have decided about a person, what
-you have decided about getting off this island, and anything you are not going
-to say out loud. Be specific about people by name."""
+First, rewrite what you carry. Four things at most, each a short sentence.
+Anything you leave out you are choosing to let go of, and most of it should go
+— the weather, who fetched what, all of it fades. Keep only what will change
+how you act: what you've decided about a person by name, what you've decided
+about getting off this island, and anything you are not going to say out loud.
+{second}"""
         out = self._call(self._system(npc), user, REFLECT_SCHEMA)
         if out is None:
-            return {"notes": [], "emotion": npc.emotion}
+            return {"notes": [], "realisation": "", "emotion": npc.emotion}
         notes = out.get("notes")
         if isinstance(notes, str):
             notes = [notes]
         out["notes"] = [tidy_line(str(n), limit=110, speech=False)
                         for n in (notes or []) if str(n).strip()]
+        out["realisation"] = (tidy_line(out.get("realisation", ""), limit=140, speech=False)
+                              if (night or deliberate) else "")
         return out
 
     def first_contact(self, npc, game, other) -> dict:

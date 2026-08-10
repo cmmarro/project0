@@ -95,6 +95,12 @@ canned lines. Fine for seeing how it moves; not worth playing.
 - **T** gets everyone nearby to **stop and have a proper conversation**. They
   stand still until you break it up, so you can go back and forth instead of
   shouting one line at someone who's already walking away.
+- **G** stops you where you stand and shows **what you know** — who you've met,
+  what they make of you, what the raft still needs. The survivors have the same
+  verb; when they use it they go back through their own memory instead.
+- The small buttons under the actions are **emotes**. Most only reach people
+  standing near you. **Scream** carries right across the island — it's the only
+  way to reach someone you haven't found yet, and everybody hears it.
 
 **Tell them your name.** To them you're "the stranger" until you say otherwise.
 Type *"I'm Jo"* and everyone in earshot will remember it and start using it.

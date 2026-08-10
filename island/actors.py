@@ -171,6 +171,9 @@ class Castaway(Actor):
 
         self.next_plan_at = 0.0
         self.next_reflect_at = 0.0
+        self.consolidated_on = 0     # the day they last went over everything
+        self.waking = ""             # what the dark hours turned up, due at dawn
+        self.wants_to_think = False  # they chose the think verb and want it all
         self.busy = False
         # Standing in a conversation. They stay put and stop re-planning until
         # it breaks up — or until they're thirsty enough to walk off mid-word.
@@ -209,8 +212,8 @@ class Castaway(Actor):
     def memories(self) -> list[str]:
         return self.mind.texts()
 
-    def remember(self, note: str, day: int = 1):
-        self.mind.remember(note, day)
+    def remember(self, note: str, day: int = 1, weight: float = 1.0):
+        self.mind.remember(note, day, weight)
 
     # -- movement -------------------------------------------------------------
 

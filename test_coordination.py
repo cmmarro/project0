@@ -439,6 +439,8 @@ def main():
         thinker.held = False
         thinker.mind.standing = []
         thinker.next_reflect_at = 0.0
+        thinker.consolidated_on = 0
+        game.minutes = (game.day - 1) * 24 * 60 + 21 * 60   # nine at night
         thinker.stop("rest")
         for note in ("The stranger gave me water and asked for nothing.",
                      "Silas will not say where he sleeps.",
@@ -447,6 +449,7 @@ def main():
     stub(game, reflect=[{
         "notes": ["The stranger is the only one here who has given me anything.",
                   "Silas means to take the raft and go without us."],
+        "realisation": "Silas has counted the timber twice, and both times before I got back.",
         "emotion": "wary",
     }])
     deadline = time.time() + 40
@@ -461,7 +464,128 @@ def main():
           str([e["text"] for e in game.log if e["kind"] == "reflection"][:1]))
     check("it also reaches the player's panel",
           bool(thinker.snapshot(True)["notes"]), str(thinker.snapshot(True)["notes"]))
+
+    # What joined up in the dark is held until it's light enough to act on.
+    check("the realisation is held, not announced at nine at night",
+          thinker.waking.startswith("Silas has counted"), repr(thinker.waking))
+    check("nobody has heard it yet",
+          not any("counted the timber twice" in e["text"] for e in game.log))
+    with game.lock:
+        game.minutes = game.day * 24 * 60 + 6 * 60 + 30      # half six, next morning
+    deadline = time.time() + 10
+    while time.time() < deadline and thinker.waking:
+        time.sleep(0.2)
+    check("and it arrives at first light", not thinker.waking, repr(thinker.waking))
+    check("as something they've come down with",
+          any("counted the timber twice" in e["text"] for e in game.log),
+          str([e["text"] for e in game.log if "counted" in e["text"]][:1]))
+    check("and it's the strongest thing they're carrying",
+          thinker.mind.strongest(1)[0].text.startswith("Silas has counted"),
+          str(thinker.mind.strongest(1)))
     stub(game)
+
+    # --- 13. digging past what's top of mind --------------------------------
+    print("\n13. Casting back")
+    bank = MemoryBank()
+    for note in ["Silas keeps his water cached past the ridge, not at camp.",
+                 "Della cut her foot on the reef and would not say so.",
+                 "The tidepools are picked clean at low water.",
+                 "Rain came through the shelter roof in three places.",
+                 "A gull followed me back from the wreck this morning.",
+                 "Nobody has lit the signal fire for two nights.",
+                 "Salt has got into everything I own.",
+                 "The stranger gave me a coconut and asked for nothing."]:
+        bank.remember(note, 1)
+    bank.working[0].weight = 0.25          # both of these have faded right down
+    bank.working[1].weight = 0.25
+    top = bank.strongest()
+    check("the faded ones aren't top of mind",
+          not any("Silas keeps" in m.text for m in top))
+    got = bank.recall("Where does Silas keep his water?", already=top)
+    check("but a question digs them out anyway",
+          any("Silas keeps" in m.text for m in got), str([m.text[:30] for m in got]))
+    check("a name alone is enough, because a name is rare",
+          any("Della" in m.text for m in bank.recall("Is Della hurt?", already=top)))
+    check("a question about nothing in particular digs up nothing",
+          bank.recall("Have you got any water?", already=top) == [],
+          "common words shouldn't drag the whole bank in")
+    check("and nothing already in the prompt is dug up twice",
+          all(m not in top for m in bank.recall("Silas water ridge camp", already=top)))
+
+    check("think is a verb like any other, for everyone",
+          "think" in verbs.VERBS and "think" in verbs.ACTION_NAMES)
+    with game.lock:
+        walker = game.castaways[0]
+        walker.held = False
+        walker.wants_to_think = False
+        walker.route_to(world.LANDMARKS["camp"]["pos"], "gather", "camp")
+        e0 = walker.energy
+        ok, msg = verbs.perform(game, walker, "think")
+    check("using it stops them where they stand", ok and walker.task["action"] == "think", msg)
+    check("and it costs energy — thinking properly isn't free", walker.energy < e0,
+          f"{e0:.1f} -> {walker.energy:.1f}")
+    check("it queues a deliberate pass over everything", walker.wants_to_think)
+    with game.lock:
+        walker.wants_to_think = False
+        ok2, _ = verbs.perform(game, game.player, "think")
+    check("the player has the same verb", ok2)
+    # Their memory is lossy and has to be dug through; yours is the log, which
+    # is perfect and unreadably long. Same verb, same cost, different problem.
+    recap = game.player_recap()
+    check("...and for them it opens what they know, not a model call",
+          set(recap) >= {"people", "raft", "notable", "built"}, str(sorted(recap)))
+    check("the recap knows who you've met",
+          {p["short"] for p in recap["people"]} == {game.by_key[k].short for k in game.player_met},
+          str([p["short"] for p in recap["people"]]))
+    check("and counts the ones you haven't",
+          recap["unmet"] == len(game.castaways) - len(game.player_met))
+    check("it tells you what the raft still wants",
+          "work" in recap["raft"] and recap["raft"]["seats"] < recap["raft"]["people"],
+          str(recap["raft"]))
+    check("it shows what someone last said to you, and not their private notes",
+          all("standing" not in p and "notes" not in p for p in recap["people"]),
+          "a castaway's own conclusions stay theirs")
+
+    # --- 14. saying it without words ----------------------------------------
+    print("\n14. Emotes")
+    a, b = game.castaways[0], game.castaways[1]
+    with game.lock:
+        for c in game.castaways:
+            c.held = False
+        a.x, a.y = 5.0, 5.0
+        b.x, b.y = 6.0, 5.0
+        game.player.x, game.player.y = 6.0, 6.0
+        b.met.add(a.key)
+        before = b.trust_of(a.key)
+        ok, msg = verbs.perform(game, a, "emote", "laugh")
+    check("an emote is a verb like any other", ok, msg)
+    check("someone standing there registers it", b.trust_of(a.key) > before,
+          f"{before} -> {b.trust_of(a.key)}")
+    check("and remembers it", any("laughs" in m for m in b.memories), str(b.memories[-1:]))
+
+    with game.lock:
+        b.x, b.y = 5.0, 22.0          # right across the island, and they've never met
+        b.met.discard(a.key)
+        b.mind.working.clear()
+        ok2, _ = verbs.perform(game, a, "emote", "wave")
+    check("a wave doesn't reach across the island", not b.memories, str(b.memories))
+    with game.lock:
+        ok3, _ = verbs.perform(game, a, "emote", "scream")
+    check("a scream does", ok3 and bool(b.memories), str(b.memories))
+    check("...and it tells them a direction without telling them who",
+          any("screamed" in m and a.short not in m for m in b.memories), str(b.memories))
+    check("it also makes them reconsider what they were doing",
+          b.next_plan_at == 0.0)
+
+    with game.lock:
+        e0 = a.energy
+        verbs.perform(game, a, "emote", "scream")
+    check("screaming costs more than waving", a.energy < e0 - 4, f"{e0:.1f} -> {a.energy:.1f}")
+    with game.lock:
+        ok4, _ = verbs.perform(game, a, "emote", "grimace")
+    check("an emote nobody defined becomes a shrug rather than a lost turn", ok4)
+    check("the player has the same emotes",
+          verbs.perform(game, game.player, "emote", "wave")[0])
 
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]

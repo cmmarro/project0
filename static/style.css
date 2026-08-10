@@ -321,6 +321,14 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
   border: 1px solid var(--line); border-radius: 5px;
 }
 .actions button:hover { border-color: var(--gold); color: var(--gold); }
+.emotes { margin-top: 6px; }
+.emotes button { font-size: 11px; padding: 3px 9px; color: var(--dim); text-transform: lowercase; }
+.emotes button.loud { border-color: #6b3a30; color: #d08a72; }
+.emotes button.loud:hover { border-color: var(--warn); color: var(--warn); }
+.emotes { margin-top: 6px; }
+.emotes button { font-size: 11px; padding: 3px 9px; color: var(--dim); text-transform: lowercase; }
+.emotes button.loud { border-color: #6b3a30; color: #d08a72; }
+.emotes button.loud:hover { border-color: var(--warn); color: var(--warn); }
 
 /* ---- getting someone to stand still and talk ---- */
 
@@ -419,7 +427,7 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
 
 /* ---- sheets (settings, help, ending) ---- */
 
-#settings, #help {
+#settings, #help, #recap {
   position: absolute;
   inset: 0;
   background: rgba(6, 9, 11, .8);
@@ -445,6 +453,12 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
 .sheet-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
 .sheet-head button { all: unset; cursor: pointer; font-size: 20px; color: var(--dim); padding: 0 4px; }
 .sheet-head button:hover { color: var(--ink); }
+
+#recap-body h2 { margin: 16px 0 8px; }
+#recap-body h2:first-child { margin-top: 4px; }
+#recap-body .note { margin: 3px 0; }
+#recap-body .note .when { flex: 0 0 66px; }
+#recap-body p { margin: 6px 0; }
 
 .helpgrid { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: baseline; margin-bottom: 14px; }
 kbd {

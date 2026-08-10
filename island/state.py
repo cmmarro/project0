@@ -182,6 +182,17 @@ class Game:
         h = (self.minutes % (24 * 60)) / 60
         return h < 6 or h >= 20
 
+    def is_evening(self) -> bool:
+        """The dark hours before midnight. Nobody sleeps here — there's no bed
+        and no sleep verb — but it's too dark to be much use, which is the only
+        time anyone stops for long enough to think."""
+        h = (self.minutes % (24 * 60)) / 60
+        return 20 <= h < 24
+
+    def is_first_light(self) -> bool:
+        h = (self.minutes % (24 * 60)) / 60
+        return 6 <= h < 8
+
     # -- lookups --------------------------------------------------------------
 
     def other_castaways(self, npc: Castaway) -> list[Castaway]:
@@ -359,6 +370,7 @@ class Game:
             for npc in self.castaways:
                 self._advance(npc, dt, gm)
             self._contacts()
+            self._first_light()
             self._check_conversation()
             self._warnings()
             self._hints()
@@ -506,6 +518,113 @@ class Game:
         if action == "rest":
             npc.stop("rest")
 
+    def witness_emote(self, actor, kind: str, spec: dict) -> tuple[bool, str]:
+        """Work out who saw or heard it, and what it did to them.
+
+        A scream reaches twenty tiles, which is most of the island and four
+        times what a sentence reaches. That's the point of it: it is the only
+        thing in the game that can reach somebody you have not found yet, and
+        the price is that everyone else finds out where you are too.
+        """
+        reach, heard = spec["range"], spec.get("heard")
+        # A scream is an event on the island, not a gesture. It reads as one.
+        self.event(spec["does"].format(a=actor.short), "alert" if heard else "emote", actor)
+
+        for other in self.actors:
+            if other is actor:
+                continue
+            gap = actor.distance_to(other)
+            if gap > reach:
+                continue
+            close = gap <= SIGHT
+            if not isinstance(other, Castaway):
+                # It's the player: they read it in the log. A distant scream
+                # should tell them which way to walk, though.
+                if heard and not close:
+                    self.event(f"A scream, {bearing((self.player.x, self.player.y), (actor.x, actor.y))} "
+                               "of you. Someone is out there, and they are not alright.", "hint")
+                continue
+            if not close and not heard:
+                continue
+            if other.has_met(actor):
+                other.remember(spec["does"].format(a=actor.short), self.day)
+                if spec["trust"]:
+                    other.adjust_trust(actor.key, spec["trust"])
+            elif heard:
+                # They don't know who it is. They know somebody is there.
+                other.remember("Somebody screamed, off "
+                               f"{bearing((other.x, other.y), (actor.x, actor.y))} of me. "
+                               "I am not alone on this island.", self.day, weight=1.5)
+                other.next_plan_at = 0.0
+        return True, spec["self"]
+
+    def player_recap(self) -> dict:
+        """The player's version of going back over everything.
+
+        A castaway's memory is lossy and has to be dug through; yours is the
+        log, which is perfect and far too long to read. So this is the same
+        act with the same cost in time — stop walking, spend the energy — and
+        what it gives back is the shape of things rather than the transcript.
+        """
+        people = []
+        for c in self.castaways:
+            if c.key not in self.player_met:
+                continue
+            met = c.met_on.get("player")
+            people.append({
+                "name": c.name, "short": c.short, "colour": c.colour,
+                "role": c.role, "pronouns": c.pronouns,
+                "met_on": met, "down": c.down,
+                "feeling": c.trust_label("player"),
+                "allegiance": self.allegiance_phrase(c),
+                "knows_you": "player" in c.knows_name,
+                "doing": c.activity_label(),
+                # Only what they have actually said or shown you. Their
+                # standing notes are their own business.
+                "last_heard": next((t.split(": ", 1)[1] for t in reversed(self.transcript)
+                                    if t.startswith(c.name + ":")), None),
+            })
+
+        need = verbs.RECIPES["raft"]["cost"]
+        raft = self.structures["raft"]
+        keep = {"meeting", "danger", "alert", "allegiance", "ending", "reflection"}
+        return {
+            "day": self.day, "clock": self.clock_str(), "night": self.is_night(),
+            "your_name": self.player.given_name,
+            "people": people,
+            "unmet": len(self.castaways) - len(people),
+            "raft": {
+                "short": {k: v - self.stores.get(k, 0) for k, v in need.items()
+                          if v > self.stores.get(k, 0)},
+                "work": raft["progress"], "needed": raft["needed"],
+                "seats": verbs.RAFT_CAPACITY, "people": len(self.castaways) + 1,
+            },
+            "built": [n for n, st in self.structures.items() if st["done"]],
+            "stores": dict(self.stores),
+            "notable": [e for e in self.log if e["kind"] in keep][-14:],
+        }
+
+    def stop_and_think(self, actor) -> tuple[bool, str]:
+        """The think verb, for whoever used it.
+
+        A castaway stops walking and gets the whole memory bank in front of the
+        model instead of the strongest six — which is the only way any of it
+        gets used, and the reason ordinary turns can stay cheap.
+
+        You get the same verb. You already have perfect recall, so for you it's
+        a recap rather than a model call: same act, same cost in time, and it
+        keeps the verb table honest.
+        """
+        if actor.is_human:
+            self.event("You stop and go back over it.", "reflection")
+            return True, "recap"
+
+        actor.stop("think")
+        actor.wants_to_think = True
+        self.event(f"{actor.short} stops, and stands there working something out.",
+                   "reflection", actor)
+        return True, "Standing and thinking."
+
     # -- meeting people -------------------------------------------------------
 
     def _contacts(self):
@@ -635,14 +754,33 @@ class Game:
         for npc in self.castaways:
             if npc.down or npc.busy or npc.held:
                 continue
-            # Sitting still is when you think. Resting is the only time they
-            # rewrite what they carry, so it costs them the same hours that
-            # everything else does.
+            # They asked for it themselves, so it jumps the queue and it gets
+            # everything they have rather than the strongest handful.
+            if npc.wants_to_think:
+                npc.wants_to_think = False
+                npc.busy = True
+                self.jobs.put(("reflect", npc.key, False, True))
+                continue
+            stopped = npc.task["phase"] == "idle" or npc.task["action"] == "rest"
+            # Once in the dark hours, if they've actually stopped, they go over
+            # the day and decide what of it they're keeping. The window is the
+            # evening rather than all of "night" so the date can't roll over
+            # underneath it at midnight — and anyone still hauling timber at
+            # ten at night simply doesn't get to think, which is its own kind
+            # of true.
+            if (self.is_evening() and stopped and npc.consolidated_on != self.day
+                    and len(npc.mind.working) >= 2):
+                npc.consolidated_on = self.day
+                npc.next_reflect_at = now + REFLECT_COOLDOWN
+                npc.busy = True
+                self.jobs.put(("reflect", npc.key, True, False))
+                continue
+            # And a lighter pass any time they sit down for a breather.
             if (npc.task["action"] == "rest" and now >= npc.next_reflect_at
                     and len(npc.mind.working) >= 3):
                 npc.next_reflect_at = now + REFLECT_COOLDOWN
                 npc.busy = True
-                self.jobs.put(("reflect", npc.key))
+                self.jobs.put(("reflect", npc.key, False, False))
                 continue
             idle = npc.task["phase"] == "idle" and npc.task["action"] in ("idle", "rest", "follow")
             if idle and now >= npc.next_plan_at:
@@ -682,7 +820,7 @@ class Game:
             elif kind == "first_contact":
                 self._job_first_contact(self.by_key[job[1]], self.by_key[job[2]])
             elif kind == "reflect":
-                self._job_reflect(self.by_key[job[1]])
+                self._job_reflect(self.by_key[job[1]], job[2], job[3])
         finally:
             with self.lock:
                 for npc in self.castaways:
@@ -704,21 +842,51 @@ class Game:
             if npc.thought != was:
                 self.event(npc.thought, "thought", npc)
 
-    def _job_reflect(self, npc: Castaway):
-        """They sit down and decide what's worth still knowing next week."""
+    def _job_reflect(self, npc: Castaway, night: bool = True, deliberate: bool = False):
+        """They stop, go back over what's happened, and decide what they keep."""
         with self.brain_lock:
             self._throttle()
-            out = self.brain.reflect(npc, self)
+            out = self.brain.reflect(npc, self, night=night, deliberate=deliberate)
         with self.lock:
             before = list(npc.mind.standing)
             notes = npc.mind.set_standing(out.get("notes"))
             npc.emotion = out.get("emotion", npc.emotion)
             if notes and notes != before:
                 new = [n for n in notes if n not in before]
+                where = "sits in the dark a long while" if night else "sits a while"
                 self.event(
-                    f"{npc.short} sits a while. " +
+                    f"{npc.short} {where}. " +
                     (f"Something has settled: {new[0]}" if new
                      else "Something has settled."), "reflection", npc)
+            # Whatever joined up in the dark, they have it by morning. It is
+            # held until first light rather than announced at 22:00, because
+            # nobody is awake to hear it and it reads better as something
+            # they've come down with.
+            if night:
+                npc.waking = out.get("realisation", "") or ""
+            elif deliberate:
+                # They stopped on purpose, so whatever they worked out lands
+                # now — and the very next decision is made in light of it.
+                got = out.get("realisation", "") or ""
+                if got:
+                    npc.thought = got[:120]
+                    npc.mind.remember(got, self.day, weight=1.6)
+                    self.event(f"{npc.short} has it: {got}", "reflection", npc)
+                npc.next_plan_at = 0.0
+
+    def _first_light(self):
+        """Deliver what the dark hours turned up, once it's light enough to act."""
+        if not self.is_first_light():
+            return
+        for npc in self.castaways:
+            if not npc.waking or npc.down:
+                continue
+            line, npc.waking = npc.waking, ""
+            npc.thought = line[:120]
+            npc.mind.remember(line, self.day, weight=1.6)
+            npc.next_plan_at = 0.0        # act on it rather than finish yesterday
+            self.event(f"{npc.short} has come down to the water with something "
+                       f"worked out: {line}", "reflection", npc)
 
     def _job_first_contact(self, npc: Castaway, other):
         with self.brain_lock:
@@ -1127,6 +1295,7 @@ class Game:
                 "earshot": [{"key": c.key, "short": c.short, "colour": c.colour}
                             for c in self.in_earshot()],
                 "your_name": self.player.given_name,
+                "emotes": verbs.EMOTE_NAMES,
                 "talk": self.conversation_snapshot()["conversation"],
             }
 

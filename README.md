@@ -130,7 +130,8 @@ running and bury the one line somebody actually said.
 ### One verb table
 
 `island/verbs.py` is the complete set of things a person on this island can do:
-`gather drink eat rest deposit take build give revive board go_to follow`.
+`gather drink eat rest think emote deposit take build give revive board go_to
+follow`.
 
 The human and every castaway call **exactly those functions with exactly those
 rules**. Nothing in that module knows whether the actor is driven by a keyboard
@@ -238,7 +239,7 @@ call for these:
 
 | call | when | returns |
 |---|---|---|
-| `reflect` | they've sat down to rest | up to four short things they intend to still know next week |
+| `reflect` | the dark hours, or when they choose to stop and think | up to four short things they intend to still know next week, and anything that joined up |
 
 It **replaces** the old set outright. That's the whole point: four lines on day
 one, four lines on day nine, so reflecting can never make the prompt bigger. All
@@ -247,8 +248,60 @@ somebody become a specific person. *"Silas means to take the raft and go without
 us"* is not in anybody's persona; it's a conclusion someone reached, sitting on
 the sand, from things that happened to them.
 
-Reflection isn't free either. It only happens while resting, and resting is
-hours you aren't drinking.
+#### When it happens
+
+- **In the dark hours**, once a night, *if they've actually stopped*. There's no
+  sleep in this game and no bed; there's just a stretch where it's too dark to be
+  much use. Anyone still hauling timber at ten at night doesn't get to think,
+  which seems about right.
+- **When they choose to.** `think` is a verb like any other, and any decision
+  can return it. Ordinary turns carry the six loudest things a castaway knows;
+  `think` is the only thing that puts the whole bank in front of the model. It
+  costs a chunk of the day and it costs energy. The brief tells them when it's
+  worth that: when two things they've been told can't both be true, when
+  somebody's account of themselves doesn't add up, when they're about to commit
+  to something they can't take back.
+- **When you ask them something they don't have to hand.** A question is matched
+  against everything they're carrying, weighted so that rare words count and
+  common ones don't — a name in one note is the whole of what was asked; "water"
+  appears in half of everything and means nothing. What comes back is added to
+  that one prompt as *"you have to think for a second, and it comes back to
+  you"*. No extra model call: the memory was always there, it just wasn't worth
+  the tokens until somebody asked. Whether they say "hold on, let me think" is
+  up to them; nothing scripts it.
+
+Whatever joined up in the dark isn't announced at ten at night — it's held until
+first light, and arrives as something they've come down to the water with. Then
+they re-plan immediately, so a conclusion reached overnight is acting on the
+world by breakfast.
+
+### Saying it without words
+
+`emote` covers `wave beckon laugh cry scream shrug turn_away`, and the ranges
+are the design. Everything is a local gesture except **scream**, which carries
+twenty tiles — four times what a sentence reaches, and most of the island.
+
+That makes it the only thing in the game that can reach somebody you haven't
+found yet. Someone who hears a scream and doesn't know you gets a direction and
+the fact that they are not alone here, and drops what they were doing. The price
+is that *everyone* learns roughly where you are, and it costs real energy. It's
+a distress signal with a cost, which is what a distress signal should be.
+
+An emote nobody defined becomes a shrug rather than a lost turn.
+
+### Your side of all this
+
+The verb table has no player exceptions, so `think` is yours too — and once
+they had a memory worth going back through, you needed one as well.
+
+Theirs is lossy and has to be dug through. Yours is the log: perfect, complete,
+and far too long to read. So the verb costs you the same time and energy and
+gives back the shape rather than the transcript — who you've met and what
+they've made of you, who still calls you the stranger, what the raft is short
+of and how many seats it has against how many of you there are, and the
+handful of things that actually happened.
+
+You do not get to see their standing notes there. Those are theirs.
 
 The survivor cards show each castaway's standing notes, so you can read what
 they've concluded about you without them ever having said it out loud.

@@ -143,6 +143,12 @@ def say():
     return jsonify(result)
 
 
+@app.get("/api/recap")
+def recap():
+    """What you know, for the player's own think verb."""
+    return jsonify(game.player_recap())
+
+
 @app.get("/api/talk")
 def talk_state():
     return jsonify(game.conversation_snapshot())

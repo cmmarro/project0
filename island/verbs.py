@@ -83,6 +83,64 @@ def rest(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
     return True, "Resting."
 
 
+# Things you can do without words. Everyone can do all of them, and the ranges
+# are the whole design: a scream carries much further than a sentence, which
+# makes it the one way to reach somebody you haven't found yet — at the cost of
+# every other person on the island knowing roughly where you are.
+EMOTES = {
+    "wave":    {"range": 7.0, "energy": 0.4, "trust": 0,
+                "does": "{a} waves.", "self": "You wave."},
+    "beckon":  {"range": 7.0, "energy": 0.6, "trust": 0,
+                "does": "{a} beckons — come here.", "self": "You beckon them over."},
+    "laugh":   {"range": 6.0, "energy": 0.4, "trust": 1,
+                "does": "{a} laughs, and means it.", "self": "You laugh."},
+    "cry":     {"range": 5.0, "energy": 1.0, "trust": 0,
+                "does": "{a} is crying, and not hiding it.", "self": "You break down."},
+    "scream":  {"range": 20.0, "energy": 5.0, "trust": 0, "heard": True,
+                "does": "{a} screams. It carries right across the island.",
+                "self": "You scream until your throat gives."},
+    "shrug":   {"range": 5.0, "energy": 0.2, "trust": 0,
+                "does": "{a} shrugs.", "self": "You shrug."},
+    "turn_away": {"range": 5.0, "energy": 0.3, "trust": -1,
+                  "does": "{a} turns away and won't look at you.",
+                  "self": "You turn your back on them."},
+}
+EMOTE_NAMES = list(EMOTES)
+
+
+def emote(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
+    """Say something without saying anything.
+
+    The target names which one. An unknown one is a shrug, because a model that
+    invents "grimace" clearly meant something and losing the turn helps nobody.
+    """
+    kind = (target or "").strip().lower().replace(" ", "_")
+    spec = EMOTES.get(kind)
+    if spec is None:
+        kind, spec = "shrug", EMOTES["shrug"]
+    if actor.energy <= spec["energy"]:
+        return False, "You haven't got it in you."
+    actor.energy = clamp(actor.energy - spec["energy"])
+    return game.witness_emote(actor, kind, spec)
+
+
+def think(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
+    """Stop and go through everything, not just what's loudest.
+
+    Ordinary decisions are made on the six strongest things a castaway is
+    carrying, because putting all of it in front of the model on every call is
+    how you drown a small one. This is the way to get the rest of it: they stop
+    walking, stand still, and ask for the whole bank. It costs a chunk of the
+    day and it costs energy — thinking properly is not free for anyone.
+
+    The player has it too. It's a verb like any other.
+    """
+    if actor.energy <= 4:
+        return False, "Too far gone to think straight."
+    actor.energy = clamp(actor.energy - 3)
+    return game.stop_and_think(actor)
+
+
 # --- camp verbs --------------------------------------------------------------
 
 def deposit(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
@@ -219,6 +277,7 @@ def follow(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
 
 VERBS = {
     "gather": gather, "drink": drink, "eat": eat, "rest": rest,
+    "think": think, "emote": emote,
     "deposit": deposit, "take": take, "build": build,
     "give": give, "revive": revive, "board": board,
     "go_to": go_to, "follow": follow,

@@ -106,6 +106,42 @@ class MemoryBank:
         top = sorted(self.working, key=lambda m: m.weight, reverse=True)[:n]
         return sorted(top, key=lambda m: self.working.index(m))
 
+    def recall(self, query: str, already=(), limit: int = 3) -> list[Memory]:
+        """Dig for something specific that isn't loud enough to be top of mind.
+
+        Asked a question, a person casts back for the answer rather than only
+        offering whatever they happened to be thinking about. This is that:
+        word overlap against the whole bank, minus what's already in the
+        prompt. No extra model call — the memory was always there, it just
+        wasn't worth the tokens until somebody asked.
+        """
+        want = _words(query)
+        if not want:
+            return []
+        # Rare words carry the question. "Water" appears in half of everything
+        # anyone remembers and means nothing; a name that appears in one note
+        # is the whole of what was asked.
+        seen_in: dict[str, int] = {}
+        banks = [_words(m.text) for m in self.working]
+        for ws in banks:
+            for w in ws:
+                seen_in[w] = seen_in.get(w, 0) + 1
+
+        scored = []
+        already_ids = {id(m) for m in already}
+        for m, ws in zip(self.working, banks):
+            if id(m) in already_ids:
+                continue
+            score = sum(1.0 / (1 + seen_in[w]) for w in (want & ws))
+            if score >= 0.4:
+                scored.append((score, m.weight, m))
+        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+        return [m for _, _, m in scored[:limit]]
+
+    def all(self) -> list[Memory]:
+        """Everything they're still carrying. Only for a deliberate think."""
+        return list(self.working)
+
     def texts(self) -> list[str]:
         return [m.text for m in self.working]
 

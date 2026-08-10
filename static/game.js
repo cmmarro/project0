@@ -63,6 +63,10 @@ addEventListener('keydown', e => {
     if (e.key === 'Escape') endConvo();
     return;
   }
+  if (!el('recap').classList.contains('hidden')) {
+    if (e.key === 'Escape' || e.key.toLowerCase() === 'g') el('recap').classList.add('hidden');
+    return;
+  }
   const sheetOpen = !el('settings').classList.contains('hidden') || !el('help').classList.contains('hidden');
   if (document.activeElement === talkInput()) {
     if (e.key === 'Escape') talkInput().blur();
@@ -72,7 +76,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Enter') { talkInput().focus(); e.preventDefault(); return; }
   keys.add(e.key.toLowerCase());
   if (e.key.toLowerCase() === 't') { startConvo(); e.preventDefault(); return; }
-  const verb = { e: 'gather', q: 'drink', f: 'eat', r: 'rest' }[e.key.toLowerCase()];
+  const verb = { e: 'gather', q: 'drink', f: 'eat', r: 'rest', g: 'think' }[e.key.toLowerCase()];
   if (verb) { act(verb); e.preventDefault(); }
 });
 addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
@@ -358,13 +362,20 @@ function paintPanel() {
 
   const atCamp = Math.hypot(island.landmarks.camp.x - me.x, island.landmarks.camp.y - me.y) <= 3;
   const downNear = S.castaways.find(x => x.down && Math.hypot(x.x - me.x, x.y - me.y) <= 2.5);
-  const buttons = [['gather', 'Gather (E)'], ['drink', 'Drink (Q)'], ['eat', 'Eat (F)'], ['rest', 'Rest (R)']];
+  const buttons = [['gather', 'Gather (E)'], ['drink', 'Drink (Q)'], ['eat', 'Eat (F)'],
+                   ['rest', 'Rest (R)'], ['think', 'Think (G)']];
   if (atCamp) buttons.push(['deposit', 'Deposit all']);
   if (downNear) buttons.push(['revive', `Revive ${downNear.short}`]);
   if (S.structures.raft.done && atCamp) buttons.push(['board', 'Board the raft']);
   const give = Object.keys(p.inventory).filter(k => p.inventory[k] > 0);
   el('actions').innerHTML = buttons.map(([a, l]) => `<button data-act="${a}">${l}</button>`).join('')
     + give.map(k => `<button data-act="give" data-target="${k}">Give ${k}</button>`).join('');
+
+  // Emotes are the same verb table, and the only thing here that reaches
+  // someone you haven't found yet.
+  el('emotes').innerHTML = (S.emotes || []).map(e =>
+    `<button data-act="emote" data-target="${e}" class="${e === 'scream' ? 'loud' : ''}"
+      title="${e === 'scream' ? 'carries right across the island' : ''}">${e.replace('_', ' ')}</button>`).join('');
 
   if (S.over) {
     el('ending').classList.remove('hidden');
@@ -456,7 +467,8 @@ async function act(action, target = '') {
     const data = await r.json();
     S = data.state;
     paintPanel();
-    toast(data.message);
+    if (data.message === 'recap') showRecap();
+    else toast(data.message);
   } catch (e) { /* ignore */ }
 }
 
@@ -627,6 +639,49 @@ el('convo-form').addEventListener('submit', async e => {
     input.focus();
   }
 });
+
+// ---------------------------------------------------------------- what you know
+// The castaways stop and go back through a lossy memory. You stop and go back
+// through a perfect one, which is worse in its own way: the log is complete and
+// far too long to read. Same verb, same cost, different problem to solve.
+
+async function showRecap() {
+  let r;
+  try { r = await (await fetch('/api/recap')).json(); } catch (e) { return; }
+  const raftShort = Object.entries(r.raft.short || {});
+  const people = r.people.length ? r.people.map(p => `
+    <div class="person ${p.down ? 'down' : ''}">
+      <div class="top"><span class="name" style="color:${p.colour}">${escapeHtml(p.name)}</span>
+        <span class="who">${p.pronouns} · once ${escapeHtml(p.role)}</span></div>
+      <div class="act">${p.down ? 'Collapsed.' : escapeHtml(p.doing)} · working ${escapeHtml(p.allegiance)}</div>
+      <div class="trust">${escapeHtml(p.feeling)} · ${p.knows_you
+        ? `knows you as ${escapeHtml(r.your_name || 'you')}`
+        : '<b>still calls you the stranger</b>'}${p.met_on ? ` · met day ${p.met_on}` : ''}</div>
+      ${p.last_heard ? `<div class="notes"><div>last thing they said: “${escapeHtml(p.last_heard)}”</div></div>` : ''}
+    </div>`).join('') : '<p class="dim small">You have not met anybody.</p>';
+
+  el('recap-title').textContent = `What you know — day ${r.day}, ${r.clock}`;
+  el('recap-body').innerHTML = `
+    <h2>People</h2>${people}
+    ${r.unmet > 0 ? `<p class="dim small">You have the feeling there ${r.unmet > 1 ? 'are others' : 'is someone else'} out there. You have not found ${r.unmet > 1 ? 'them' : 'them'} yet.</p>` : ''}
+    <h2>The raft</h2>
+    <p class="small">${raftShort.length
+      ? 'Still wants ' + raftShort.map(([k, v]) => `<b>${v} ${k}</b>`).join(', ') + ' in the stores.'
+      : 'Has everything it needs in the stores.'}
+      Work done: <b>${r.raft.work}/${r.raft.needed}</b>.
+      It seats <b>${r.raft.seats}</b>. There are <b>${r.raft.people}</b> of you.</p>
+    ${r.built.length ? `<p class="small dim">Built so far: ${r.built.join(', ')}.</p>` : ''}
+    <h2>What has actually happened</h2>
+    ${r.notable.length
+      ? r.notable.slice().reverse().map(e =>
+          `<div class="note ${e.kind}"><span class="when">${e.t}</span>
+             <span class="txt">${escapeHtml(e.text)}</span></div>`).join('')
+      : '<p class="dim small">Nothing yet worth carrying.</p>'}`;
+  el('recap').classList.remove('hidden');
+}
+
+el('recap-close').addEventListener('click', () => el('recap').classList.add('hidden'));
+el('recap-ok').addEventListener('click', () => el('recap').classList.add('hidden'));
 
 // ---------------------------------------------------------------- help / restart
 

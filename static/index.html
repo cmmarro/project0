@@ -56,6 +56,17 @@
       </div>
     </div>
 
+    <div id="recap" class="hidden">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3 id="recap-title">What you know</h3>
+          <button id="recap-close" title="close">×</button>
+        </div>
+        <div id="recap-body"></div>
+        <div class="sheet-foot"><button id="recap-ok" class="primary">Get back to it</button></div>
+      </div>
+    </div>
+
     <div id="help" class="hidden">
       <div class="sheet">
         <div class="sheet-head"><h3>How to stay alive</h3><button id="help-close">×</button></div>
@@ -67,6 +78,7 @@
           <kbd>R</kbd><span>rest, to get energy back</span>
           <kbd>Enter</kbd><span>talk — you say it out loud, and only people nearby hear it</span>
           <kbd>T</kbd><span>get everyone nearby to stop and have a proper conversation</span>
+          <kbd>G</kbd><span>stop and go back over what you know</span>
         </div>
         <p class="small dim">
           Nobody exchanged names in the water, so to them you're <b>the stranger</b>.
@@ -209,6 +221,7 @@
       </form>
       <div id="earshot" class="hint"></div>
       <div id="actions" class="actions"></div>
+      <div id="emotes" class="actions emotes"></div>
     </section>
 
   </aside>
