@@ -11,16 +11,26 @@ subject is being driven by two things at once.
 from __future__ import annotations
 
 from . import room
+from .mood import Mood
 from .needs import starting_needs
+from .traits import Nature
 
 SPEED = 0.6           # tiles per simulated minute — a room crossed in ~40 min
 REACH = 1.6
 
 
 class Subject:
-    def __init__(self, x: float, y: float):
+    def __init__(self, x: float, y: float, nature: Nature | None = None):
         self.x, self.y = float(x), float(y)
-        self.needs = starting_needs()
+        # Two traits, rolled once. They don't add behaviour — they re-weight
+        # behaviour every subject already has, which is why an industrious one
+        # and a listless one produce completely different weeks out of an
+        # identical job list.
+        self.nature = nature or Nature([])
+        self.needs = starting_needs(self.nature)
+        # What it makes of all this, as distinct from what it is short of.
+        self.mood = Mood()
+        self.carrying = None          # the one thing it can have in its hands
 
         # Exactly one of these at a time, stamped with who authored it.
         self.intent = None
@@ -116,6 +126,8 @@ class Subject:
             "energy": ["barely upright", "very tired", "tired", "rested"],
             "curiosity": ["restless, needs something to do", "bored",
                           "mildly interested in things", "content enough"],
+            "comfort": ["aching, nowhere to be", "uncomfortable",
+                        "not especially comfortable", "comfortable enough"],
         }
         out = []
         for key, scale in words.items():
@@ -124,10 +136,13 @@ class Subject:
                        else scale[2] if lv < 0.7 else scale[3])
         return "; ".join(out)
 
-    def snapshot(self) -> dict:
+    def snapshot(self, now: float = 0.0) -> dict:
         return {
             "x": round(self.x, 2), "y": round(self.y, 2),
             "needs": [n.snapshot() for n in self.needs.values()],
+            "mood": self.mood.snapshot(now, self.nature.mood),
+            "traits": self.nature.snapshot(),
+            "carrying": self.carrying,
             "doing": self.intent.job.label if self.intent else "nothing",
             "verb": self.intent.verb if self.intent else "idle",
             "by": self.intent.by if self.intent else "",

@@ -1,21 +1,29 @@
 """The observation lab.
 
-A subject wakes in a room with no memory of arriving. It has a body that keeps
-itself alive without being asked, and — if you switch one on — a head.
+A subject wakes on the floor of an empty room. Four walls, one of them glass,
+and nothing else at all — no water, no food, nowhere to sleep. Everything in
+there is something you put there.
 
-The arrangement is deliberately the other way round from where this started.
-The scoring layer used to decide everything and hand the model the occasional
-tie. It now runs the *body*: pathing, reflexes below the collapse line, and any
-habit the subject has formed. The head decides what the day is for. It can
-ignore its needs, and it will be overruled by its own reflexes if it ignores
-them too long — and told, afterwards, that it was.
+That is the whole shape of it. A furnished cell asks "what does the pawn do?",
+and the honest measured answer was 39% of its waking life at the window,
+because there was nothing else. A room you build asks better questions: what
+happens with a bed but no water; what happens if you take the dispenser out on
+day three; what does four chairs and no work look like. None of those need a
+model to be interesting, and the pawn has to be worth watching before one is
+worth adding.
 
-What this is really for is a question with a hard answer available. Dwarf
-Fortress produces surprising behaviour out of enumerated primitives and no
-model at all. So the lab counts the only thing that could justify the latency:
-how often the head does something the scoring layer would not have, and whether
-that made any difference. `divergence` in the snapshot is that number. If it
-sits near zero, the head is decoration, and you will be able to see that.
+Three layers run the subject, and you can see all of them:
+
+  needs    what the body is short of. Falls over time, drives the scoring.
+  mood     what it makes of its situation. A stack of specific reasons, each
+           with a size and a lifetime. Mood decides nothing; it leans on what
+           is already being decided, and takes the body away entirely when it
+           runs out.
+  nature   two traits rolled at generation, which re-weight everything above.
+
+A head — a language model — can be switched on, and then decides what the day
+is for instead of the scoring layer. It is off by default and nothing here
+needs it.
 """
 
 from __future__ import annotations
@@ -24,8 +32,8 @@ import random
 import threading
 import time
 
+from . import catalogue, jobs, room, traits
 from . import intent as brain
-from . import jobs, room
 from .deal import Deal
 from .intent import Intent
 from .subject import Subject
@@ -36,15 +44,28 @@ MINUTES_PER_TICK = 1.0      # simulated minutes each step
 THINK_GAP = 5.0             # never two thoughts closer than this, sim minutes
 THINK_IDLE = 200.0          # ...and check in at least this often while awake
 
+BREAK_AT = 0.18             # mood below this and it comes apart
+BREAK_GAP = 900.0           # ...but not twice inside this many minutes
+
+# A starting room, for when you'd rather watch than furnish. Everything in it
+# is something you could have dropped yourself.
+FURNISHED = [("tap", 4, 3), ("dispenser", 19, 3), ("bed", 4, 10),
+             ("door", 12, 0), ("crate", 16, 9), ("wall marks", 20, 11),
+             ("button", 8, 6), ("chair", 10, 9), ("table", 11, 4),
+             ("papers", 12, 9), ("wire", 6, 6), ("plant", 18, 11)]
+
 
 class Lab:
-    def __init__(self, seed: int | None = None):
+    def __init__(self, seed: int | None = None, furnished: bool = False):
         self.lock = threading.RLock()
         self.seed = seed if seed is not None else random.randrange(1, 10 ** 6)
         self.rng = random.Random(self.seed)
 
-        self.rows, self.things = room.build()
-        self.subject = Subject(11, 7)
+        self.rows = room.build()
+        self.things: dict[str, room.Thing] = {}
+        self._ids = 0
+        self.glass = (float(room.W - 1), 7.0)
+        self.subject = Subject(11, 7, traits.Nature(traits.roll(self.rng)))
         self.jobs = jobs.all_jobs()
         self.verbs = {j.key: j for j in self.jobs + jobs.extra_jobs()}
         self.step_minutes = MINUTES_PER_TICK
@@ -52,29 +73,102 @@ class Lab:
         self.minutes = 0.0
         self.log: list[dict] = []
         self._n = 0
-        self.decisions: list[dict] = []      # the scoring table, every time it changes
+        self.decisions: list[dict] = []
 
-        # The head is off until you switch it on. Everything below works
-        # without it, which is the baseline the experiment is against.
         self.mind = None
-        self.auto_honour = True              # keep your word without being asked
+        self.auto_honour = True
         self.running = True
-        self.crate_work = 0.0                # minutes spent on the lid
-        self.crate_open = False
+        self.blackout = False           # lights out on your say-so
 
-        # Who has been driving.
-        self.tally = {"thought": 0, "habit": 0, "reflex": 0, "urge": 0}
-        self.divergence = 0                  # thoughts the scorer disagreed with
-        self.overruled = 0                   # thoughts a reflex had to undo
+        self.tally = {"thought": 0, "habit": 0, "reflex": 0, "urge": 0,
+                      "break": 0}
+        self.divergence = 0
+        self.overruled = 0
+        self.breaks = 0
         self.last_thought = -9e9
-        self._prod: str | None = None        # a reason to think, waiting to be used
-        self._thinking: str | None = None    # ...and one currently in flight
-        self._thought: dict | None = None    # a landed answer, not yet adopted
-        self.thinking_since = 0.0
-        self.plan: dict | None = None        # what it said it would do next
+        self._prod: str | None = None
+        self._thinking: str | None = None
+        self._thought: dict | None = None
+        self.plan: dict | None = None
 
-        self.note("The subject wakes on the floor. It does not know where it is, "
-                  "and it does not appear to remember arriving.", "system")
+        if furnished:
+            for kind, x, y in FURNISHED:
+                self.place(kind, x, y, quiet=True)
+
+        self.note("The subject wakes on the floor. It does not know where it "
+                  "is, and it does not appear to remember arriving.", "system")
+        self.note("Two things are true of it: "
+                  + " and ".join(t["note"] for t in self.subject.nature.traits)
+                  + "." if self.subject.nature.traits else "", "detail")
+
+    # -- the room -------------------------------------------------------------
+
+    def place(self, kind: str, x, y, quiet: bool = False) -> room.Thing | None:
+        if kind not in catalogue.KINDS:
+            return None
+        x, y = int(x), int(y)
+        if not room.placeable(self.rows, x, y):
+            return None
+        if any(int(t.x) == x and int(t.y) == y for t in self.things.values()):
+            return None
+        self._ids += 1
+        t = room.Thing(f"{kind.replace(' ', '')}{self._ids}", kind, x, y)
+        self.things[t.id] = t
+        if not quiet:
+            self.note(f"You put something in the room. It has not noticed yet.",
+                      "control")
+            # A new thing is worth looking at, whatever it was doing.
+            self.prod("something new appeared in the room")
+        return t
+
+    def remove(self, tid: str) -> bool:
+        t = self.things.pop(tid, None)
+        if t is None:
+            return False
+        self.note(f"You take the {t.label if t.known else 'thing'} away.",
+                  "control")
+        if t.known:
+            self.subject.remember(f"{self.clock()} — the {t.label} is gone.")
+            self.subject.mood.add(f"lost:{t.kind}", f"the {t.label} was taken away",
+                                  -0.12, 1200, self.minutes)
+        # Whatever it was doing was decided against a room that no longer
+        # exists, so it gets to choose again.
+        if self.subject.job is not None:
+            self.take(None)
+        return True
+
+    def find(self, kind: str, usable: bool = True):
+        """The nearest thing of a kind the subject has worked out.
+
+        Nothing in the behaviour layer names a specific object, which is what
+        lets you rearrange the room underneath a running pawn.
+        """
+        s = self.subject
+        best, bd = None, 1e9
+        for t in self.things.values():
+            if t.kind != kind or not t.known:
+                continue
+            if usable and t.spent():
+                continue
+            d = abs(t.x - s.x) + abs(t.y - s.y)
+            if d < bd:
+                best, bd = t, d
+        return best
+
+    def near_thing(self, s, kind: str, usable: bool = True):
+        """One of a kind that is actually within arm's reach right now."""
+        for t in self.things.values():
+            if t.kind != kind or not t.known or not s.near(t):
+                continue
+            if usable and t.spent():
+                continue
+            return t
+        return None
+
+    def missing(self) -> list[str]:
+        """What the room has no source for at all. Shown to you, not to it."""
+        return [need for need, kind in catalogue.VITAL.items()
+                if not any(t.kind == kind and t.enabled for t in self.things.values())]
 
     # -- bookkeeping ----------------------------------------------------------
 
@@ -82,26 +176,29 @@ class Lab:
         return self.verbs.get(verb)
 
     def dark(self) -> bool:
-        """Lights out. The lamp is on a cycle you control, and it is the only
-        thing in the room that organises a day."""
-        lamp = self.things.get("lamp")
-        if lamp is not None and not lamp.enabled:
+        if self.blackout:
             return True
+        if any(t.kind == "lamp" and t.enabled for t in self.things.values()):
+            return False
         h = (self.minutes % (24 * 60)) / 60
         return h < 7 or h >= 22
 
+    def day(self) -> int:
+        return int(self.minutes // (24 * 60)) + 1
+
     def clock(self) -> str:
-        m = int(self.minutes)
+        m = int(self.minutes) % (24 * 60)
         return f"{m // 60:02d}:{m % 60:02d}"
 
     def note(self, text: str, kind: str = "world"):
+        if not text:
+            return
         self._n += 1
-        self.log.append({"n": self._n, "t": self.clock(), "kind": kind, "text": text})
+        self.log.append({"n": self._n, "t": self.clock(), "kind": kind,
+                         "text": text})
         del self.log[:-200]
 
     def prod(self, reason: str):
-        """Something happened that is worth a thought. Nothing forces one —
-        the head gets to it when it gets to it."""
         if self._prod is None:
             self._prod = reason
 
@@ -114,22 +211,14 @@ class Lab:
         return self.subject.x, self.subject.y
 
     def disappointed(self, verb: str):
-        """A thing it went to did nothing. Habits that stop paying come apart."""
         brain.unlearn(self.subject, brain.circumstance(self.subject, self), verb)
         self.prod("something it counted on gave it nothing")
 
-    def on_pressed(self, key: str):
-        """It pressed something with no deal attached to it — which means it
-        did that off its own bat, and is now watching to see what happens."""
+    def on_pressed(self, tid: str):
         self.prod("it pressed something and is waiting to see")
 
-    def set_supply(self, key: str, on: bool) -> bool:
-        """Turn something on or off from your side of the glass.
-
-        The subject is not told. It finds out by going over and trying, which
-        is the whole point — a dilemma you created, discovered the hard way.
-        """
-        t = self.things.get(key)
+    def set_supply(self, tid: str, on: bool) -> bool:
+        t = self.things.get(tid)
         if t is None or not t.controllable:
             return False
         if t.enabled == on:
@@ -138,17 +227,80 @@ class Lab:
         self.note(f"You {'restore' if on else 'cut'} the {t.label}.", "control")
         return True
 
+    # -- how it feels ---------------------------------------------------------
+
+    def _feel(self):
+        """Turn the state of the world into specific reasons.
+
+        Held thoughts are renewed while they're true and fade once they stop,
+        which is what gives mood inertia. A mood recomputed from world state
+        every tick is a gauge; one that remembers is a person.
+        """
+        s, now = self.subject, self.minutes
+        m = s.mood
+
+        # Weighted so that being briefly short of something is a grumble and
+        # being persistently short of it is a crisis. The floors are low on
+        # purpose: a subject that is merely peckish should not be miserable,
+        # or nothing is left to say about one that is genuinely in trouble.
+        for key, label, level, floor, weight in (
+                ("parched", "parched", s.needs["thirst"].level, 0.30, 0.30),
+                ("hungry", "hungry", s.needs["hunger"].level, 0.30, 0.26),
+                ("aching", "nowhere comfortable to be",
+                 s.needs["comfort"].level, 0.22, 0.14),
+                ("bored", "nothing to do in here",
+                 s.needs["curiosity"].level, 0.20, 0.14)):
+            if level < floor:
+                deep = (floor - level) / floor
+                m.hold(key, label, -weight * deep, now)
+            else:
+                m.release(key, now)
+
+        awake = s.intent is None or s.intent.verb not in ("sleep", "break")
+        if self.dark() and awake:
+            m.hold("dark", "sitting in the dark", -0.06, now)
+        else:
+            m.release("dark", now)
+
+        # The one that never goes away, and the reason a week here is worse
+        # than a day here regardless of how well stocked it is.
+        days = self.minutes / (24 * 60)
+        if days > 1:
+            m.hold("confined", f"still in this room, {int(days)} days in",
+                   -min(0.20, 0.04 * days), now)
+
+        m.tick(now)
+
+    def mood_now(self) -> float:
+        return self.subject.mood.level(self.minutes, self.subject.nature.mood)
+
+    def breakdown(self) -> Intent | None:
+        s = self.subject
+        if s.intent is not None and s.intent.verb == "break":
+            return None
+        if self.minutes - s.mood.broke_at < BREAK_GAP:
+            return None
+        if self.mood_now() > BREAK_AT:
+            return None
+        # Stamped when it *starts*, not when it finishes. A break that gets
+        # interrupted — by thirst, which it will be — otherwise leaves the
+        # clock unset and re-fires on the very next tick, and the subject
+        # spends its whole life coming apart and starves inside two days.
+        s.mood.broke_at = self.minutes
+        self.breaks += 1
+        style = "walks it off" if s.nature.break_style == "pace" else "shuts down"
+        self.note(f"It has had enough, and {style}.", "danger")
+        return Intent(self.verbs["break"], why="it has had enough", by="break",
+                      started=self.minutes)
+
     # -- talking through the glass --------------------------------------------
 
     def say_to(self, text: str) -> dict:
         """Say something through the glass, in your own words.
 
-        Nothing here interprets it. It used to be classified into offer-or-
-        remark before the subject ever saw it, which made "Hello?" a binding
-        promise and turned every sentence into a form to be filled in. The
-        words now go in verbatim and stay verbatim; working out what they meant
-        is the head's problem, and if there is no head then a voice behind
-        glass is a noise, which is the correct result.
+        Nothing here interprets it. The words go in verbatim and stay verbatim;
+        working out what they meant is a head's problem, and with no head a
+        voice behind glass is a noise, which is the correct result.
         """
         text = (text or "").strip()[:200]
         if not text:
@@ -165,14 +317,11 @@ class Lab:
         return {"heard": True}
 
     def _make_deal(self, do: str, gives: str, said: str) -> Deal | None:
-        thing = self.things.get(do)
-        if thing is None or gives not in self.subject.needs:
+        if self.things.get(do) is None or gives not in self.subject.needs:
             return None
-        # A second offer about the same thing replaces the first rather than
-        # stacking, or you end up with four beliefs about one button.
         self.subject.deals = [d for d in self.subject.deals if d.do != do]
         deal = Deal(do, gives, said, self.clock())
-        deal.belief = 0.45      # somebody it has no reason to trust, yet
+        deal.belief = 0.45
         self.subject.deals.append(deal)
         del self.subject.deals[:-4]
         return deal
@@ -180,9 +329,8 @@ class Lab:
     def offer(self, do: str, gives: str, said: str) -> Deal | None:
         """Wire a conditional straight into the subject, skipping language.
 
-        The blunt instrument. A subject with a head does not need this — you
-        can just say it — but the belief machinery is worth being able to test
-        with no model in the loop at all.
+        The blunt instrument, for testing the belief machinery with no model in
+        the loop at all.
         """
         if self.things.get(do) is None or gives not in self.subject.needs:
             return None
@@ -198,18 +346,18 @@ class Lab:
         return deal
 
     def on_complied(self, deal: Deal):
-        """They did their half. Yours is a button on your side of the glass."""
         self.note("It has done what you asked. It is waiting to see whether "
                   "you meant it.", "system")
         if self.auto_honour:
             self.honour(True)
 
     def honour(self, keep: bool):
-        d = next((d for d in self.subject.deals if d.pending), None)
+        s = self.subject
+        d = next((d for d in s.deals if d.pending), None)
         if d is None:
             return False
-        thing = self.things.get(
-            {"hunger": "hatch", "thirst": "tap", "energy": "cot"}.get(d.gives, ""))
+        kind = {"hunger": "dispenser", "thirst": "tap", "energy": "bed"}.get(d.gives, "")
+        thing = next((t for t in self.things.values() if t.kind == kind), None)
         if keep:
             d.honoured()
             if thing is not None:
@@ -217,25 +365,35 @@ class Lab:
                 if thing.uses is not None:
                     thing.uses = thing.cap
             self.note("You keep your word.", "control")
-            self.subject.remember(f"{self.clock()} — pressed it, and the promise held.")
+            s.remember(f"{self.clock()} — pressed it, and the promise held.")
+            s.mood.add("promise", "it was told the truth", 0.12, 1200, self.minutes)
         else:
             d.broken()
             self.note("You do nothing.", "control")
-            self.subject.remember(f"{self.clock()} — pressed it, and nothing came of it.")
-        # Whatever it does next, it does knowing that.
-        self.subject.take(None, self)
+            s.remember(f"{self.clock()} — pressed it, and nothing came of it.")
+            s.mood.add("promise", "it was lied to", -0.18, 1800, self.minutes)
+        self.take(None)
         self.prod("you either kept your word or you didn't")
         return True
 
     # -- what the body wants --------------------------------------------------
 
     def weigh(self) -> list[dict]:
-        """Score every option. This is the body talking, and with no head
-        attached it is also the decision."""
+        """Score every option.
+
+        Nature and mood are applied here and only here — as multipliers on
+        scores the jobs worked out for themselves. That is deliberate: a trait
+        can make a subject do more or less of something and can never make it
+        do something no subject could do, so the behaviour stays one system
+        with dials rather than a pile of special cases.
+        """
         s = self.subject
+        mood = self.mood_now()
         table = []
         for job in self.jobs:
             score = job.score(s, self)
+            if score is not None:
+                score *= s.nature.on(job.key) * jobs.mood_shift(job.key, mood)
             table.append({
                 "key": job.key, "label": job.label,
                 "score": None if score is None else round(score, 3),
@@ -246,17 +404,14 @@ class Lab:
         return table
 
     def by_urge(self) -> Intent | None:
-        """What the body would do left to itself. Unchanged from the version
-        of this lab that had no head at all — it is the control condition and
-        it is not allowed to get worse."""
+        """What the body would do left to itself, which with no head attached
+        is also the decision."""
         s = self.subject
         table = self.weigh()
         live = [r for r in table if r["score"] is not None]
         if not live:
             return None
 
-        # Whatever it was already doing keeps a bonus, so it isn't abandoned on
-        # a hair's difference.
         if s.job is not None:
             for r in live:
                 if r["job"] is s.job:
@@ -274,35 +429,38 @@ class Lab:
             tied = [r for r in live if top["score"] - r["score"] < jobs.FORK]
             top = self.rng.choices(tied, weights=[max(r["score"], 0.01)
                                                   for r in tied])[0]
-        self._record(table, top["key"], gap, forked, "urge")
+        self._record(table, top["key"], gap, forked)
         return Intent(top["job"], why=top["why"], by="urge", started=self.minutes)
 
-    def _record(self, table, chose, gap, forked, by):
+    def _record(self, table, chose, gap, forked):
         self.decisions.append({
             "t": self.clock(), "chose": chose, "gap": round(gap, 3),
-            "forked": forked, "by": by,
+            "forked": forked,
             "options": [{k: r[k] for k in ("key", "label", "score", "why")}
                         for r in table],
         })
         del self.decisions[:-40]
 
     def would_have(self) -> str:
-        """The verb the body would have picked. Only used to score the head."""
         live = [r for r in self.weigh() if r["score"] is not None]
         return live[0]["key"] if live else ""
 
     # -- the head -------------------------------------------------------------
 
     def brief(self) -> dict:
-        """Everything the head gets. Assembled under the lock, read outside it."""
         s = self.subject
         known = [t for t in self.things.values() if t.known]
         return {
             "clock": self.clock(),
+            "day": self.day(),
             "dark": self.dark(),
             "feels": s.feels(),
-            "known": [f"{t.key} — {t.label}"
-                      + (", and it is giving nothing at the moment" if t.spent() else "")
+            "mood": s.mood.state(self.minutes, s.nature.mood),
+            "because": [t["label"] for t in
+                        s.mood.snapshot(self.minutes, s.nature.mood)["thoughts"]],
+            "nature": s.nature.labels(),
+            "known": [f"{t.id} — {t.label}"
+                      + (", giving nothing at the moment" if t.spent() else "")
                       for t in known],
             "unknown": sum(1 for t in self.things.values() if not t.known),
             "learned": list(s.learned[-8:]),
@@ -311,11 +469,9 @@ class Lab:
             "said": [d["text"] for d in s.said[-3:]],
             "doing": s.intent.job.label if s.intent else "nothing",
             "pull": self.would_have(),
-            "crate": (100 if self.crate_open
-                      else int(self.crate_work / jobs.Work.NEEDED * 100)),
             "can": {k: v for k, v in jobs.OFFERED.items()
                     if self.verbs.get(k) is not None},
-            "things": {t.key: t.label for t in known},
+            "things": {t.id: t.label for t in known},
         }
 
     def wants_a_thought(self) -> str | None:
@@ -328,8 +484,7 @@ class Lab:
             return self._prod
         if s.intent is None:
             return "you have just finished something"
-        # Don't wake it up to have a think.
-        if s.intent.verb == "sleep":
+        if s.intent.verb in ("sleep", "break"):
             return None
         if self.minutes - self.last_thought > THINK_IDLE:
             return "it has been a while"
@@ -337,10 +492,8 @@ class Lab:
 
     def _launch(self, reason: str):
         """Set a thought going. It runs off the sim thread, because a head that
-        takes four seconds must not stop a body that has a room to walk across
-        — the whole arrangement falls over if thinking is a freeze frame."""
+        takes four seconds must not stop a body with a room to walk across."""
         self._prod = None
-        self.thinking_since = self.minutes
         packet, mind = self.brief(), self.mind
 
         def work():
@@ -362,19 +515,15 @@ class Lab:
         threading.Thread(target=run, daemon=True).start()
 
     def _land(self):
-        """Take delivery of a thought. It may well be out of date by now —
-        that is what a slow head costs, and the body carried on regardless."""
         out, self._thought = self._thought, None
         s = self.subject
         self.last_thought = self.minutes
         if out.get("failed"):
             self.note("The thought comes to nothing.", "system")
-            if s.intent is None:
+            if s.intent is None or s.intent.verb == "mull":
                 self.take(self.by_urge())
             return
-        # A reflex that seized control while the head was busy wins. The head
-        # is told, and that line goes into its own account of the day.
-        if s.intent is not None and s.intent.by == "reflex":
+        if s.intent is not None and s.intent.by in ("reflex", "break"):
             self.overruled += 1
             s.remember(f"{self.clock()} — meant to {out['do']}, but the body "
                        "had other ideas.")
@@ -402,19 +551,18 @@ class Lab:
 
     def take(self, it: Intent | None):
         self.subject.take(it, self)
-        if it is None or it.verb == "mull":
-            return          # standing there while the head works isn't a decision
+        if it is None or it.job.key == "mull":
+            return
         self.tally[it.by] = self.tally.get(it.by, 0) + 1
         tail = {"reflex": "  [no decision was involved]",
                 "habit": "  [it doesn't think about this any more]",
-                "thought": "", "urge": ""}.get(it.by, "")
+                "break": ""}.get(it.by, "")
         self.note(f"Starts {it.job.label} — {it.why}{tail}",
-                  "reflex" if it.by == "reflex" else "choice")
+                  {"reflex": "reflex", "break": "danger"}.get(it.by, "choice"))
 
     def decide(self):
         """Nothing is being done. Work out what happens next, cheapest first."""
         s = self.subject
-        # 1. Something it said it would do next, decided already.
         if self.plan and self.verbs.get(self.plan.get("do", "")):
             plan, self.plan = self.plan, None
             job = self.verbs[plan["do"]]
@@ -424,19 +572,16 @@ class Lab:
                                  why=plan.get("because", "") or "as it meant to",
                                  by="thought"))
                 return
-        # 2. Something it no longer thinks about.
         h = brain.habit(self)
         if h is not None:
             self.take(h)
             return
-        # 3. Ask the head, and stand there while it answers.
         reason = self.wants_a_thought()
         if reason is not None:
             self._launch(reason)
             self.take(Intent(self.verbs["mull"], why=reason, by="thought",
                              started=self.minutes))
             return
-        # 4. No head, or one that is busy. The body knows what it wants.
         if self.mind is None or not self._thinking:
             self.take(self.by_urge())
 
@@ -451,12 +596,13 @@ class Lab:
             for t in self.things.values():
                 t.tick(self.step_minutes)
             s.tick_needs(self)
+            self._feel()
             if not s.alive:
                 self.note("The subject stops moving.", "danger")
                 return
 
             # The body first, always. It does not wait for anybody.
-            r = brain.reflex(self)
+            r = brain.reflex(self) or self.breakdown()
             if r is not None:
                 self.take(r)
                 self.prod("your body took over")
@@ -468,8 +614,7 @@ class Lab:
                 self.decide()
                 return
 
-            # A thought that has landed ends a mull immediately.
-            if s.intent.verb == "mull" and not self._thinking and self._thought is None:
+            if s.intent.job.key == "mull" and not self._thinking and self._thought is None:
                 self.take(None)
                 self.decide()
                 return
@@ -479,16 +624,14 @@ class Lab:
             if target is not None and not s.near(target):
                 where = (round(s.x, 2), round(s.y, 2))
                 s.walk_to(target.x, target.y, self)
-                # Whatever the geometry does, a subject that cannot get where
-                # it is going gives up rather than standing there until it
-                # dies. This is a guarantee, not a fix for one wall.
+                # A subject that cannot get where it is going gives up rather
+                # than standing there until it dies. A guarantee, not a fix
+                # for one wall.
                 if (round(s.x, 2), round(s.y, 2)) == where:
                     s.stuck += 1
                     if s.stuck > 12:
                         self.note(f"Cannot get to the {getattr(target, 'label', '?')}. "
                                   "Gives up on it.", "system")
-                        s.remember(f"{self.clock()} — could not get to the "
-                                   f"{getattr(target, 'label', 'thing')}.")
                         self.take(None)
                         self.decide()
                 else:
@@ -506,27 +649,30 @@ class Lab:
             s = self.subject
             return {
                 "clock": self.clock(),
+                "day": self.day(),
                 "dark": self.dark(),
+                "blackout": self.blackout,
                 "seed": self.seed,
                 "rows": self.rows,
                 "w": room.W, "h": room.H,
-                "subject": s.snapshot(),
+                "glass": list(self.glass),
+                "subject": s.snapshot(self.minutes),
                 "things": [t.snapshot() for t in self.things.values()],
+                "catalogue": catalogue.blurbs(),
+                "missing": self.missing(),
                 "table": [{k: r[k] for k in ("key", "label", "score", "why")}
                           for r in table],
-                "decisions": self.decisions[-8:],
                 "log": self.log[-60:],
                 "habits": brain.habits_learned(s),
                 "tally": dict(self.tally),
                 "divergence": self.divergence,
                 "overruled": self.overruled,
+                "breaks": self.breaks,
                 "thinking": self._thinking,
-                "plan": self.plan,
                 "mind_on": self.mind is not None,
                 "auto_honour": self.auto_honour,
-                "crate": {"done": round(self.crate_work), "needed": 240,
-                          "open": self.crate_open},
                 "waiting": any(d.pending for d in s.deals),
+                "deals": [d.snapshot() for d in s.deals],
                 "running": self.running,
             }
 

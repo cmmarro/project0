@@ -58,7 +58,10 @@ def lab_() -> Lab:
     global _lab
     with _boot:
         if _lab is None:
-            _lab = Lab()
+            # A furnished room to begin with, so the first thing you see is a
+            # subject with a day rather than one starving in an empty box.
+            # Strip it back with the palette, or hit "empty room".
+            _lab = Lab(furnished=True)
             start_lab(_lab)
         return _lab
 
@@ -229,7 +232,36 @@ def lab_supply():
     d = request.get_json(silent=True) or {}
     lab = lab_()
     with lab.lock:
-        lab.set_supply(d.get("key", ""), bool(d.get("on")))
+        lab.set_supply(d.get("id", "") or d.get("key", ""), bool(d.get("on")))
+    return jsonify(lab.snapshot())
+
+
+@app.post("/api/lab/place")
+def lab_place():
+    """Drop something into the room. The subject is not told."""
+    d = request.get_json(silent=True) or {}
+    lab = lab_()
+    with lab.lock:
+        made = lab.place(d.get("kind", ""), d.get("x", 0), d.get("y", 0))
+    return jsonify({**lab.snapshot(), "placed": made.id if made else None})
+
+
+@app.post("/api/lab/remove")
+def lab_remove():
+    d = request.get_json(silent=True) or {}
+    lab = lab_()
+    with lab.lock:
+        lab.remove(d.get("id", ""))
+    return jsonify(lab.snapshot())
+
+
+@app.post("/api/lab/blackout")
+def lab_blackout():
+    lab = lab_()
+    with lab.lock:
+        lab.blackout = not lab.blackout
+        lab.note("You kill the lights." if lab.blackout
+                 else "You bring the lights back up.", "control")
     return jsonify(lab.snapshot())
 
 
@@ -283,10 +315,13 @@ def lab_pause():
 
 @app.post("/api/lab/reset")
 def lab_reset():
+    """A new subject, with new traits. `furnished` starts it in a stocked room
+    rather than a bare one, for when you'd rather watch than build."""
     global _lab
+    d = request.get_json(silent=True) or {}
     with _boot:
         keep = _lab.mind if _lab else None
-        _lab = Lab()
+        _lab = Lab(furnished=bool(d.get("furnished")))
         _lab.mind = keep
         start_lab(_lab)
         return jsonify(_lab.snapshot())

@@ -480,131 +480,99 @@ and the people are all different every time. Same seed, same run.
   two survivors can't compare their conclusions about a third.
 
 ---
-
 # The lab
 
 A second, much smaller thing in the same repo, and a step backwards on purpose.
 
 `python server.py` → a start screen → **the lab**.
 
-One subject wakes on the floor of a bare room with no memory of arriving. It has
-four needs, ten things it can look at, a door that does not open, and a window
-with you behind it.
+A subject wakes on the floor of a room. Four walls, one of them glass, and
+whatever you have put in there. There is a palette under the room: taps, paste
+dispensers, a cot, chairs, a table, a lamp, a crate to break open, a knot of
+wire, a stack of papers, a plant. Drop them in, take them away again, cut the
+supply, kill the lights. The subject is never told — it finds out by walking
+over.
 
-## Two layers, one thread of intent
+Everything below is ordinary code. No model is involved and none is needed.
 
-The arrangement is deliberately the opposite of where this started. The scoring
-layer used to decide everything and hand a model the occasional tie — which is a
-job a coin does for free. It now runs the **body**, and the model, if you switch
-one on, is the **head**.
+## Three layers, and you can see all of them
 
-**The body** never asks anybody. It does three things:
+**Needs** — thirst, hunger, energy, curiosity, comfort. They fall; every job
+scores itself against them off a curve; the highest wins. A job returns *no
+score at all* when it isn't possible, so "can't" and "won't" stay different
+things and an empty room reads as an empty room.
 
-- **Pathing.** You do not decide which way to walk round a table.
-- **Reflex.** Below the collapse line — thirst 20%, hunger 16%, energy 10% — it
-  goes and drinks, and the head finds out afterwards. Note what this *doesn't*
-  do: if the tap is dry, no reflex fires. The body only seizes control to do
-  something it can actually carry out, so a subject dying of thirst in a room
-  with no water stays the head's problem, which is the moment worth a thought.
-- **Habit.** Every time the head deliberately picks something in a given
-  circumstance, that pairing gets a tally. Past three, it stops being a decision
-  and starts just happening — and comes apart again if it stops paying. This is
-  also how the head's running cost falls the longer a subject lives in a room it
-  understands.
+**Mood** — not a gauge computed from world state, a *stack of specific
+reasons*, each with a size and a lifetime. "Slept on a bare cot −0.06, sitting
+in the dark −0.06, still in this room four days in −0.16." That matters twice:
+it tells you what to change, and it has inertia — a good night still counts at
+noon, and a grievance outlasts its cause. Mood decides nothing. It leans on
+what is already being decided, and below a floor it takes the body away
+entirely and the subject comes apart for a couple of hours.
 
-**The head** decides what the day is for. It is allowed to ignore its needs, and
-it will be overruled by its own reflexes if it ignores them too long — and told,
-in its own history, that that is what happened.
+**Nature** — two traits rolled at generation, from a table of eleven with
+clash rules. They add no behaviour; they re-weight behaviour every subject
+already has. An *industrious* subject and a *listless* one work from an
+identical job list and produce completely different weeks.
 
-They are unified by one `Intent`: exactly one current action, always stamped
-with who authored it (`thought` / `habit` / `reflex` / `urge`). The subject's own
-account of its day is a single list, and *"I went to the tap"* reads the same
-whether it was decided or merely happened. Nothing is ever being driven by two
-things at once.
+On top of that: **reflexes** below the collapse line (it drinks without
+deciding to), and **habits** — anything decided the same way in the same
+circumstance three times stops being decided.
 
-Thinking runs off the sim thread. A head that takes four seconds must not stop a
-body that has a room to walk across — while a thought is in flight the subject
-stands and mulls, reflexes still fire, and a thought that lands after the body
-has already moved is dropped.
+## What went wrong, and what it taught
 
-## The measurement
+Three of these are in the test suite because a subject broke.
 
-Dwarf Fortress produces surprising behaviour out of enumerated primitives and no
-model at all, and it is a high bar. So the lab counts the only thing that could
-justify the latency: **how often the head does something the scoring layer would
-not have.** That is `divergence`, and it is on the panel next to the tally of who
-has been driving. If it sits near zero, the head is agreeing with arithmetic and
-charging you seconds for it, and you will be able to see that.
+- **A pawn paced about things it hadn't discovered.** In a fully stocked room
+  it hadn't worked anything out yet, so every need read as unmeetable, and the
+  pacing crowded out the looking-around that would have fixed it. You cannot be
+  frustrated by something you don't know is there — and a subject short of
+  something it has no source for should *search*, which is a different score.
+- **Low mood penalised the repairs.** Reading and sitting were filed as effort,
+  so a subject at rock bottom was slowed on precisely the things that would
+  have lifted it. One seed spent six days pinned at zero. Recreation is relief,
+  not labour: a miserable pawn does *more* of it.
+- **An interrupted breakdown re-fired every tick.** The clock was stamped on
+  completion rather than on start, so a break interrupted by thirst never
+  ended, and two subjects starved inside two days.
 
-There are exactly two inputs a needs system has no way to represent, and the lab
-is built around both:
+## Where the day goes
 
-- **What was said.** Words through the glass arrive verbatim and uninterpreted.
-  Nothing classifies them; there is no need they correspond to and no curve they
-  sit on. *"Press that button and I'll feed you"* is not a drive.
-- **What it is like to be this one.** The subject's own log of what it did and
-  why is fed back in. A stance — deciding you don't trust the voice — persists
-  across unrelated decisions without anybody having written a `trust` float.
+Six seeds, six simulated days, no model, no deaths, every object worked out:
 
-The head is **not shown the scores**. Hand a model a column of decimals and it
-does arithmetic and agrees with them. It gets the body in words instead —
-*parched; peckish; barely upright; bored* — because a feeling is something you
-decide about and a number is something you look up.
+```
+sleep      22-28%     drink       7-12%     examine   2-3%
+occupy     30-50%     eat         4-10%     work      ~3%
+sit         2-11%     rest        2-11%     the glass 0-10%
+```
 
-There are three verbs nothing in the scoring table will ever pick: **press**,
-**wait**, and speaking. If any of them happens, something decided it.
+That last number is the one worth watching. Before there were occupations to
+have, a perfectly well-fed subject spent **40% of its waking life at the
+window** — which was content missing, not behaviour failing. Anything with an
+`occupation` block in `catalogue.py` becomes something to do with no new code
+at all.
 
-## The body on its own
+## The head
 
-With no backend at all it is still a complete creature, and that is the baseline
-anything else has to beat. Over 200 simulated hours with no head: sleep 27%,
-watching the glass 39%, drinking 12%, resting 12%, eating 5%, working 2%,
-examining 2% — no deaths, the crate opened, and about one reflex every 22 hours
-(getting up parched in the night).
+A language model can be switched on, and then it decides what the day is for
+instead of the scoring layer. It is off by default, it is not shown the scores
+(hand a model decimals and it does arithmetic and agrees with them — it gets
+the body in words), and it can reach three verbs nothing in the table will ever
+pick: **press**, **wait**, and speaking. The panel counts **divergence** — how
+often it chose something the scoring layer wouldn't have. Near zero means it is
+decoration, and the number says so rather than the README.
 
-Four things do most of the work of making that read as a person rather than a
-process:
+Whatever you say through the glass goes in verbatim. Nothing classifies it. An
+earlier version sorted every sentence into offer-or-remark before the subject
+saw it, which made *"Hello?"* a binding promise worth 75% belief. With no head
+attached, a voice behind glass is a noise, which is the correct result.
 
-- **A day.** The lamp is on a cycle you control, and the cot is for the night.
-  Without one the pawn slept in twenty-minute snatches whenever energy dipped.
-- **Satiation.** Doing something makes you want it less for an hour. Without it
-  whatever the cheapest idle option is swallows the waking day — random
-  wandering was 100% of idle time, and replacing it with the glass just moved
-  the problem.
-- **Commitment.** What it is already doing keeps a bonus. Re-deciding every tick
-  is most of what reads as automated.
-- **Work.** A crate with the lid nailed down, four hours of picking, and it does
-  eventually give.
-
-Nothing walks to a random tile. Idling is standing at the glass — the one thing
-in the room that looks back — and pacing is reserved for wanting something you
-can't have, which makes the same animation read as agitation rather than filler.
-
-That 39% at the window is honest data and not a good sign: **the room is empty.**
-A subject with three needs and three objects has nothing to do while awake. That
-is content, not behaviour.
-
-## Your side of the glass
-
-You can cut the water, shut the food hatch, take the cot away. The subject is
-not told — it finds out by walking over and trying, which is what makes a
-dilemma an event rather than a number changing on a panel. It remembers that the
-tap gave nothing at 14:20, and any habit that depended on it comes apart.
-
-And you can **say something to it**, in your own words. Nothing here interprets
-it. An earlier version classified every sentence into offer-or-remark before the
-subject ever saw it, which made *"Hello?"* a binding promise worth 75% belief and
-turned talking into filling in a form. The words now go in exactly as typed and
-stay that way; working out what they meant is the head's problem, and with no
-head a voice behind glass is a noise, which is the correct result.
-
-Folded away under the say box is a rig that wires a conditional straight into the
-scoring layer, skipping language entirely. That is for testing the belief
-machinery with no model in the loop: the subject holds the deal at about half
-belief, walks over and presses the button unprompted half an hour later, and
-waits to see whether you meant it. Keep your word and belief rises; break it and
-it falls; it remembers both, and enough lies and it stops pressing the button.
+Folded under the say box is a rig that wires a conditional straight into the
+scoring layer, skipping language, for testing belief with no model in the loop:
+the subject half believes it, presses the button unprompted half an hour later,
+and waits to see whether you meant it. Keep your word and belief rises. Lie
+enough and it stops pressing.
 
 ```bash
-.venv/bin/python test_lab.py     # the body with no head, then whether the head earns it
+.venv/bin/python test_lab.py     # the pawn on its own, then whether a head earns it
 ```

@@ -87,7 +87,9 @@ def circumstance(s, lab) -> str:
     """
     worst, level = None, 1.1
     for n in s.needs.values():
-        if n.key != "curiosity" and n.level < level:
+        if n.key in ("curiosity", "comfort"):
+            continue            # neither is urgent enough to name a situation
+        if n.level < level:
             worst, level = n.key, n.level
     if level < 0.5:
         return worst

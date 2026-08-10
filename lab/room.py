@@ -1,16 +1,17 @@
-"""The room, and the things in it.
+"""The room, and the things you have put in it.
 
-Deliberately one screen and about a dozen objects. The point of the lab is to
-watch one subject decide, and a bigger world only makes the decisions harder to
-read, not more interesting.
-
-Nothing in here is themed as anything in particular. It is a room with a door
-the subject has not opened, which is enough of a premise.
+The room is bare: four walls, one of them glass, and a floor. Everything else
+arrives because you dropped it there. Nothing in the behaviour layer names a
+specific object — a job asks for *a* water source and gets the nearest working
+one — so two taps are two taps, and taking the only one away is a thing that
+can happen to a subject rather than a flag on a fixture.
 """
 
 from __future__ import annotations
 
 import math
+
+from .catalogue import KINDS
 
 W, H = 24, 14
 
@@ -18,31 +19,34 @@ FLOOR, WALL, GLASS = ".", "#", "="
 
 
 class Thing:
-    """Something in the room that can be used or looked at.
+    """One placed object.
 
-    ``affords`` is what using it does to needs. ``examine`` is the line the
-    subject learns the first time they look properly — the lab's whole
-    discovery arc is objects moving from unknown to known.
+    ``kind`` is the template it came from; ``id`` is this one. The distinction
+    is the whole reason the palette works: behaviour is written against kinds,
+    the world is made of instances.
     """
 
-    def __init__(self, key, label, x, y, affords=None, examine="", uses=None,
-                 glyph="?", refill=0.0):
-        self.key = key
-        self.label = label
-        self.x, self.y = x, y
-        self.affords = affords or {}
-        self.examine = examine
-        self.glyph = glyph
-        self.uses = uses            # None = unlimited
-        self.cap = uses
-        self.refill = refill        # units per simulated minute
-        self.known = False          # has the subject worked out what it is
-        self.looked = 0             # how many times they've examined it
-        # You are on the other side of the glass, and you control the supply.
-        # This is where the lab's dilemmas actually come from: the room can't
-        # generate a hard choice on its own, but you can make one in a click.
+    def __init__(self, tid: str, kind: str, x: float, y: float):
+        spec = KINDS[kind]
+        self.id = tid
+        self.kind = kind
+        self.label = spec["label"]
+        self.x, self.y = float(x), float(y)
+        self.glyph = spec["glyph"]
+        self.examine = spec.get("examine", "")
+        self.need = spec.get("need", "")          # which need using it fills
+        self.rate = spec.get("rate", 0.0)
+        self.uses = spec.get("uses")              # None = unlimited
+        self.cap = self.uses
+        self.refill = spec.get("refill", 0.0)
+        self.known = False                        # worked out what it is yet
+        self.looked = 0
+        # You are on the other side of the glass and you control the supply.
         self.enabled = True
-        self.controllable = bool(affords)
+        self.controllable = bool(self.need) or kind == "lamp"
+        self.state = dict(spec.get("state", {}))
+        # Something to be getting on with, rather than something you need.
+        self.occupation = spec.get("occupation")
 
     def spent(self) -> bool:
         if not self.enabled:
@@ -55,70 +59,41 @@ class Thing:
             self.uses = min(self.cap, self.uses + self.refill * minutes)
 
     def snapshot(self) -> dict:
-        return {"key": self.key, "label": self.label if self.known else "?",
+        return {"id": self.id, "kind": self.kind,
+                "label": self.label if self.known else "?",
                 "x": self.x, "y": self.y, "glyph": self.glyph,
                 "known": self.known, "looked": self.looked,
                 "uses": None if self.uses is None else round(self.uses, 2),
                 "cap": self.cap, "spent": self.spent(),
                 "enabled": self.enabled, "controllable": self.controllable,
-                "affords": sorted(self.affords)}
+                "state": dict(self.state),
+                "occupation": bool(self.occupation)}
 
 
-def build() -> tuple[list[str], dict[str, Thing]]:
+def build() -> list[str]:
+    """Four walls, one of them glass, and nothing else at all."""
     grid = [[FLOOR] * W for _ in range(H)]
     for x in range(W):
         grid[0][x] = grid[H - 1][x] = WALL
     for y in range(H):
         grid[y][0] = grid[y][W - 1] = WALL
-    # One wall is glass. You are on the other side of it.
     for y in range(4, 10):
         grid[y][W - 1] = GLASS
-
-    things = [
-        # The tap and the hatch are on opposite walls and both run out. That
-        # is the entire source of dilemma in this room: two things you want,
-        # a walk between them, and a wait if you get there and it's dry.
-        Thing("tap", "water tap", 4, 3, {"thirst": 0.55}, glyph="T", uses=3.0,
-              refill=1 / 90,
-              examine="A tap. It runs when you turn it, then stops, and takes a "
-                      "long while to come back."),
-        Thing("hatch", "food hatch", 19, 3, {"hunger": 0.5}, glyph="H", uses=2.0,
-              refill=1 / 150,
-              examine="A hatch in the wall. Something edible arrives in it now "
-                      "and then, and not on any schedule you can see."),
-        Thing("cot", "cot", 4, 10, {"energy": 0.9}, glyph="C",
-              examine="A low cot, bolted down. It is not comfortable but it is a bed."),
-        Thing("door", "door", 12, 0, {}, glyph="D",
-              examine="A door with no handle on this side. It does not move."),
-        Thing("glass", "the glass", W - 1, 7, {}, glyph="|",
-              examine="A window. There is a room on the other side, and it is "
-                      "not empty."),
-        # A job of work. Not a need — something to be getting on with, which is
-        # what actually fills a waking day and what the room was missing.
-        Thing("crate", "crate", 16, 9, {}, glyph="B",
-              examine="A crate with the lid nailed down. Something shifts inside "
-                      "when it's tipped. The nails are old."),
-        Thing("drain", "drain", 8, 11, {}, glyph="o",
-              examine="A drain in the floor. It smells of nothing at all."),
-        Thing("mark", "scratches", 20, 11, {}, glyph="x",
-              examine="Scratches on the wall, low down. Somebody counted "
-                      "something here, and stopped at nineteen."),
-        # Does nothing on its own. It exists so there is something to promise
-        # a reward for — the one test a scoring system cannot pass by itself,
-        # because "they said they'd feed me if I pressed it" is not a need.
-        Thing("button", "button", 8, 6, {}, glyph="O",
-              examine="A button set flush in a pillar. Pressing it makes a "
-                      "sound somewhere behind the wall. Nothing else happens."),
-        Thing("lamp", "lamp", 12, 6, {"curiosity": 0.1}, glyph="*",
-              examine="A lamp set into the ceiling. It does not turn off."),
-    ]
-    return ["".join(row) for row in grid], {t.key: t for t in things}
+    return ["".join(row) for row in grid]
 
 
 def walkable(rows: list[str], x: int, y: int) -> bool:
     if not (0 <= x < W and 0 <= y < H):
         return False
     return rows[y][x] == FLOOR
+
+
+def placeable(rows: list[str], x: int, y: int) -> bool:
+    """Fittings go on a wall; everything else stands on the floor. Both are
+    legal places to drop something, so this is looser than `walkable`."""
+    if not (0 <= x < W and 0 <= y < H):
+        return False
+    return True
 
 
 def step_toward(rows, fx: float, fy: float, tx: float, ty: float,

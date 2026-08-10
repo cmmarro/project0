@@ -68,14 +68,17 @@ class Need:
                 "note": self.note}
 
 
-def starting_needs() -> dict[str, Need]:
-    """A fresh subject. Thirst is the fast clock; curiosity is the slow one.
+def starting_needs(nature=None) -> dict[str, Need]:
+    """A fresh subject. Thirst is the fast clock; comfort is the slow one.
 
     The rates are per simulated minute, and the lab runs at one minute a
     second by default, so thirst empties in about eight minutes of watching if
     nothing is done about it.
+
+    A subject's nature scales the rates rather than adding needs, so every
+    subject has the same four dials and no two run them at the same speed.
     """
-    return {n.key: n for n in [
+    out = {n.key: n for n in [
         Need("thirst", "thirst", 1 / 480, 0.75,
              "falls fastest — the thing that will kill them first"),
         Need("hunger", "hunger", 1 / 900, 0.70,
@@ -87,4 +90,12 @@ def starting_needs() -> dict[str, Need]:
         # any interesting behaviour has to come from.
         Need("curiosity", "curiosity", 1 / 600, 0.55,
              "what makes a satisfied subject get up and look at something"),
+        # Nor is this one. Comfort kills nobody; it feeds mood, which is where
+        # a bare cot turns into a reason to do something about the bare cot.
+        Need("comfort", "comfort", 1 / 700, 0.45,
+             "nothing depends on it except how it feels about being here"),
     ]}
+    for key, mult in (getattr(nature, "needs", None) or {}).items():
+        if key in out:
+            out[key].fall *= mult
+    return out

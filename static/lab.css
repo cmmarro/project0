@@ -27,7 +27,7 @@ button.tag.on { border-color: var(--mind); color: var(--mind); }
 
 #roomwrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center;
   justify-content: center; }
-canvas { max-width: 100%; max-height: 100%; image-rendering: pixelated;
+canvas { width: 100%; max-height: 100%; object-fit: contain;
   border-radius: 4px; box-shadow: 0 14px 44px rgba(0,0,0,.6); }
 #note { flex: 0 0 auto; font-size: 12px; color: var(--dim); border: 1px solid var(--line);
   border-radius: 5px; padding: 8px 12px; background: #11161a; }
@@ -153,3 +153,75 @@ h2 span { text-transform: none; letter-spacing: normal; font-weight: 400; margin
 .line.reflex .x { color: #e0603f; }
 .line.mind .x { color: var(--mind); font-style: italic; }
 .tag:empty { display: none; }
+
+/* ---- the palette ---- */
+#palette { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 6px;
+  background: #11161a; padding: 9px 11px; }
+.palhead { display: flex; gap: 9px; align-items: baseline; margin-bottom: 7px;
+  flex-wrap: wrap; }
+.palhead b { font-size: 10px; text-transform: uppercase; letter-spacing: .16em;
+  color: var(--dim); font-weight: 600; }
+#palnote { font-size: 11px; color: #5f7078; }
+.palrow { display: flex; gap: 5px; align-items: center; flex-wrap: wrap;
+  margin-bottom: 4px; }
+.glabel { font-size: 9.5px; text-transform: uppercase; letter-spacing: .1em;
+  color: #4d585e; width: 62px; flex: 0 0 auto; }
+.tool { all: unset; cursor: pointer; font-size: 11.5px; padding: 3px 10px;
+  border: 1px solid var(--line); border-radius: 999px; color: var(--dim); }
+.tool:hover { border-color: var(--hot); color: var(--hot); }
+.tool.picked { border-color: var(--hot); color: #0e1113; background: var(--hot);
+  font-weight: 600; }
+.tool.danger:hover, .tool.danger.picked { border-color: var(--warn); }
+.tool.danger.picked { background: var(--warn); color: #0e1113; }
+.tag.warn { border-color: #6b3226; color: var(--warn); }
+.day { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* ---- who is driving ---- */
+.who:empty { display: none; }
+.who { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line);
+  color: var(--dim); }
+.who.thought { border-color: #3f6f8a; color: #8ab4d8; }
+.who.habit { border-color: #4a3f66; color: #9a86c4; }
+.who.reflex { border-color: #6b3226; color: var(--warn); }
+.who.break { border-color: #6b3226; color: var(--warn); background: rgba(224,96,63,.12); }
+.who.thinking { border-color: var(--mind); color: var(--mind);
+  animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+/* ---- traits and mood ---- */
+.traits { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 9px; }
+.trait { font-size: 10.5px; padding: 2px 9px; border-radius: 999px;
+  border: 1px solid #3a4a3f; color: #8fbfa0; cursor: help; }
+.moodbar { height: 8px; background: #0a0d0f; border-radius: 4px; overflow: hidden;
+  margin-bottom: 8px; }
+.moodbar .fill { height: 100%; border-radius: 4px; transition: width .4s; }
+.thoughts .th { display: flex; gap: 8px; font-size: 11.5px; padding: 2px 0;
+  align-items: baseline; }
+.thoughts .th span { flex: 1 1 auto; color: #93a7ae; }
+.thoughts .th b { font-variant-numeric: tabular-nums; font-size: 11px; }
+.thoughts .th.bad b { color: var(--warn); }
+.thoughts .th.good b { color: var(--good); }
+.thoughts .none, .story .none, .habits .none, .supply .none {
+  font-size: 11px; color: #5f7078; line-height: 1.5; }
+
+.story .ev, .habits .ev { display: grid; grid-template-columns: auto 1fr auto;
+  gap: 7px; align-items: baseline; font-size: 11.5px; padding: 3px 0;
+  border-bottom: 1px solid #131a1d; }
+.habits .ev { grid-template-columns: 1fr auto; }
+.story .ev .t { color: #4d585e; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+.story .ev .x, .habits .ev .x { color: #93a7ae; line-height: 1.4; }
+.story .ev .tag2, .habits .ev .tag2 { font-size: 9.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--dim); }
+.story .ev.thought .tag2 { color: #8ab4d8; }
+.story .ev.habit .tag2 { color: #9a86c4; }
+.story .ev.reflex .tag2, .story .ev.break .tag2 { color: var(--warn); }
+.opt.took .nm { text-decoration: underline; text-underline-offset: 3px; }
+.line.subject .x { color: var(--hot); font-weight: 600; }
+.line.reflex .x { color: var(--warn); }
+.line.mind .x { color: var(--mind); font-style: italic; }
+.tag:empty { display: none; }
+
+.cant { font-size: 10.5px; color: #55646b; line-height: 1.55; margin-top: 7px;
+  padding-top: 6px; border-top: 1px solid #131a1d; }
+.cant b { color: #6d7d85; font-weight: 600; }
