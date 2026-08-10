@@ -3,6 +3,7 @@ decide about each other."""
 
 from __future__ import annotations
 
+import contextlib
 import math
 import queue
 import random
@@ -31,6 +32,7 @@ BUILD_MINUTES = 6
 
 PLAN_COOLDOWN = 20          # real seconds between a castaway's unprompted decisions
 REFLECT_COOLDOWN = 150      # real seconds between a castaway rewriting what they carry
+LIGHT_REFLECT_ABOVE = 6.0   # past this many seconds a call, skip the optional thinking
 CONVO_COOLDOWN = 100        # real seconds between castaway-to-castaway conversations
 CONVO_TURNS = 4
 EARSHOT = 4.5               # who hears you speak
@@ -146,6 +148,9 @@ class Game:
         self.actors = [self.player, *self.castaways]
         self.by_key = {a.key: a for a in self.actors}
         self.player_met: set[str] = set()
+        # Whose name you know. Symmetrical with theirs: nobody's name is
+        # perceived, it's told to you, and until then they're a description.
+        self.player_knows: set[str] = set()
 
         # What is actually left in the ground. Sites run down as they're worked
         # and come back at their own rate, so "who took the timber" is a
@@ -176,6 +181,10 @@ class Game:
         self.next_convo_at = time.time() + 40
         self.last_llm_at = 0.0
         self.conversation: Conversation | None = None
+        # Anything you are waiting on. Background thinking gets out of its way:
+        # a castaway musing about timber must never be the reason your question
+        # sits unanswered for half a minute.
+        self.player_waiting = 0
 
         self.event("You come to on the sand beside a split supply crate. "
                    "The boat is gone. As far as you can tell, so is everyone who was on it.", "system")
@@ -291,6 +300,23 @@ class Game:
             return self.player.given_name or "the stranger"
         return "the stranger"
 
+    def player_name_for(self, npc) -> str:
+        """What you can call them. Their name only once they've told you."""
+        if not isinstance(npc, Castaway):
+            return npc.short
+        return npc.short if npc.key in self.player_knows else npc.look
+
+    def player_learns(self, npc, said: str) -> bool:
+        """Did they just say their own name where you could hear it?"""
+        if not isinstance(npc, Castaway) or npc.key in self.player_knows:
+            return False
+        low = (said or "").lower()
+        if npc.short.lower() not in low and npc.name.lower() not in low:
+            return False
+        self.player_knows.add(npc.key)
+        self.event(f"{npc.look.capitalize()} is called {npc.name}.", "meeting", npc)
+        return True
+
     def introduce_player(self, name: str, to: list) -> list:
         """The player said their own name out loud. Whoever heard it keeps it."""
         name = name.strip()[:16]
@@ -330,6 +356,16 @@ class Game:
 
     # -- logging --------------------------------------------------------------
 
+    def shown(self, actor) -> str | None:
+        """How a name appears to you — theirs only once you've been told it."""
+        if actor is None:
+            return None
+        if isinstance(actor, str):
+            return actor
+        if getattr(actor, "is_human", False):
+            return actor.name
+        return self.player_name_for(actor).capitalize()
+
     def event(self, text: str, kind: str = "world", actor=None):
         # The id matters: the client used to notice new entries by counting
         # them, which stops working the moment the log hits its cap and every
@@ -339,7 +375,7 @@ class Game:
             "n": self._log_n,
             "t": f"D{self.day} {self.clock_str()}",
             "kind": kind,
-            "who": getattr(actor, "name", actor if isinstance(actor, str) else None),
+            "who": self.shown(actor),
             "colour": getattr(actor, "colour", None),
             "text": text,
         })
@@ -348,6 +384,10 @@ class Game:
     def said(self, actor, line: str):
         self.transcript.append(f"{actor.name}: {line}")
         del self.transcript[:-20]
+        # You learn a name the same way they learn yours: somebody says it
+        # where you can hear it.
+        if not actor.is_human and self.player.distance_to(actor) <= EARSHOT:
+            self.player_learns(actor, line)
         self.event(line, "speech", actor)
 
     # -- social side effects, called from the verb layer -----------------------
@@ -866,6 +906,10 @@ class Game:
 
     def _schedule(self):
         now = time.time()
+        # Never let the backlog outgrow the cast. A queue of stale intentions is
+        # worse than none: by the time they run, the world has moved on.
+        if self.player_waiting or self.jobs.qsize() > len(self.castaways):
+            return
         for npc in self.castaways:
             if npc.down or npc.busy or npc.held:
                 continue
@@ -876,6 +920,19 @@ class Game:
                 npc.busy = True
                 self.jobs.put(("reflect", npc.key, False, True))
                 continue
+            # Somebody may start something with *you*. They had no way to do
+            # that before — every conversation in the game was one you opened,
+            # which made them furniture that answers. It comes before planning
+            # deliberately: standing next to a person, you speak to them rather
+            # than wander off to fetch timber.
+            if (now >= self.next_convo_at and not self.conversation
+                    and npc.has_met(self.player) and not self.player.down
+                    and self.player.distance_to(npc) <= EARSHOT):
+                self.next_convo_at = now + CONVO_COOLDOWN
+                npc.busy = True
+                self.jobs.put(("approach", npc.key))
+                continue
+
             stopped = npc.task["phase"] == "idle" or npc.task["action"] == "rest"
             # Once in the dark hours, if they've actually stopped, they go over
             # the day and decide what of it they're keeping. The window is the
@@ -890,8 +947,11 @@ class Game:
                 npc.busy = True
                 self.jobs.put(("reflect", npc.key, True, False))
                 continue
-            # And a lighter pass any time they sit down for a breather.
-            if (npc.task["action"] == "rest" and now >= npc.next_reflect_at
+            # And a lighter pass any time they sit down for a breather — the
+            # first thing to drop when a call is expensive, since it's the only
+            # thinking in the game that nothing else depends on.
+            if (self.brain.latency <= LIGHT_REFLECT_ABOVE
+                    and npc.task["action"] == "rest" and now >= npc.next_reflect_at
                     and len(npc.mind.working) >= 3):
                 npc.next_reflect_at = now + REFLECT_COOLDOWN
                 npc.busy = True
@@ -899,7 +959,7 @@ class Game:
                 continue
             idle = npc.task["phase"] == "idle" and npc.task["action"] in ("idle", "rest", "follow")
             if idle and now >= npc.next_plan_at:
-                npc.next_plan_at = now + PLAN_COOLDOWN
+                npc.next_plan_at = now + self.think_gap()
                 npc.busy = True
                 self.jobs.put(("plan", npc.key))
 
@@ -919,14 +979,47 @@ class Game:
     # worker-thread jobs
     # =========================================================================
 
+    def think_gap(self) -> float:
+        """How long between one castaway's unprompted model calls.
+
+        Every model call in the game goes through one lock, so scheduling more
+        of them than the backend can answer doesn't make anyone livelier — it
+        builds a permanent queue that everything else waits behind. At three
+        seconds a call the old fixed twenty was fine. At thirty, four castaways
+        were offering twelve calls a minute against two served, and the backlog
+        grew forever. So the gap scales with how long a mind actually takes.
+        """
+        return max(PLAN_COOLDOWN,
+                   max(self.brain.latency, 0.5) * (len(self.castaways) + 1))
+
+    def _yield_to_player(self, limit: float = 25.0):
+        """Hold a background call while the player is waiting on one."""
+        until = time.time() + limit
+        while self.player_waiting > 0 and time.time() < until and not self.over:
+            time.sleep(0.1)
+
     def _throttle(self):
         wait = 3.0 - (time.time() - self.last_llm_at)
         if wait > 0:
             time.sleep(wait)
         self.last_llm_at = time.time()
 
+    @contextlib.contextmanager
+    def player_first(self):
+        """Mark a call as one you're sat waiting for, and take the lock."""
+        with self.lock:
+            self.player_waiting += 1
+        try:
+            with self.brain_lock:
+                self._throttle()
+                yield
+        finally:
+            with self.lock:
+                self.player_waiting -= 1
+
     def run_job(self, job):
         try:
+            self._yield_to_player()
             kind = job[0]
             if kind == "plan":
                 self._job_plan(self.by_key[job[1]])
@@ -934,6 +1027,8 @@ class Game:
                 self._job_convo(self.by_key[job[1]], self.by_key[job[2]])
             elif kind == "first_contact":
                 self._job_first_contact(self.by_key[job[1]], self.by_key[job[2]])
+            elif kind == "approach":
+                self._job_approach(self.by_key[job[1]])
             elif kind == "reflect":
                 self._job_reflect(self.by_key[job[1]], job[2], job[3])
         finally:
@@ -962,7 +1057,37 @@ class Game:
             if npc.thought != was:
                 self.event(npc.thought, "thought", npc)
 
+    def _job_approach(self, npc: Castaway):
+        """They come over and say something to you, unprompted.
+
+        Not a modal — you might be halfway up a hill. It lands in the log like
+        anything else said near you, and if you want to make something of it,
+        the conversation verb is right there.
+        """
+        with self.lock:
+            if self.player.distance_to(npc) > EARSHOT or self.player.down:
+                return
+            topic = self._pick_topic(npc, npc)
+        with self.brain_lock:
+            self._throttle()
+            out = self.brain.opener(npc, self, self.player, topic)
+        with self.lock:
+            npc.emotion = out.get("emotion", npc.emotion)
+            line = (out.get("say") or "").strip()
+            if not line or self.player.distance_to(npc) > EARSHOT:
+                return
+            self.event(f"{self.player_name_for(npc).capitalize()} comes over to you.",
+                       "meeting", npc)
+            self.said(npc, line)
+            # If you're already standing talking, it belongs in that thread.
+            convo = self.conversation
+            if convo and npc.key in convo.members:
+                convo.add(npc.key, self.player_name_for(npc), npc.colour, line,
+                          f"D{self.day} {self.clock_str()}")
+
     def _job_reflect(self, npc: Castaway, night: bool = True, deliberate: bool = False):
+        # Nightly consolidation and a deliberate think are never skipped: the
+        # standing notes depend on them. Only the idle daytime musing goes.
         """They stop, go back over what's happened, and decide what they keep."""
         with self.brain_lock:
             self._throttle()
@@ -1270,8 +1395,7 @@ class Game:
                 # not just the last six lines. Asked their name twice, eight
                 # lines apart, somebody gave the identical answer twice.
                 mine = [l["text"] for l in convo.lines if l["key"] == npc.key]
-            with self.brain_lock:
-                self._throttle()
+            with self.player_first():
                 out = self.brain.speak(npc, self, speaker_name, text, also_heard,
                                        group=group, avoid=avoid + mine)
             with self.lock:
@@ -1284,15 +1408,16 @@ class Game:
                 stamp = f"D{self.day} {self.clock_str()}"
                 if line:
                     self.said(npc, line)
-                    convo.add(npc.key, npc.name, npc.colour, line, stamp)
+                    convo.add(npc.key, self.player_name_for(npc), npc.colour, line, stamp)
                     also_heard.append(f"{npc.name}: {line}")
                     avoid.append(line)
                 else:
                     # The model had nothing that wasn't a repeat of something
                     # already said. Show that, rather than leave a gap that
                     # reads like the game is broken.
-                    convo.add(npc.key, npc.name, npc.colour,
-                              f"{npc.short} doesn't answer.", stamp, kind="silence")
+                    convo.add(npc.key, self.player_name_for(npc), npc.colour,
+                              f"{self.player_name_for(npc).capitalize()} doesn't answer.",
+                              stamp, kind="silence")
                 # They're held, so a route just sits there until you let them
                 # go — which is exactly what agreeing to something is.
                 self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
@@ -1309,13 +1434,15 @@ class Game:
                 "lines": list(convo.lines),
                 "thinking": [self.by_key[k].short for k in convo.thinking if k in self.by_key],
                 "members": [{
-                    "key": k, "name": self.by_key[k].name, "short": self.by_key[k].short,
+                    "key": k, "name": self.by_key[k].name,
+                    "short": self.player_name_for(self.by_key[k]),
                     "colour": self.by_key[k].colour,
                     "emotion": self.by_key[k].emotion,
                     "knows_you": "player" in self.by_key[k].knows_name,
                     "trust": self.by_key[k].trust_of("player"),
                 } for k in convo.members if k in self.by_key],
-                "can_invite": [{"key": c.key, "short": c.short, "colour": c.colour}
+                "can_invite": [{"key": c.key, "short": self.player_name_for(c),
+                                "colour": c.colour}
                                for c in self.in_earshot() if c.key not in convo.members],
                 "your_name": self.player.given_name,
             }}
@@ -1352,8 +1479,7 @@ class Game:
             for npc in listeners[:MAX_REPLIES]:
                 with self.lock:
                     speaker_name = self.name_for(npc, self.player)
-                with self.brain_lock:
-                    self._throttle()
+                with self.player_first():
                     out = self.brain.speak(npc, self, speaker_name, text, also_heard,
                                            avoid=avoid)
                 with self.lock:
@@ -1437,12 +1563,15 @@ class Game:
                 seen = met or self.player.distance_to(c) <= SIGHT
                 snap = c.snapshot(seen)
                 snap["met"] = met
+                snap["known"] = c.key in self.player_knows
+                snap["display"] = self.player_name_for(c)
                 snap["allegiance"] = self.allegiance_phrase(c)
                 if not met:
                     # You haven't met them: you can see a figure, nothing more.
                     snap = {k: snap[k] for k in ("key", "x", "y", "seen")}
                     snap.update({"name": "someone", "short": "someone", "colour": "#8d8d8d",
-                                 "met": False, "unknown": True})
+                                 "met": False, "unknown": True, "known": False,
+                                 "display": c.look if snap["seen"] else "someone"})
                 cast.append(snap)
 
             return {
@@ -1467,8 +1596,8 @@ class Game:
                 "seed": self.seed,
                 "factions": [[self.by_key[k].short for k in g if k in self.by_key]
                              for g in self.factions() if len(g) > 1],
-                "earshot": [{"key": c.key, "short": c.short, "colour": c.colour}
-                            for c in self.in_earshot()],
+                "earshot": [{"key": c.key, "short": self.player_name_for(c),
+                             "colour": c.colour} for c in self.in_earshot()],
                 "your_name": self.player.given_name,
                 "emotes": verbs.EMOTE_NAMES,
                 "talk": self.conversation_snapshot()["conversation"],

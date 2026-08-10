@@ -526,10 +526,13 @@ def main():
         walker.route_to(world.LANDMARKS["camp"]["pos"], "gather", "camp")
         e0 = walker.energy
         ok, msg = verbs.perform(game, walker, "think")
-    check("using it stops them where they stand", ok and walker.task["action"] == "think", msg)
-    check("and it costs energy — thinking properly isn't free", walker.energy < e0,
-          f"{e0:.1f} -> {walker.energy:.1f}")
-    check("it queues a deliberate pass over everything", walker.wants_to_think)
+        stopped_here = walker.task["action"] == "think"
+        queued = walker.wants_to_think
+        spent = walker.energy
+    check("using it stops them where they stand", ok and stopped_here, msg)
+    check("and it costs energy — thinking properly isn't free", spent < e0,
+          f"{e0:.1f} -> {spent:.1f}")
+    check("it queues a deliberate pass over everything", queued)
     with game.lock:
         walker.wants_to_think = False
         ok2, _ = verbs.perform(game, game.player, "think")
@@ -792,6 +795,74 @@ def main():
           is_stale("My names Ike Fry.", conv.recent(6) + mine))
     check("and it wouldn't have been by the recent window alone",
           not is_stale("My names Ike Fry.", conv.recent(6)))
+
+    # --- 20. names go both ways ---------------------------------------------
+    print("\n20. You don't know their name either")
+    g4 = Game(seed=7, cast_size=2)
+    g4.brain.provider = object()
+    stub(g4)
+    face = g4.castaways[0]
+    with g4.lock:
+        face.x, face.y = g4.player.x + 1.0, g4.player.y
+        g4.player_met.add(face.key)
+        face.met.add("player")
+    check("before anyone speaks, they're a description",
+          g4.player_name_for(face) == face.look, g4.player_name_for(face))
+    check("and it's a description of something you can see",
+          face.look.startswith("the "), face.look)
+    with g4.lock:
+        g4.said(face, "There's timber past the ridge, if you can carry it.")
+    check("a line that isn't an introduction teaches you nothing",
+          g4.player_name_for(face) == face.look)
+    with g4.lock:
+        g4.said(face, f"{face.short}. That's what people called me.")
+    check("saying their own name is how you learn it",
+          g4.player_name_for(face) == face.short, g4.player_name_for(face))
+    check("and the log says so once",
+          sum(1 for e in g4.log if "is called" in e["text"]) == 1)
+    check("the other one is still a stranger to you",
+          g4.player_name_for(g4.castaways[1]) == g4.castaways[1].look)
+
+    snap = g4.snapshot()
+    by_key = {c["key"]: c for c in snap["castaways"]}
+    check("the panel shows what you actually know",
+          by_key[face.key]["display"] == face.short and by_key[face.key]["known"],
+          str(by_key[face.key].get("display")))
+    check("someone unmet is not named in the snapshot at all",
+          all(c.get("display") != g4.castaways[1].short for c in snap["castaways"]))
+    check("out of earshot you don't overhear a name",
+          True)
+    far = g4.castaways[1]
+    with g4.lock:
+        far.x, far.y = g4.player.x + 40, g4.player.y
+        g4.player_met.add(far.key)
+        g4.said(far, f"I'm {far.short}, for what it's worth.")
+    check("...really: said across the island, you don't catch it",
+          g4.player_name_for(far) == far.look, g4.player_name_for(far))
+
+    print("\n21. They can start something")
+    g5 = Game(seed=11, cast_size=2)
+    g5.brain.provider = object()
+    mover = g5.castaways[0]
+    with g5.lock:
+        mover.x, mover.y = g5.player.x + 1.0, g5.player.y
+        mover.met.add("player")
+        g5.player_met.add(mover.key)
+        g5.next_convo_at = 0.0
+    stub(g5, opener=[{"say": "You're going to want to hear this about the timber.",
+                      "emotion": "wary"}])
+    start(g5)
+    freeze_plans(g5)          # so they don't wander off before they get a word in
+    deadline = time.time() + 30
+    while time.time() < deadline:
+        if any("comes over to you" in e["text"] for e in g5.log):
+            break
+        time.sleep(0.25)
+    check("somebody can walk up and start talking, unprompted",
+          any("comes over to you" in e["text"] for e in g5.log),
+          str([e["text"] for e in g5.log[-3:]]))
+    check("and what they said is in the log",
+          any("want to hear this about the timber" in e["text"] for e in g5.log))
 
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]

@@ -245,7 +245,7 @@ function frame(ts) {
       for (const c of S.castaways) {
         if (!c.seen) continue;
         const p = lerpTo(c.key, c.x, c.y);
-        drawPerson(p.x, p.y, c.colour, c.met ? c.short : '?',
+        drawPerson(p.x, p.y, c.colour, c.met ? (c.known ? c.short : '?') : '?',
           { down: c.down, busy: c.busy, unknown: !c.met });
       }
     }
@@ -326,15 +326,17 @@ function paintPanel() {
       : t < 3 ? 'undecided about you' : t < 8 ? "thinks you're alright"
       : 'would trust you with their life';
     return `<div class="person ${c.down ? 'down' : ''}">
-      <div class="top"><span class="name" style="color:${c.colour}">${c.name}</span>
-        <span class="who">${c.pronouns} · ${c.role}</span></div>
+      <div class="top"><span class="name" style="color:${c.colour}">${
+        escapeHtml(c.display || c.short)}</span>
+        <span class="who">${c.pronouns}${c.known ? ' · ' + escapeHtml(c.role) : ''}</span></div>
       <div class="act">${c.down ? 'Collapsed. Needs water.' : escapeHtml(c.activity)} · ${c.emotion}${c.held ? ' · standing and talking' : ''}</div>
       <div class="allegiance">working ${escapeHtml(c.allegiance)}</div>
       ${c.aim ? `<div class="aim">set on: ${escapeHtml(c.aim)}${
         c.then ? ` <span class="then">→ then ${escapeHtml(c.then.join(' '))}</span>` : ''}</div>` : ''}
       <div class="trust">${feel} · ${c.knows_you
         ? `knows you as ${escapeHtml(S.your_name || 'you')}`
-        : 'calls you the stranger'}</div>
+        : 'calls you the stranger'}${
+        c.known ? '' : ' · <b>you don\'t know their name</b>'}</div>
       ${(c.notes || []).length ? `<div class="notes">${
         c.notes.map(n => `<div>“${escapeHtml(n)}”</div>`).join('')}</div>` : ''}
       <div class="mini">

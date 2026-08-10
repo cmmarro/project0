@@ -750,7 +750,9 @@ This is the line you are answering, and the only one:
 You've ended up standing next to {game.name_for(npc, partner)} and there's
 something you want to raise: {topic}
 
-Say the first thing. Don't be polite about it if you don't feel polite."""
+Say the first thing, and make it the thing itself rather than a greeting —
+you're already stood together. Don't be polite about it if you don't feel
+polite."""
         out = self._call(self._system(npc), user, OPENER_SCHEMA)
         if out is None:
             return {"say": self._canned(npc), "emotion": "calm"}

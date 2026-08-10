@@ -130,14 +130,30 @@ They talk to each other on their own when they end up in the same place. It land
 in the same log you're reading. If you're not close enough, you miss it, and you
 only find out what was decided from how they behave afterwards.
 
-### Nobody knows your name
+### Nobody knows anybody's name
 
 You washed up without introducing yourself, so to them you are **the stranger** —
 in the log, in their memories, and in every prompt they're given. Say your name
 (*"I'm Jo"*, *"call me Jo"*) and everyone in earshot keeps it, remembers being
 told, and uses it from then on. People who weren't there still don't know it.
-The castaways swap names with each other when they meet, because that's what
-people do; you have to volunteer yours.
+
+**It runs the other way too.** You don't get their names for free either. Until
+somebody says theirs where you can hear it, they are *the tall one with the
+split lip* or *the one still in a wet dinner jacket* — in the panel, on the map,
+in the log, and in the conversation modal. The castaways swap names with each
+other when they meet, because that's what people do; between you and them it has
+to be said out loud, in both directions.
+
+### They can start it
+
+A castaway standing near you who hasn't said anything for a while will come over
+and open with whatever is actually on their mind — no greeting, since you're
+already stood together. It lands in the log rather than seizing a modal, because
+you might be halfway up a hill. If you want to make something of it, `T` is right
+there.
+
+This takes precedence over their planning, deliberately: standing next to a
+person, you speak to them rather than wander off to fetch timber.
 
 ### Keeping the log readable
 
@@ -400,6 +416,38 @@ tools/                  mock OpenAI-compatible server for testing
 test_coordination.py    end-to-end proof with the model stubbed
 test_providers.py       backend proof against the mock, clean and degraded
 ```
+
+### The game sizes its appetite to your hardware
+
+Every model call goes through one lock, so scheduling more of them than the
+backend can answer doesn't make anyone livelier — it builds a permanent queue
+that everything else waits behind, including you.
+
+The old fixed cooldown (a plan every 20s per castaway) was tuned against a
+backend answering in about three seconds. At thirty seconds a call, four
+castaways offered twelve calls a minute against two served: a backlog growing
+by ten a minute, forever, and every line you typed queueing behind it. That is
+the whole of why conversations felt like they had stopped working.
+
+So `Game.think_gap()` scales the gap between one castaway's unprompted calls by
+measured latency and cast size. Whatever the backend and however many people
+the seed rolled, the offered rate stays under the served rate:
+
+| cast | latency | gap each | offered/min | served/min |
+|---:|---:|---:|---:|---:|
+| 4 | 3s | 20s | 12.0 | 20.0 |
+| 4 | 8s | 40s | 6.0 | 7.5 |
+| 4 | 30s | 150s | 1.6 | 2.0 |
+
+On top of that: **anything you are waiting on jumps the queue** — background
+jobs hold while `player_waiting` is set — the job queue is never allowed to grow
+past the size of the cast, and the daytime musing (the only thinking nothing
+else depends on) switches off entirely past six seconds a call. Nightly
+consolidation and a deliberate `think` always run, because the standing notes
+depend on them.
+
+The upshot is that a bigger model makes the island *slower*, not *broken*: fewer
+unprompted thoughts, and the ones that happen still happen.
 
 ### The clock runs at the speed of the mind
 

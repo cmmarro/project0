@@ -189,7 +189,7 @@ def _wants(arch: dict, traits: dict[str, float]) -> str:
 
 
 def make_person(rng: random.Random, key: str, colour: str,
-                arch: dict, first: str, last: str) -> dict:
+                arch: dict, first: str, last: str, look: str = "") -> dict:
     subj, obj, label = rng.choice(PRONOUNS)
     name = f"{first} {last}"
     age = rng.randint(24, 61)
@@ -223,6 +223,10 @@ How you talk: {arch['voice']}"""
         "key": key,
         "name": name,
         "short": name.split()[0],
+        # What you can see before anybody tells you anything. Names are
+        # exchanged, not perceived — you don't get theirs for free any more
+        # than they get yours.
+        "look": look or "someone you haven't spoken to",
         "colour": colour,
         "pronouns": label,
         "age": age,
@@ -231,6 +235,23 @@ How you talk: {arch['voice']}"""
         "persona": persona,
         "persona_short": short_persona,
     }
+
+
+# How somebody reads at ten paces, before a word is said.
+LOOKS = [
+    "the one in the soaked orange life vest",
+    "the tall one with the split lip",
+    "the one with their arm strapped up",
+    "the barefoot one",
+    "the one in the sun-bleached cap",
+    "the one with the beard and no shoes",
+    "the one still in a wet dinner jacket",
+    "the short one with the shaved head",
+    "the one with the burnt shoulders",
+    "the one who won't stop scanning the water",
+    "the one in the torn yellow shirt",
+    "the grey-haired one",
+]
 
 
 def generate_cast(rng: random.Random, size: int | None = None) -> list[dict]:
@@ -243,11 +264,13 @@ def generate_cast(rng: random.Random, size: int | None = None) -> list[dict]:
     n = max(1, min(n, len(ARCHETYPES), len(FIRST), len(LAST), len(COLOURS)))
 
     colours = rng.sample(COLOURS, n)
+    looks = rng.sample(LOOKS, n)
     firsts = rng.sample(FIRST, n)
     lasts = rng.sample(LAST, n)
     archetypes = rng.sample(ARCHETYPES, n)
 
     return [
-        make_person(rng, f"c{i}", colours[i], archetypes[i], firsts[i], lasts[i])
+        make_person(rng, f"c{i}", colours[i], archetypes[i], firsts[i], lasts[i],
+                    looks[i])
         for i in range(n)
     ]

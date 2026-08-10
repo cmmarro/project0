@@ -148,6 +148,7 @@ class Castaway(Actor):
     def __init__(self, person: dict, pos):
         super().__init__(person["key"], person["name"], person["colour"], pos)
         self.short = person["short"]
+        self.look = person.get("look", "someone you haven't spoken to")
         self.persona = person["persona"]
         self.persona_short = person.get("persona_short", person["persona"])
         self.traits = person["traits"]
