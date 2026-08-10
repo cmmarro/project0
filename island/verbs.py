@@ -114,14 +114,23 @@ def emote(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
     The target names which one. An unknown one is a shrug, because a model that
     invents "grimace" clearly meant something and losing the turn helps nobody.
     """
-    kind = (target or "").strip().lower().replace(" ", "_")
+    raw = (target or "").strip().lower()
+    kind = raw.replace(" ", "_")
     spec = EMOTES.get(kind)
+    where = ""
     if spec is None:
-        kind, spec = "shrug", EMOTES["shrug"]
+        # "beckon the wreck" — the first word says which gesture, the rest says
+        # where. Pointing at somewhere is most of what a gesture is for.
+        head, _, rest = raw.partition(" ")
+        spec = EMOTES.get(head.replace("_", ""), EMOTES.get(head))
+        if spec is not None:
+            kind, where = head, rest.strip()
+        else:
+            kind, spec = "shrug", EMOTES["shrug"]
     if actor.energy <= spec["energy"]:
         return False, "You haven't got it in you."
     actor.energy = clamp(actor.energy - spec["energy"])
-    return game.witness_emote(actor, kind, spec)
+    return game.witness_emote(actor, kind, spec, where)
 
 
 def think(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:

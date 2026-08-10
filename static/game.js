@@ -323,6 +323,8 @@ function paintPanel() {
         <span class="who">${c.pronouns} · ${c.role}</span></div>
       <div class="act">${c.down ? 'Collapsed. Needs water.' : escapeHtml(c.activity)} · ${c.emotion}${c.held ? ' · standing and talking' : ''}</div>
       <div class="allegiance">working ${escapeHtml(c.allegiance)}</div>
+      ${c.aim ? `<div class="aim">set on: ${escapeHtml(c.aim)}${
+        c.then ? ` <span class="then">→ then ${escapeHtml(c.then.join(' '))}</span>` : ''}</div>` : ''}
       <div class="trust">${feel} · ${c.knows_you
         ? `knows you as ${escapeHtml(S.your_name || 'you')}`
         : 'calls you the stranger'}</div>
@@ -468,7 +470,12 @@ async function act(action, target = '') {
     S = data.state;
     paintPanel();
     if (data.message === 'recap') showRecap();
-    else toast(data.message);
+    else {
+      toast(data.message);
+      // Sitting down in the dark is the one stretch where there's nothing to
+      // do but go over the day — which is exactly what they're doing too.
+      if (action === 'rest' && S && S.night) showRecap();
+    }
   } catch (e) { /* ignore */ }
 }
 
@@ -660,7 +667,9 @@ async function showRecap() {
       ${p.last_heard ? `<div class="notes"><div>last thing they said: “${escapeHtml(p.last_heard)}”</div></div>` : ''}
     </div>`).join('') : '<p class="dim small">You have not met anybody.</p>';
 
-  el('recap-title').textContent = `What you know — day ${r.day}, ${r.clock}`;
+  el('recap-title').textContent = r.night
+    ? `The night — day ${r.day}, ${r.clock}`
+    : `What you know — day ${r.day}, ${r.clock}`;
   el('recap-body').innerHTML = `
     <h2>People</h2>${people}
     ${r.unmet > 0 ? `<p class="dim small">You have the feeling there ${r.unmet > 1 ? 'are others' : 'is someone else'} out there. You have not found ${r.unmet > 1 ? 'them' : 'them'} yet.</p>` : ''}
@@ -671,7 +680,7 @@ async function showRecap() {
       Work done: <b>${r.raft.work}/${r.raft.needed}</b>.
       It seats <b>${r.raft.seats}</b>. There are <b>${r.raft.people}</b> of you.</p>
     ${r.built.length ? `<p class="small dim">Built so far: ${r.built.join(', ')}.</p>` : ''}
-    <h2>What has actually happened</h2>
+    <h2>${r.night ? 'What today was' : 'What has actually happened'}</h2>
     ${r.notable.length
       ? r.notable.slice().reverse().map(e =>
           `<div class="note ${e.kind}"><span class="when">${e.t}</span>

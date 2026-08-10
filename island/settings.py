@@ -11,7 +11,34 @@ import os
 import pathlib
 import threading
 
-PATH = pathlib.Path(__file__).resolve().parent.parent / "settings.json"
+def _user_dir() -> pathlib.Path:
+    """Somewhere your settings survive replacing the game folder.
+
+    People update this by downloading the ZIP again and extracting it fresh,
+    which throws away everything not in the repo — including the settings you
+    spent ten minutes getting right. So the default home for them is outside
+    the folder.
+    """
+    if os.name == "nt":
+        base = os.environ.get("APPDATA") or (pathlib.Path.home() / "AppData" / "Roaming")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or (pathlib.Path.home() / ".config")
+    return pathlib.Path(base) / "castaway"
+
+
+HERE = pathlib.Path(__file__).resolve().parent.parent / "settings.json"
+USER = _user_dir() / "settings.json"
+
+
+def _path() -> pathlib.Path:
+    """A settings.json sitting next to the game wins — that's someone who put
+    it there on purpose. Otherwise use the per-user copy."""
+    return HERE if HERE.exists() else USER
+
+
+# Kept as a module-level name because the tests and a couple of call sites
+# refer to it; it tracks whichever file is actually in use.
+PATH = _path()
 
 DEFAULTS = {
     "provider": "offline",                    # offline | anthropic | openai
@@ -49,9 +76,10 @@ def load() -> dict:
     with _lock:
         data = dict(DEFAULTS)
         data.update(_from_env())
-        if PATH.exists():
+        path = _path()
+        if path.exists():
             try:
-                saved = json.loads(PATH.read_text())
+                saved = json.loads(path.read_text())
                 data.update({k: v for k, v in saved.items() if k in DEFAULTS})
             except (ValueError, OSError):
                 pass
@@ -80,9 +108,11 @@ def update(patch: dict) -> dict:
 
 def save():
     with _lock:
+        path = _path()
         try:
-            PATH.write_text(json.dumps(_current, indent=2) + "\n")
-            os.chmod(PATH, 0o600)      # it holds an API key
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(_current, indent=2) + "\n")
+            os.chmod(path, 0o600)      # it holds an API key
         except OSError:
             pass
 

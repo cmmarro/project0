@@ -57,6 +57,21 @@ If it says *permission denied*, run `chmod +x run.sh` once and try again.
 
 ---
 
+## Updating later
+
+**Double-click `update.bat`** (Windows) or run `./update.sh` (Mac/Linux). It
+downloads the latest version, drops it over the top, and starts the game.
+
+Your settings and your installed packages are kept — settings live in
+`%APPDATA%\castaway` on Windows and `~/.config/castaway` on Mac/Linux, *outside*
+the game folder, precisely so that replacing the folder can't lose them.
+
+> **`git pull` doesn't work for me.** If you got this as a ZIP, there's no git
+> repository in the folder for git to pull into — nothing to do with being
+> logged in. `update.bat` is the ZIP equivalent, and it's one click.
+
+---
+
 ## Step 3 — tell it who plays the survivors
 
 The game opens with a settings box, because it doesn't know yet.
@@ -122,6 +137,22 @@ To stop the game, close the black window (or press **Ctrl+C** in it).
 ## When something goes wrong
 
 **The browser didn't open.** Type `http://127.0.0.1:5000` into it yourself.
+
+**It says setup failed and I have to install things by hand.** Fixed — but if
+you have a half-built `.venv` folder from an older version, that was the cause:
+the launcher checked for the *folder* rather than the Python inside it, so once
+setup failed once it failed forever. It now notices and rebuilds. If it still
+can't, it prints the real error and falls back to your main Python.
+
+**Careful:** "Setup failed" and the game's **offline** badge are different
+things. Setup is packages; **offline** is just which model plays the survivors,
+which you pick in the browser. The old launcher said *"Are you online?"* when
+pip failed, which made these look like the same problem. Sorry about that.
+
+**It forgot my LM Studio settings after I updated.** It won't any more —
+settings moved out of the game folder for exactly this reason. If you have an
+old `settings.json` sitting next to `run.bat`, that one still wins; delete it
+once and the per-user copy takes over.
 
 **"Test connection" says it can't reach the server.** LM Studio's server isn't
 running. In LM Studio, go to the Developer/Local Server tab and press Start. Check

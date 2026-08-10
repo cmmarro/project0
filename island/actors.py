@@ -165,6 +165,14 @@ class Castaway(Actor):
         self.knows_name: set[str] = set()
         self.emotion = "wary"
         self.thought = "alone on the sand, working out where to start"
+        # What the next few actions are all in service of, in their own words.
+        # Survives re-planning; shown to them on every plan call.
+        self.aim = ""
+        # Exactly one queued step. Not a plan tree: a plan tree goes stale
+        # faster than a castaway can walk across the island, and a small model
+        # cannot be trusted to notice. One step is enough for "fill up, then
+        # take it back", which is most of what anyone here actually intends.
+        self.then: tuple[str, str] | None = None
         # Who they've thrown in with, by actor key. Empty means going it alone.
         # Set by the model each time it re-plans, and it can change.
         self.allies: set[str] = set()
@@ -257,5 +265,7 @@ class Castaway(Actor):
             "trust_player": self.trust_of("player"),
             "allies": sorted(self.allies),
             "notes": list(self.mind.standing),
+            "aim": self.aim,
+            "then": list(self.then) if self.then else None,
         })
         return base

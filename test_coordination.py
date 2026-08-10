@@ -587,6 +587,56 @@ def main():
     check("the player has the same emotes",
           verbs.perform(game, game.player, "emote", "wave")[0])
 
+    # --- 15. one step of lookahead, and no more -----------------------------
+    print("\n15. Plans that hold, briefly")
+    from island import brain as brain_mod
+    fb = game.brain._fallback_plan(game.castaways[0], game)
+    check("the offline plan still satisfies the schema",
+          not [k for k in brain_mod.PLAN_SCHEMA["required"] if k not in fb]
+          and not [k for k in fb if k not in brain_mod.PLAN_SCHEMA["properties"]],
+          str(sorted(fb)))
+
+    p2 = game.castaways[0]
+    with game.lock:
+        p2.held = False
+        p2.aim = ""
+        game.queue_next(p2, "deposit", "")
+    check("a named next step is held", p2.then == ("deposit", ""), str(p2.then))
+    with game.lock:
+        game.queue_next(p2, "idle", "")
+    check("'idle' means they'd rather see how the first goes", p2.then is None)
+    with game.lock:
+        game.queue_next(p2, "sing", "loudly")
+    check("a verb that doesn't exist isn't queued", p2.then is None)
+
+    # Arriving somewhere completes that step; a gather doesn't, it starts work.
+    with game.lock:
+        game.queue_next(p2, "drink", "")
+        p2.x, p2.y = float(camp[0]), float(camp[1])
+        p2.inventory = {"water": 2}
+        before_water = p2.inventory["water"]
+        p2.task = {"action": "go_to", "target": "camp", "phase": "travel", "timer": 0.0}
+        p2.path = []
+        game._advance(p2, 0.1, 0.1)
+    check("arriving somewhere starts the step they lined up next",
+          p2.inventory.get("water", 0) < before_water,
+          f"task={p2.task} carrying={p2.inventory}")
+    check("and the queue is emptied, not repeated", p2.then is None)
+
+    with game.lock:
+        game.queue_next(p2, "deposit", "")
+        p2.task = {"action": "gather", "target": "camp", "phase": "travel", "timer": 0.0}
+        p2.path = []
+        game._advance(p2, 0.1, 0.1)
+    check("but a gather in progress isn't 'finished' — it starts working",
+          p2.task["phase"] == "work" and p2.then == ("deposit", ""), str(p2.task))
+
+    with game.lock:
+        game.queue_next(p2, "deposit", "")
+        game.apply_intent(p2, "gather", "camp")
+    check("deciding something fresh throws out what was lined up", p2.then is None,
+          "talking to someone should override yesterday's plan")
+
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]
     check("every entry has a rising id", ns == sorted(ns) and len(set(ns)) == len(ns))

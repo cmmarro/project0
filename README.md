@@ -63,8 +63,18 @@ will just be blunter than Claude.
 If every mode fails, the error names what each one complained about — the first
 failure is usually the informative one.
 
-Settings persist to `settings.json` (gitignored, chmod 600). `ANTHROPIC_API_KEY`
-and `ISLAND_BASE_URL` still work as environment defaults.
+Settings persist to `settings.json` (chmod 600) in `%APPDATA%\castaway` or
+`~/.config/castaway` — outside the repo, because people update this by
+re-extracting the ZIP and anything in the folder gets thrown away. A
+`settings.json` next to `server.py` still wins if you put one there.
+`ANTHROPIC_API_KEY` and `ISLAND_BASE_URL` still work as environment defaults.
+
+`run.bat` / `run.sh` check for the venv's *interpreter* rather than the folder,
+so a half-created `.venv` gets rebuilt instead of failing at pip forever; they
+only hit the network when an import is actually missing, and on failure they
+print pip's real output rather than guessing at the cause. `update.bat` /
+`update.sh` fetch the latest version over the top, keeping the venv and the
+settings.
 
 ### Testing without a GPU
 
@@ -181,7 +191,7 @@ request returns the dialogue *and* the intent behind it:
 
 | call | when | returns |
 |---|---|---|
-| `plan` | they're idle and off cooldown | thought, emotion, who they're working with (a list of names), action, target |
+| `plan` | they're idle and off cooldown | thought, emotion, who they're working with, what they're aiming at, action + target, and one step they mean to take after it |
 | `speak` | someone spoke near them | line, emotion, memory, trust change, action, target |
 | `first_contact` | they meet someone for the first time | line, emotion |
 
@@ -189,6 +199,24 @@ request returns the dialogue *and* the intent behind it:
 cannot invent a capability it doesn't have. The returned action is routed
 through pathfinding and then executed by the real verb over game time — agreeing
 to fetch timber means walking to the timber and gathering it.
+
+### How far ahead they can think
+
+Not far, deliberately. A plan returns **an aim in words** — one sentence about
+what the next while is in service of — plus the step they're taking now and
+**exactly one** step they mean to take after it.
+
+One, not a list. A five-deep queue goes stale faster than anyone can walk
+across this island, and a small model will follow it off a cliff rather than
+notice. One step covers *"fill up at the spring, then bring it back"*, which is
+most of what anybody here actually intends. The queued step fires when the
+current one finishes, and anything decided fresh — especially a conversation —
+throws it out.
+
+The aim is the part that carries. It survives re-planning and comes back in the
+next prompt, so there's continuity of intent without a planner that can rot.
+Between the aim, the standing notes, and one queued step, a survivor can hold a
+purpose across a day without anything in the codebase modelling a plan tree.
 
 Because the line and the intent come back from **one** call, they can't drift
 apart. Asked to meet somewhere, a survivor answered "let me finish my coconut

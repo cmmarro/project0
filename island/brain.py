@@ -73,10 +73,21 @@ PLAN_SCHEMA = {
             "items": {"type": "string"},
             "description": "Names of the people you are actually throwing in with right now — sharing what you gather, and depending on them. Empty list means you are going it alone. Be honest: standing near someone is not the same as being with them.",
         },
+        "aim": {
+            "type": "string",
+            "description": "What you are trying to get done over the next while, in one short sentence — the thing the next few actions are all in service of. Keep it if it still holds; change it when it stops making sense.",
+        },
         "action": {"type": "string", "enum": _ACTION_ENUM},
         "target": {"type": "string", "description": "Place, structure, item or name. Empty if the action needs none."},
+        "then_action": {
+            "type": "string",
+            "enum": _ACTION_ENUM,
+            "description": "What you mean to do straight after that one, if you already know. \"idle\" if you would rather see how the first goes before deciding.",
+        },
+        "then_target": {"type": "string", "description": "Target for that second step. Empty if it needs none."},
     },
-    "required": ["thought", "emotion", "working_with", "action", "target"],
+    "required": ["thought", "emotion", "working_with", "aim", "action", "target",
+                 "then_action", "then_target"],
     "additionalProperties": False,
 }
 
@@ -531,7 +542,7 @@ Day {game.day}, {game.clock_str()}{', dark' if game.is_night() else ''}. {game.w
 You are {npc.where()}. You are {npc.activity_label()}.
 Carrying: {_inv(npc.inventory)}.
 Your body: {_bar('thirst', npc.thirst)}, {_bar('hunger', npc.hunger)}, {_bar('energy', npc.energy)}, {_bar('condition', npc.health)}.
-You are currently working: {game.allegiance_phrase(npc)}.
+You are currently working: {game.allegiance_phrase(npc)}.{chr(10) + "You are in the middle of: " + npc.aim if getattr(npc, "aim", "") else ""}
 
 CAMP
 Stores: {stores}. Built: {built}. Under way: {progress}.
@@ -545,9 +556,12 @@ WHAT YOU REMEMBER
     # -- calls ----------------------------------------------------------------
 
     def plan(self, npc, game) -> dict:
+        aim = f"\nWHAT YOU ARE IN THE MIDDLE OF\n  {npc.aim}\n" if npc.aim else ""
         user = f"""{self._situation(npc, game)}
-
-Nobody is talking to you. Decide what you're doing next.
+{aim}
+Nobody is talking to you. Decide what you're doing next, and say what it's in
+service of — you can name one step after this one if you already know it, or
+leave that idle and see how the first goes.
 
 Weigh it honestly. What is most likely to kill you in the next day — thirst,
 the dark, the water? What actually moves you closer to getting off this island?
@@ -556,7 +570,9 @@ means sharing what you gather, and it means depending on them."""
         out = self._call(self._system(npc), user, PLAN_SCHEMA)
         if out is None:
             return self._fallback_plan(npc, game)
-        return self._polish(out)
+        out = self._polish(out)
+        out["aim"] = tidy_line(out.get("aim", ""), limit=100, speech=False)
+        return out
 
     def speak(self, npc, game, speaker_name: str, line: str, also_heard: list[str],
               group: list[str] | None = None, avoid: list[str] | None = None) -> dict:
@@ -788,26 +804,27 @@ This is the first thing you say to them. It does not have to be gracious."""
     def _fallback_plan(self, npc, game) -> dict:
         keep = [game.name_for(npc, game.by_key[k])
                 for k in npc.allies if k in game.by_key]
+
+        def step(thought, emotion, action, target, then=("idle", "")):
+            return {"thought": thought, "emotion": emotion, "working_with": keep,
+                    "aim": npc.aim or "staying alive long enough to matter",
+                    "action": action, "target": target,
+                    "then_action": then[0], "then_target": then[1]}
         if npc.thirst < 40:
             if npc.inventory.get("water"):
-                return {"thought": "drinking what I've got", "emotion": "wary", "working_with": keep,
-                        "action": "drink", "target": ""}
+                return step("drinking what I've got", "wary", "drink", "")
             site = self._site_for(game, "water")
             if site:
-                return {"thought": "water first", "emotion": "wary", "working_with": keep,
-                        "action": "gather", "target": site}
+                return step("water first", "wary", "gather", site, ("drink", ""))
         if npc.hunger < 40:
             site = self._site_for(game, "coconut") or self._site_for(game, "fish")
             if site:
-                return {"thought": "need to eat", "emotion": "wary", "working_with": keep,
-                        "action": "gather", "target": site}
+                return step("need to eat", "wary", "gather", site, ("eat", ""))
         if npc.energy < 25:
-            return {"thought": "worn through", "emotion": "exhausted", "working_with": keep,
-                    "action": "rest", "target": ""}
-        if npc.carried() >= 5 and keep != "alone":
-            return {"thought": "taking this back to camp", "emotion": "determined", "working_with": keep,
-                    "action": "deposit", "target": ""}
+            return step("worn through", "exhausted", "rest", "")
+        if npc.carried() >= 5 and keep:
+            return step("taking this back to camp", "determined", "deposit", "")
         places = list(world.HARVEST.keys()) or ["camp"]
         place = random.choice(places)
-        return {"thought": f"heading for {place}", "emotion": "determined", "working_with": keep,
-                "action": "gather", "target": place}
+        return step(f"heading for {place}", "determined", "gather", place,
+                    ("deposit", "") if keep else ("idle", ""))

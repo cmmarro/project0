@@ -445,6 +445,7 @@ class Game:
                     ok, _ = verbs.perform(self, npc, t["action"], t["target"]) \
                         if t["action"] in ("take", "deposit", "board") else (True, "")
                     npc.stop()
+                    self.take_next_step(npc)
             return
 
         if t["phase"] == "work":
@@ -455,14 +456,17 @@ class Game:
                 ok, _ = verbs.perform(self, npc, t["action"], t["target"])
                 if not ok:
                     npc.stop()
+                    self.take_next_step(npc)
                 elif t["action"] == "gather" and npc.carried() >= 7:
-                    if not npc.allies:
-                        npc.stop()
-                    else:
+                    # Hands full. If they said what came next, that's what
+                    # comes next; otherwise the old haul-it-back reflex.
+                    npc.stop()
+                    if not self.take_next_step(npc) and npc.allies:
                         npc.thought = "hauling this back to camp"
                         npc.route_to(world.LANDMARKS["camp"]["pos"], "deposit", "camp")
                 elif t["action"] == "build" and self.structures[t["target"]]["done"]:
                     npc.stop()
+                    self.take_next_step(npc)
             return
 
         if t["action"] == "follow":
@@ -474,7 +478,31 @@ class Game:
                     t["phase"] = "travel"
                     t["action"], t["target"] = "follow", t["target"]
 
-    def apply_intent(self, npc: Castaway, action: str, target: str):
+    def queue_next(self, npc: Castaway, action: str, target: str):
+        """Hold the one step they said comes after this one.
+
+        One, not a list. A queue of five deep goes stale faster than anyone can
+        walk across this island, and a small model will follow it off a cliff
+        rather than notice. One step covers "fill up, then bring it back",
+        which is most of what anybody here actually intends.
+        """
+        action = (action or "").strip().lower()
+        if action in ("", "idle", "keep_doing") or action not in verbs.VERBS:
+            npc.then = None
+            return
+        npc.then = (action, (target or "").strip().lower())
+
+    def take_next_step(self, npc: Castaway) -> bool:
+        """Finished something. Do the thing they said came after it, if it still
+        makes sense — nothing has happened since to make them reconsider."""
+        if not npc.then or npc.down or npc.held:
+            return False
+        action, target = npc.then
+        npc.then = None
+        self.apply_intent(npc, action, target, queued=True)
+        return npc.task["phase"] != "idle" or npc.task["action"] != "idle"
+
+    def apply_intent(self, npc: Castaway, action: str, target: str, queued: bool = False):
         """Turn a model's chosen verb into motion + execution."""
         action = (action or "").strip().lower()
         target = (target or "").strip().lower()
@@ -484,6 +512,10 @@ class Game:
         # they reconsider — otherwise a queued plan can overwrite an agreement
         # a second after it was made.
         npc.next_plan_at = max(npc.next_plan_at, time.time() + PLAN_COOLDOWN)
+        # Anything they decide fresh replaces what they'd lined up. Talking to
+        # someone is exactly the thing that should throw out yesterday's plan.
+        if not queued:
+            npc.then = None
         if action == "idle":
             npc.stop()
             return
@@ -518,7 +550,7 @@ class Game:
         if action == "rest":
             npc.stop("rest")
 
-    def witness_emote(self, actor, kind: str, spec: dict) -> tuple[bool, str]:
+    def witness_emote(self, actor, kind: str, spec: dict, where: str = "") -> tuple[bool, str]:
         """Work out who saw or heard it, and what it did to them.
 
         A scream reaches twenty tiles, which is most of the island and four
@@ -527,8 +559,17 @@ class Game:
         the price is that everyone else finds out where you are too.
         """
         reach, heard = spec["range"], spec.get("heard")
+        # A beckon that names somewhere is the one gesture that carries
+        # information: "not here — over there." Without a place it means
+        # "come to me", which is the place they're standing.
+        place = self.match_landmark(where) if where else None
+        if kind == "beckon" and not place:
+            place = world.landmark_at(actor.x, actor.y, radius=4.0)
         # A scream is an event on the island, not a gesture. It reads as one.
-        self.event(spec["does"].format(a=actor.short), "alert" if heard else "emote", actor)
+        said = spec["does"].format(a=actor.short)
+        if kind == "beckon" and place:
+            said = f"{actor.short} beckons — come to {place}."
+        self.event(said, "alert" if heard else "emote", actor)
 
         for other in self.actors:
             if other is actor:
@@ -547,7 +588,12 @@ class Game:
             if not close and not heard:
                 continue
             if other.has_met(actor):
-                other.remember(spec["does"].format(a=actor.short), self.day)
+                if kind == "beckon" and place:
+                    # Information, not an order. They still decide.
+                    other.remember(f"{actor.short} wants me at {place}.", self.day, weight=1.3)
+                    other.next_plan_at = 0.0
+                else:
+                    other.remember(said, self.day)
                 if spec["trust"]:
                     other.adjust_trust(actor.key, spec["trust"])
             elif heard:
@@ -834,6 +880,11 @@ class Game:
             was = npc.thought
             npc.thought = (out.get("thought") or npc.thought)[:120]
             npc.emotion = out.get("emotion", npc.emotion)
+            aim = (out.get("aim") or "").strip()[:110]
+            if aim and aim != npc.aim:
+                npc.aim = aim
+                self.event(f"{npc.short} is set on: {aim}", "aim", npc)
+            self.queue_next(npc, out.get("then_action", ""), out.get("then_target", ""))
             if self.set_allies(npc, out.get("working_with")):
                 self.event(f"{npc.short} is working {self.allegiance_phrase(npc)}.", "allegiance", npc)
             self.apply_intent(npc, out.get("action", ""), out.get("target", ""))
