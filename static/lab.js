@@ -104,7 +104,8 @@ function paint() {
       </div>`;
   }).join('') + (tied
     ? `<div class="tie">These are level. ${S.mind_on
-        ? 'The mind decides this one.' : 'Nothing to break the tie but the order.'}</div>` : '');
+        ? 'The mind decides this one.'
+        : 'With no mind, it comes down to a weighted coin.'}</div>` : '');
 
   // your side of the glass
   const ctrl = S.things.filter(t => t.controllable);

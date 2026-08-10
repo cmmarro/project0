@@ -507,6 +507,16 @@ already determined and a model call would only cost latency.
 The counter in the corner reads *"n ties · m asked"*, so how often the model was
 actually needed is a measurement rather than a claim.
 
+**With no backend at all it is still a subject** — it just has nothing to say
+and no way to be reached. It survives, explores, works out what everything is,
+and gets on with its day; an offer through the glass is a noise it can't parse,
+and a tie breaks on a weighted coin.
+
+That coin matters more than it looks. The baseline used to resolve an identical
+tie the same way every time, which would have made the mind look better purely
+because it *varies* — a confound rather than a finding. The control condition
+has to be allowed to be indecisive too, or the comparison is rigged.
+
 ### Your side of the glass
 
 You can cut the water, shut the food hatch, take the cot away. The subject is

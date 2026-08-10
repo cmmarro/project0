@@ -126,6 +126,45 @@ def main():
     check("and never for a decision that was clear",
           all(d["by"] == "scores" for d in lab.decisions if not d["forked"]))
 
+    print("\n6b. The subject with no mind at all is still a subject")
+    from island import settings
+    from lab.mind import Mind
+    was = settings._current.get("provider")
+    settings._current["provider"] = "offline"
+    try:
+        m = Mind()
+        check("with no backend configured the mind simply isn't there", not m.online)
+        check("and asking it anything is harmless", m.break_tie(Lab(seed=1), []) is None)
+    finally:
+        settings._current["provider"] = was
+
+    lab = Lab(seed=4)
+    for t in lab.things.values():
+        t.known = True
+    lab.subject.needs["thirst"].level = 0.42
+    lab.subject.needs["hunger"].level = 0.42
+    picks = []
+    for _ in range(30):
+        lab.subject.job = None
+        lab.choose()
+        picks.append(lab.subject.job.key)
+    # If the baseline always broke a tie the same way, switching the mind on
+    # would look better purely because it varies. The control has to be
+    # allowed to be indecisive too, or the comparison is rigged.
+    check("an unminded subject doesn't resolve the same tie the same way forever",
+          len(set(picks)) > 1, str(sorted(set(picks))))
+    check("but a clear decision is never a coin toss",
+          all(d["by"] == "scores" for d in lab.decisions if not d["forked"]))
+
+    lab.subject.needs["hunger"].level = 0.98
+    outs = set()
+    for _ in range(10):
+        lab.subject.job = None
+        lab.choose()
+        outs.add(lab.subject.job.key)
+    check("...and it stays decided when one option is plainly ahead",
+          len(outs) == 1, str(outs))
+
     print("\n7. A promise, and whether it is kept")
     # The one thing the scoring layer cannot represent: somebody told it that
     # doing X gets Y. Nothing in the room will ever remind it.

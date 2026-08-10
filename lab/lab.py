@@ -187,19 +187,25 @@ class Lab:
 
         if forked:
             self.forks += 1
-            # The only place anything more expensive is allowed to matter. If
-            # the mind is off, or has nothing to say, the tie breaks on score
-            # exactly as it would have.
+            tied = [r for r in live if top["score"] - r["score"] < jobs.FORK]
+            answered = False
+            # The only place anything more expensive is allowed to matter.
             if self.mind is not None:
                 self.consulted += 1
-                picked = self.mind.break_tie(self, live[:3])
+                picked = self.mind.break_tie(self, tied[:3])
                 if picked is not None:
                     chosen = next((r for r in live if r["key"] == picked), None)
-                    if chosen is not None and chosen is not top:
-                        top = chosen
-                        decided_by = "mind"
-                    elif chosen is top:
-                        decided_by = "mind"
+                    if chosen is not None:
+                        top, decided_by, answered = chosen, "mind", True
+            if not answered and len(tied) > 1:
+                # With no mind — or a mind that had nothing to say — the tie
+                # breaks on a weighted coin rather than list order. Otherwise
+                # the same tie always resolves the same way, and switching the
+                # mind on looks better purely because it varies. The control
+                # condition has to be allowed to be indecisive too.
+                weights = [max(r["score"], 0.01) for r in tied]
+                top = self.rng.choices(tied, weights=weights)[0]
+                decided_by = "coin"
 
         s.job = top["job"]
         s.busy = 0.0
@@ -216,9 +222,9 @@ class Lab:
         }
         self.decisions.append(record)
         del self.decisions[:-40]
-        self.note(f"Starts {top['label']} — {top['why']}"
-                  + ("  [tie broken by the mind]" if decided_by == "mind" else ""),
-                  "choice")
+        tail = {"mind": "  [the mind broke the tie]",
+                "coin": "  [a tie, broken at random]"}.get(decided_by, "")
+        self.note(f"Starts {top['label']} — {top['why']}{tail}", "choice")
 
     # -- the loop -------------------------------------------------------------
 
