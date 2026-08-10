@@ -180,6 +180,13 @@ model repeating its prompt. The game strips the worst of it, and **Prompt size:
 auto** already sends local models a much shorter brief. If it's still bad, a 7B
 instruct model behaves far better than a 2B.
 
+**Somebody answered with "I can't help with that."** That's the model falling
+out of the character and back into being a chat assistant. Those lines are
+dropped now. It happened most when you opened with a bare "hello" — the game
+forbids greeting somebody twice, which left nothing legal to say, so a
+contentless greeting now tells them to say what's actually on their mind
+instead.
+
 **They keep saying hello, or repeating each other.** Also a small model. The
 game now refuses greetings between people who've already met, and drops a reply
 that's just an echo of the line before it — but the smaller the model, the more
@@ -196,9 +203,13 @@ then press **refresh** in the game's settings.
 of room mid-sentence. Open settings (click the badge in the top-left) and raise
 **Max tokens** to 2000.
 
-**The survivors are slow.** That's your local model thinking. A smaller model, or
-Claude, will be faster. The game keeps running while they think — the clock
-doesn't wait for anybody.
+**The survivors are slow.** That's your local model thinking, and the island now
+slows down to match — the HUD shows `world ×0.5` when it does, so a slow model
+costs you real minutes but not in-game daylight. If it's slower than you'd like:
+drop **Max tokens** to around 500, and check the model actually fits in your
+VRAM (once it spills to CPU, everything takes several times longer). Past about
+eight seconds a reply the game also stops re-rolling lines that look like
+repeats, since a second attempt doubles the wait.
 
 **It says the port is in use.** Something else is on 5000. Close it, or start the
 game with a different port: `PORT=5050 ./run.sh` (Mac/Linux) or

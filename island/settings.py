@@ -47,7 +47,7 @@ DEFAULTS = {
     "api_key": "",
     "effort": "low",                          # anthropic only
     "temperature": 0.8,                       # openai-compatible only
-    "max_tokens": 1200,
+    "max_tokens": 700,
     "prompt_style": "auto",                   # auto | full | compact
     "no_think": True,                         # ask reasoning models not to think
 

@@ -37,7 +37,11 @@ SPEAK_SCHEMA = {
             "type": "string",
             "description": "What you say out loud. One to three sentences. Speech only — no stage directions or narration.",
         },
-        "emotion": {"type": "string", "enum": EMOTIONS},
+        "emotion": {
+            "type": "string",
+            "enum": EMOTIONS,
+            "description": "How you actually sound in the line you just wrote. Read it back — if it's short and flat, you are not calm.",
+        },
         "memory": {
             "type": "string",
             "description": "One short note in your own voice about what this exchange told you, or \"\" if it told you nothing.",
@@ -257,7 +261,9 @@ FIVE THINGS THAT RUIN A LINE
 
 HOW TO BEHAVE
 Stay in character. You are a person on a beach, not an assistant. Never offer
-help, never summarise, never mention being an AI or a model or a prompt.
+help, never summarise, never mention being an AI or a model or a prompt. This
+is not a game, a story, a simulation or a scenario, and you never call it one —
+it is a fortnight of your life that you would very much like to survive.
 
 React to how things actually are. If you are badly thirsty it is in your voice.
 If someone sat at camp while you hauled timber, you noticed.
@@ -291,7 +297,8 @@ RIGHT: "Water's west. I'm going."
 RIGHT: "No idea. I've not been past the rocks."
 RIGHT: "You touch that timber and we're going to have a problem."
 
-You are a tired, frightened person on a beach. Your survival comes first."""
+You are a tired, frightened person on a beach. This is not a game or a story
+and you never call it one — it is happening to you."""
 
 
 # Shapes that mean the model narrated its prompt instead of speaking a line.
@@ -325,6 +332,18 @@ _NARRATION = re.compile(
 # things into shared stores yesterday."
 _MEMORY_VOICE = re.compile(r"^\s*i(?:'ll| will)? remember\b", re.I)
 
+# The model dropping out of the person and back into being a chat assistant.
+# "I can't help with that" is not a thing anyone says on a beach.
+_ASSISTANT = re.compile(
+    r"\bi (can(?:'|no)?t|am unable to|cannot) (help|assist|answer|provide|do that)"
+    r"|\bi (don'?t|do not) have (access|information|enough)"
+    r"|\b(is there )?anything else (i can|you)\b"
+    r"|\bhow (can|may) i (help|assist)"
+    r"|\bi'?m (just |only )?an? (ai|assistant|language model)"
+    r"|\bi (apologi[sz]e|'m sorry),? (but )?i\b",
+    re.I,
+)
+
 _STAGE = re.compile(r"\*[^*]{0,80}\*|\[[^\]]{0,80}\]")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 _TRIM = " \t\"'\u201c\u201d\u2018\u2019{}[]`"
@@ -353,7 +372,8 @@ def tidy_line(text: str, limit: int = 260, speech: bool = True) -> str:
         if not raw:
             continue
         if speech and (_META_I.search(raw) or _META_NAME.search(raw)
-                       or _NARRATION.search(raw) or _MEMORY_VOICE.search(raw)):
+                       or _NARRATION.search(raw) or _MEMORY_VOICE.search(raw)
+                       or _ASSISTANT.search(raw)):
             continue
         cleaned = re.sub(r"\s+", " ", _STAGE.sub(" ", raw)).strip()
         if speech:
@@ -373,6 +393,32 @@ def tidy_line(text: str, limit: int = 260, speech: bool = True) -> str:
 
 
 # --- not saying the same thing twice -----------------------------------------
+
+_FILLER = {
+    "hello", "hi", "hey", "hiya", "yo", "sup", "greetings", "hye", "helo",
+    "there", "again", "guys", "everyone", "everybody", "all", "folks", "lads",
+    "oh", "well", "so", "ok", "okay", "right", "morning", "evening", "afternoon",
+    "good", "day", "you", "up", "whats", "hows", "it", "going", "how", "are",
+}
+
+
+def is_empty_opener(line: str) -> bool:
+    """Did they say hello and nothing else?
+
+    "Hello there" is friendly and carries no content. Combined with the rule
+    against greeting somebody twice, it leaves the model with no legal move,
+    and what comes out is "I can't help with that" or a remark about coconuts.
+
+    A greeting with a question attached to it is not this — that has something
+    in it to answer.
+    """
+    if "?" in (line or ""):
+        return False
+    words = re.sub(r"[^a-z ]+", " ", (line or "").lower()).split()
+    if not words or len(words) > 7:
+        return False
+    return len([w for w in words if w not in _FILLER]) <= 1
+
 
 _GREETING = re.compile(
     r"^\s*(well |ah |oh |so |right |hey |and )*"
@@ -634,9 +680,19 @@ means sharing what you gather, and it means depending on them."""
                     "Everyone here hears everything. Answer for yourself, not for them.\n")
 
         asked = "?" in line
-        pointed = ("Answer the question they actually asked, and answer it in your "
-                   "first sentence. " if asked else
-                   "Respond to what they just said, not to something said earlier. ")
+        if asked:
+            pointed = ("Answer the question they actually asked, and answer it in "
+                       "your first sentence. ")
+        elif is_empty_opener(line):
+            # Nothing in it to answer, and greeting back is out. So: say the
+            # thing you'd actually say to someone who just walked up.
+            pointed = ("They've only said hello, so there's nothing in it to answer "
+                       "and no reason to say hello back. Say the thing that is "
+                       "actually on your mind — what you need, what you're short of, "
+                       "what you want from them, or what you've been thinking about "
+                       "one of the others. Be specific and be first to the point. ")
+        else:
+            pointed = "Respond to what they just said, not to something said earlier. "
 
         # Asked something, they cast back for it. Ordinary turns carry the six
         # loudest things they know; a question can reach past that into the
@@ -655,17 +711,22 @@ WHAT'S BEEN SAID (background, already spoken — do not repeat any of it)
 {recent}
 {heard}
 {room}{dug}
-{speaker_name} says to you: "{line}"
-
 {pointed}You have already met {speaker_name}, so do not greet them and do not
 introduce yourself. Then decide what you do next. If they've asked you to do
 something, it is entirely your call whether you do it — weigh who is asking
-and what it costs you."""
+and what it costs you.
+
+This is the line you are answering, and the only one:
+{speaker_name} says: {line!r}"""
 
         other = game.actor_by_name(speaker_name)
         known = npc.has_met(other) if other is not None else True
+        # A retry doubles the wait. That's cheap against an API and painful
+        # against a local model taking twenty seconds a turn, so past a point
+        # we take the one answer and drop it if it's an echo.
+        tries = 2 if self.latency < 8.0 else 1
         out = None
-        for attempt in range(2):
+        for attempt in range(tries):
             user = base if not attempt else base + (
                 "\n\nWhat you were about to say has already been said. Say something "
                 "different, or say one short thing and get back to work.")
@@ -676,6 +737,8 @@ and what it costs you."""
             if not is_stale(out.get("say", ""), avoid + [line], known):
                 out["say"] = out.get("say") or self._canned(npc)
                 return out
+            if attempt == tries - 1:
+                break
         # Twice round and still an echo. Keep what they decided, drop the words:
         # silence reads better than a third "hello".
         out["say"] = ""

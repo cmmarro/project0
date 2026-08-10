@@ -233,6 +233,27 @@ def main():
           tidy_line("I remember that Marisol shared.", speech=False)
           == "I remember that Marisol shared.")
 
+    print("\nWhen the model stops being a person")
+    from island.brain import is_empty_opener
+    for raw in ("I can't help with that.", "I don't have access to that information.",
+                "Is there anything else I can help you with?",
+                "I'm sorry, but I cannot answer that."):
+        check(f"drops assistant-speak: {raw[:34]}…", tidy_line(raw) == "", repr(tidy_line(raw)))
+    check("but a person saying they can't do something survives",
+          tidy_line("I can't carry both. You take the rope.")
+          == "I can't carry both. You take the rope.")
+
+    print("\nGreetings with nothing in them")
+    # Forbidding a second hello while giving them nothing to answer is what
+    # produced "I can't help with that" in a playtest.
+    for raw, want in [("Hello there", True), ("Guys, hey.", True), ("Hye guys.", True),
+                      ("Hello Barnaby", True), ("good morning everyone", True),
+                      ("Where is the water?", False), ("Hey, we need timber.", False),
+                      ("Hello, did you take the rope?", False),
+                      ("The spring is dry.", False)]:
+        check(f"{'empty' if want else 'has something in it'}: {raw!r}",
+              is_empty_opener(raw) is want)
+
     print("\nNot saying the same thing twice")
     check("a greeting to someone you've met is thrown away", is_stale("Hello there! Nice to meet you."))
     check("...and so is the third one", is_stale("Hello again Barnaby."))
