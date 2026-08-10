@@ -129,7 +129,7 @@ html, body {
 .item:hover { background: rgba(255, 255, 255, .05); }
 .item.on { background: rgba(216, 178, 94, .16); color: var(--pick); }
 .item .sw {
-  width: 26px; height: 26px; flex: 0 0 auto;
+  width: 28px; height: 28px; flex: 0 0 auto;
   display: grid; place-items: center;
   background: #1b2126; border: 1px solid var(--line); border-radius: 4px;
 }

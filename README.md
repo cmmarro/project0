@@ -16,13 +16,19 @@ It is plain ES modules and a canvas.
 
 - **A tiled map** with a starter room already up, so there is something to look
   at before you build anything.
+- **A high-oblique view.** Not isometric — the grid stays square and
+  axis-aligned — but tilted enough that everything shows a top *and* a south
+  face. Walls have a top, a face and a lip; a table is a slab on legs rather
+  than a painted rectangle.
 - **A build menu** — Structure, Furniture, Misc, Floors, and Deconstruct.
   Click a thing, click the floor. The tool stays selected so you can place
   several; drag to run a wall or paint a floor; **R** rotates; **Esc** or
   right-click cancels.
-- **Multi-tile objects.** A bed is 1×2, a table 2×2, a paste dispenser 3×1, and
-  they turn properly. Rotation was built in from the first commit because
+- **Multi-tile objects, and everything turns.** A bed is 1×2, a table 2×2, a
+  paste dispenser 3×1. Rotation was built in from the first commit because
   retrofitting it into placement, occupancy and drawing is miserable.
+- **Doors orient themselves** to the wall they land in. A door you have to
+  align by hand is a door you will align wrong.
 - **Lighting.** A standing lamp throws warm light about seven tiles; a ceiling
   light is colder, brighter, and doesn't take up the tile. Walls stop light.
   The sun slider takes the room from night to daylight.
@@ -50,6 +56,36 @@ twelve edits.
 **Only `world.place` and `world.remove` change anything.** So there is exactly
 one place that knows a bed covers two tiles, and the renderer and the menu only
 ever read.
+
+## How the height works
+
+Height is a **screen-space offset**, not a third axis. A thing's top face draws
+one `h` above its footprint and its south face hangs below that; the footprint
+itself never moves. So placement, occupancy and pathing stay on a plain square
+grid and know nothing about any of it.
+
+Each object is therefore two drawings:
+
+```
+top(c, w, d, thing)     the top surface. Rotates with the object, because a
+                        bed's pillow end turns.
+face(c, w, h, thing)    the south face. Never rotates, because "up" is a
+                        property of the screen and not of the furniture.
+```
+
+Anything without a `face` gets a default extruded slab, tapered slightly inward
+at the bottom. That taper is two lines of code doing most of the work of making
+a box look like a box rather than a rectangle with a stripe under it.
+
+Two consequences that are easy to miss:
+
+- **Things overlap now, so draw order stopped being free.** Everything sorts by
+  the south edge of its footprint — painter's algorithm — which is why walls
+  are in the same pass as furniture rather than drawn last.
+- **A wall with a wall to its south draws no face,** because the neighbour's
+  body covers it. That one check is most of what makes a run read as a single
+  structure. Its counterpart is the exposed top edges: without them a
+  north–south run has no outline at all and reads as a strip of pale floor.
 
 ## Notes on the rendering, from getting it wrong
 

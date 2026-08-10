@@ -74,8 +74,10 @@ export class World {
   }
 
   place(key, x, y, rot = 0) {
-    if (!this.canPlace(key, x, y, rot)) return null;
     const def = THINGS[key];
+    if (!def) return null;
+    if (def.autoOrient) rot = this.orientFor(key, x, y, rot);
+    if (!this.canPlace(key, x, y, rot)) return null;
     const tiles = this.footprint(key, x, y, rot);
     const thing = {
       id: this.nextId++, key, x, y, rot,
@@ -133,14 +135,22 @@ export class World {
     return !!(t && THINGS[t.key].blocks);
   }
 
-  /* Whether a wall run should join to the neighbour, for drawing. */
-  joinsAt(x, y, key) {
+  /* Part of a wall run, for drawing. A door counts, or every doorway looks
+   * like a gap with something floating in it. */
+  structureAt(x, y) {
     const t = this.thingAt(x, y);
-    if (!t) return false;
-    if (t.key === key) return true;
-    // A door reads as part of the wall it sits in, or every doorway looks
-    // like a gap with something floating in it.
-    return THINGS[t.key].inWall || (key === 'wall' && THINGS[t.key].inWall);
+    return !!(t && THINGS[t.key].joins);
+  }
+
+  /* Which way a door should face, from the wall it lands in. A run to east and
+   * west means the door lies along it; a run north and south means it turns.
+   * Falls back to whatever was asked for when there is no wall to read. */
+  orientFor(key, x, y, asked = 0) {
+    const eastWest = this.structureAt(x - 1, y) || this.structureAt(x + 1, y);
+    const northSouth = this.structureAt(x, y - 1) || this.structureAt(x, y + 1);
+    if (eastWest && !northSouth) return 0;
+    if (northSouth && !eastWest) return 1;
+    return asked;
   }
 
   /* A starting room, so there is something on screen before you build. */

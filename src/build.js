@@ -7,6 +7,7 @@
  * refusing the click with no explanation.
  */
 
+import { ART } from './art.js';
 import { CATEGORIES, TERRAIN, THINGS, TILE, menuItems } from './defs.js';
 
 export class Build {
@@ -32,7 +33,11 @@ export class Build {
 
   rotate() {
     if (!this.tool || this.tool.kind !== 'thing') return;
-    if (!THINGS[this.tool.key].rotates) return;
+    // Everything turns, the way it does in a colony sim — a square table
+    // turning invisibly is harmless, and having to remember which pieces are
+    // rotatable is not. Doors are the exception: they take their orientation
+    // from the wall.
+    if (THINGS[this.tool.key].autoOrient) return;
     this.rot = (this.rot + 1) % 4;
     this.onChange();
   }
@@ -54,6 +59,14 @@ export class Build {
     return [x - Math.floor((w - 1) / 2), y - Math.floor((h - 1) / 2)];
   }
 
+  /* What rotation this would actually be placed at — which for a door is
+   * whatever the wall it lands in dictates, not what you last pressed R on. */
+  rotAt(x, y) {
+    if (!this.tool || this.tool.kind !== 'thing') return this.rot;
+    const def = THINGS[this.tool.key];
+    return def.autoOrient ? this.world.orientFor(this.tool.key, x, y, this.rot) : this.rot;
+  }
+
   valid(x, y) {
     if (!this.tool) return false;
     if (this.tool.kind === 'delete') {
@@ -61,7 +74,7 @@ export class Build {
     }
     if (this.tool.kind === 'terrain') return this.world.inside(x, y);
     const [ox, oy] = this.origin(x, y);
-    return this.world.canPlace(this.tool.key, ox, oy, this.rot);
+    return this.world.canPlace(this.tool.key, ox, oy, this.rotAt(x, y));
   }
 
   down(x, y) {
@@ -134,15 +147,11 @@ export class Build {
 
     const def = THINGS[this.tool.key];
     const [ox, oy] = this.origin(hx, hy);
+    const rot = this.rotAt(hx, hy);
     let [w, h] = def.size;
-    if (this.rot % 2 === 1) [w, h] = [h, w];
+    if (rot % 2 === 1) [w, h] = [h, w];
 
-    if (ok) {
-      renderer.drawThing({
-        key: this.tool.key, rot: this.rot,
-        cx: ox + w / 2, cy: oy + h / 2,
-      }, true);
-    }
+    if (ok) renderer.drawThing({ key: this.tool.key, x: ox, y: oy, rot }, true);
     c.fillStyle = tint + (ok ? '.12)' : '.26)');
     c.fillRect(ox * TILE, oy * TILE, w * TILE, h * TILE);
     c.strokeStyle = tint + '.9)';
@@ -150,9 +159,9 @@ export class Build {
     c.strokeRect(ox * TILE + 0.75, oy * TILE + 0.75, w * TILE - 1.5, h * TILE - 1.5);
 
     // Which way it is facing, for anything where that matters.
-    if (def.rotates) {
+    if (def.rotates || def.autoOrient) {
       const cx = (ox + w / 2) * TILE, cy = (oy + h / 2) * TILE;
-      const a = this.rot * Math.PI / 2 + Math.PI / 2;
+      const a = rot * Math.PI / 2 + Math.PI / 2;
       c.strokeStyle = tint + '.9)';
       c.lineWidth = 2;
       c.beginPath();
@@ -201,10 +210,11 @@ export function buildMenu(root, build) {
       else el.classList.toggle('on', el.dataset.cat === cat && (!t || t.kind !== 'delete'));
     }
     const def = t && t.kind === 'thing' ? THINGS[t.key] : null;
+    const turn = def && def.rotates ? '  ·  R to turn it.' : '';
     hint.textContent = !t ? 'Pick something to build. Right-drag or space-drag to pan, wheel to zoom.'
       : t.kind === 'delete' ? 'Click or drag over anything you want gone.'
-      : (def && def.hint) ? def.hint + (def.rotates ? '  ·  R to rotate.' : '')
-      : 'Click to place, drag to place several. Esc to stop.';
+      : (def && def.hint) ? def.hint + turn
+      : 'Click to place, drag to place several.' + turn;
   }
 
   root.addEventListener('click', e => {
@@ -228,25 +238,32 @@ export function buildMenu(root, build) {
 function swatch(el) {
   const key = el.dataset.sw;
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 26;
+  cv.width = cv.height = 28;
   const c = cv.getContext('2d');
   const def = THINGS[key];
   if (def) {
     const [w, h] = def.size;
-    const s = 22 / Math.max(w, h) / TILE;
-    c.translate(13, 13);
+    const lift = (ART[key] && ART[key].h) || 0;
+    const s = 24 / Math.max(w * TILE, h * TILE + lift);
+    c.translate(14, 14);
     c.scale(s, s);
-    c.translate((-w * TILE) / 2, (-h * TILE) / 2);
-    if (key === 'wall') {
-      c.fillStyle = '#6a6a63'; c.fillRect(0, 0, TILE, TILE);
-      c.fillStyle = '#7c7c74'; c.fillRect(0, 0, TILE, 6);
-      c.strokeStyle = 'rgba(12,14,16,.72)'; c.lineWidth = 1.5;
-      c.strokeRect(0.75, 0.75, TILE - 1.5, TILE - 1.5);
-    } else {
-      import('./art.js').then(({ ART }) => {
-        const art = ART[key];
-        if (art) art(c, w * TILE, h * TILE, {});
-      });
+    c.translate((-w * TILE) / 2, (-h * TILE - lift) / 2);
+    const a = ART[key];
+    if (a) {
+      // Same two-part drawing as the world, so the menu can never disagree
+      // with what you get: face below, top lifted above it.
+      const hh = a.h || 0;
+      if (hh) {
+        c.save();
+        c.translate(0, h * TILE - hh);
+        if (a.face) a.face(c, w * TILE, hh, {});
+        else { c.fillStyle = a.side || '#7d7668'; c.fillRect(0, 0, w * TILE, hh); }
+        c.restore();
+      }
+      c.save();
+      c.translate(0, -hh);
+      a.top(c, w * TILE, h * TILE, {});
+      c.restore();
     }
   } else if (TERRAIN[key]) {
     const t = TERRAIN[key];

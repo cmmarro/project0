@@ -23,9 +23,9 @@ export const TERRAIN = {
   concrete: {
     label: 'Concrete',
     cat: 'Floors',
-    base: '#7f7a6e',
-    speck: '#6e6a5f',
-    grout: '#6b6759',
+    base: '#75705f',
+    speck: '#615d4f',
+    grout: '#5c5849',
     plate: 4,                        // seams every N tiles
   },
   steel: {
@@ -70,7 +70,7 @@ export const THINGS = {
     size: [1, 1],
     blocks: true,
     occupies: true,
-    joins: true,                     // draws as a continuous run with neighbours
+    joins: true,                     // part of a run; hides its face behind one
     hint: 'Drag to build a run.',
   },
   door: {
@@ -79,8 +79,12 @@ export const THINGS = {
     size: [1, 1],
     blocks: false,
     occupies: true,
-    inWall: true,                    // wants a wall either side; drawn to fit
-    hint: 'Sits in a wall. Light gets through when it opens.',
+    joins: true,
+    // Takes its orientation from the wall it lands in, rather than from
+    // whatever you last pressed R on. A door you have to align by hand is a
+    // door you will align wrong.
+    autoOrient: true,
+    hint: 'Turns to match the wall it sits in.',
   },
   bed: {
     label: 'Bed',
@@ -88,12 +92,13 @@ export const THINGS = {
     size: [1, 2],
     rotates: true,
     occupies: true,
-    hint: 'R to turn it. The pillow end is the head.',
+    hint: 'The pillow end is the head.',
   },
   table: {
     label: 'Table',
     cat: 'Furniture',
     size: [2, 2],
+    rotates: true,
     occupies: true,
   },
   chair: {
@@ -102,6 +107,7 @@ export const THINGS = {
     size: [1, 1],
     rotates: true,
     occupies: true,
+    hint: 'Faces the way you turn it.',
   },
   dispenser: {
     label: 'Nutrient paste dispenser',
@@ -111,12 +117,13 @@ export const THINGS = {
     occupies: true,
     blocks: true,
     light: { radius: 2.4, colour: [120, 200, 160], strength: 0.35 },
-    hint: 'Wide. Faces the way you turn it.',
+    hint: 'Wide. The nozzles are on the face it turns towards.',
   },
   lamp: {
     label: 'Standing lamp',
     cat: 'Misc',
     size: [1, 1],
+    rotates: true,
     occupies: true,
     light: { radius: 7.5, colour: [255, 214, 150], strength: 1.0 },
     hint: 'Lights about seven tiles. Walls stop it.',
