@@ -34,7 +34,8 @@ git clone -b claude/llm-game-characters-gyqubv https://github.com/cmmarro/projec
 Open the folder and **double-click `run.bat`**.
 
 A black window appears and does some setup — that's normal, and it only happens
-the first time. After a minute your browser opens with the game in it.
+the first time. After a minute your browser opens on a **start screen**: tell it
+which model to use, then pick **the lab** or **the island**.
 
 > If Windows says *"Python isn't installed"*: get it from
 > <https://www.python.org/downloads/>, and **tick the "Add python.exe to PATH"

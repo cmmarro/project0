@@ -22,8 +22,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python server.py              # http://127.0.0.1:5000
 ```
 
-Then pick a backend in the browser — the settings sheet opens by itself the
-first time, and the badge in the top-left reopens it later.
+That opens a **start screen**: set the backend once, then pick what to run —
+**the lab** (one subject, one room, an instrument panel) or **the island**
+(the bigger one). Neither is built until you choose, so opening the page to
+change a setting doesn't set anything simulating.
 
 ### Running the survivors on a local model
 
