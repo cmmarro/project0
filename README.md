@@ -476,3 +476,54 @@ and the people are all different every time. Same seed, same run.
 - Run summary, permadeath, and the rest of the roguelike frame.
 - Standing notes are per-person but not structurally *about* a person, so
   two survivors can't compare their conclusions about a third.
+
+---
+
+# The lab
+
+A second, much smaller thing in the same repo, and a step backwards on purpose.
+
+`python lab_server.py` → <http://127.0.0.1:5001>
+
+One subject wakes on the floor of a bare room with no memory of arriving. It has
+four needs, ten things it can look at, and it decides what to do by scoring
+every option against how it feels — needs on curves, utility discounted by how
+far it would have to walk, exactly the way a colony sim does it. **All of that
+is ordinary code, and it is a complete creature on its own:** twenty-four seeds
+run sixty hours unaided without a death.
+
+You are on the other side of the glass. The instrument panel is the point — you
+are never told what it decided, you are shown the whole table it decided from,
+and you can watch the gap close as the night goes on.
+
+### What the experiment is
+
+The mind is a **switch**, off by default, and it is allowed in at exactly one
+place: when the top two options score within `FORK` of each other *and* the
+winner was worth something (`STAKES`). Those are the moments the rules genuinely
+have no answer. Everywhere else it is not consulted, because the answer was
+already determined and a model call would only cost latency.
+
+The counter in the corner reads *"n ties · m asked"*, so how often the model was
+actually needed is a measurement rather than a claim.
+
+### Your side of the glass
+
+You can cut the water, shut the food hatch, take the cot away. The subject is
+not told — it finds out by walking over and trying, which is what makes a
+dilemma an event rather than a number changing on a panel.
+
+And you can make it a **promise**: *press that button and I'll feed you.* That
+is the one thing the scoring layer provably cannot represent — a conditional
+somebody told you is not a need, and nothing in the room will ever remind the
+subject it exists. With the mind off, an offer is a noise behind glass and
+nothing happens. With it on, the subject holds the deal at about half belief,
+and if it gets hungry enough it walks over and presses the button unprompted,
+half an hour later, and waits to see whether you meant it.
+
+Keep your word and belief goes up. Break it and belief falls, and it remembers
+both. Lie enough times and it stops pressing the button.
+
+```bash
+.venv/bin/python test_lab.py     # the behaviour system, with the mind off or stubbed
+```
