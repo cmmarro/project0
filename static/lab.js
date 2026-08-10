@@ -151,8 +151,9 @@ async function post(path, body) {
     body: JSON.stringify(body || {}),
   });
   const data = await r.json();
-  if (data.error) { alert(data.error); return; }
+  if (data.error) { alert(data.error); return null; }
   S = data; paint();
+  return data;
 }
 
 el('supply').addEventListener('click', e => {
@@ -160,6 +161,24 @@ el('supply').addEventListener('click', e => {
   if (!b) return;
   const t = S.things.find(x => x.key === b.dataset.supply);
   post('/api/lab/supply', { key: b.dataset.supply, on: !(t && t.enabled) });
+});
+el('sayform').addEventListener('submit', async e => {
+  e.preventDefault();
+  const box = el('say-text');
+  const text = box.value.trim();
+  if (!text) return;
+  box.value = '';
+  el('sayhint').textContent = 'Listening…';
+  const data = await post('/api/lab/say', { text });
+  const h = data && data.heard;
+  el('sayhint').textContent = !h ? 'Speak plainly. It works out for itself '
+      + 'whether you offered it anything.'
+    : !h.heard ? (h.why === 'no mind'
+        ? 'With no mind, that was a noise behind glass.'
+        : 'It heard you and made nothing of it.')
+    : h.offer ? 'It took that as an offer.'
+    : 'It took that as a remark, not an offer.';
+  box.focus();
 });
 el('offerform').addEventListener('submit', e => {
   e.preventDefault();

@@ -525,10 +525,20 @@ You can cut the water, shut the food hatch, take the cot away. The subject is
 not told — it finds out by walking over and trying, which is what makes a
 dilemma an event rather than a number changing on a panel.
 
-And you can make it a **promise**: *press that button and I'll feed you.* That
-is the one thing the scoring layer provably cannot represent — a conditional
-somebody told you is not a need, and nothing in the room will ever remind the
-subject it exists. With the mind off, an offer is a noise behind glass and
+And you can **say something to it**, in your own words. Whether that was an
+offer is the subject's to work out: *"Hello?"* is a remark, *"press that button
+and I'll feed you"* is a deal, and *"pull the trapdoor and you eat"* is neither,
+because there is no trapdoor. Deciding which is exactly the sort of thing the
+scoring layer cannot do and a model can, which makes it a good place to spend a
+call — and it is the only place speech is parsed at all.
+
+(An earlier version made you build the promise out of dropdowns, so typing
+"Hello?" became a binding offer worth 75% belief. The dropdowns are still there,
+folded away, for setting a deal directly when there's no backend.)
+
+A promise is the one thing the scoring layer provably cannot represent — a
+conditional somebody told you is not a need, and nothing in the room will ever
+remind the subject it exists. With the mind off it's a noise behind glass and
 nothing happens. With it on, the subject holds the deal at about half belief,
 and if it gets hungry enough it walks over and presses the button unprompted,
 half an hour later, and waits to see whether you meant it.

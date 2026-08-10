@@ -44,19 +44,32 @@
     <section class="block">
       <h2>Your side of the glass</h2>
       <div id="supply" class="supply"></div>
-      <form id="offerform" class="offer">
+      <form id="sayform" class="offer">
         <div class="offerline">
-          <span>if it uses</span>
-          <select id="offer-do"></select>
-          <span>it gets</span>
-          <select id="offer-gives"></select>
-        </div>
-        <div class="offerline">
-          <input id="offer-said" maxlength="140"
-                 placeholder="Press that button and I'll feed you.">
+          <input id="say-text" maxlength="200"
+                 placeholder="Say something to it…">
           <button type="submit">say it</button>
         </div>
+        <div class="offerhint" id="sayhint">Speak plainly. It works out for
+          itself whether you offered it anything.</div>
       </form>
+      <details class="rig">
+        <summary>or set a deal directly</summary>
+        <form id="offerform" class="offer">
+          <div class="offerline">
+            <span>if it uses</span>
+            <select id="offer-do"></select>
+            <span>it gets</span>
+            <select id="offer-gives"></select>
+          </div>
+          <div class="offerline">
+            <input id="offer-said" maxlength="140" placeholder="in your words">
+            <button type="submit">set it</button>
+          </div>
+        </form>
+        <div class="offerhint">Skips the interpreting. Useful for testing the
+          belief machinery without a model in the loop.</div>
+      </details>
       <div id="waiting" class="waiting hidden">
         <span>It has done what you asked.</span>
         <button data-keep="1">keep your word</button>

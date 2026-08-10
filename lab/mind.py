@@ -14,6 +14,41 @@ from __future__ import annotations
 
 from island import providers, settings
 
+HEARD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["offer", "remark"],
+            "description": "\"offer\" only if they said that doing some particular thing will get you something you need. Anything else — a greeting, a question, a threat, a comment — is a remark.",
+        },
+        "do": {
+            "type": "string",
+            "description": "If it's an offer: the key of the thing you'd have to use. Exactly one of the keys listed. \"\" for a remark.",
+        },
+        "gives": {
+            "type": "string",
+            "description": "If it's an offer: which of your needs it would serve. Exactly one of the need keys listed. \"\" for a remark.",
+        },
+        "took_it_as": {
+            "type": "string",
+            "description": "What you understood by it, in your own voice, under fifteen words. Not a reply — you have no way to answer. Just what you made of it.",
+        },
+    },
+    "required": ["kind", "do", "gives", "took_it_as"],
+    "additionalProperties": False,
+}
+
+HEARD_BRIEF = """You are a person who woke on the floor of a bare room with no
+memory of arriving. Somebody is on the other side of the window and has just
+said something to you. You cannot answer — there is no way to.
+
+Work out what they meant. Most of what anyone says is not an offer: it is a
+greeting, a question, a threat, an idle remark. Only call it an offer if they
+have actually said that doing some specific thing will get you something you
+need. If they have, name the thing and the need from the lists given, using the
+exact keys. If they haven't, it is a remark and you leave both blank."""
+
 CHOICE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -48,6 +83,45 @@ class Mind:
     @property
     def online(self) -> bool:
         return self.provider is not None
+
+    def hear(self, lab, text: str) -> dict | None:
+        """Work out what was just said through the glass.
+
+        The interface used to make you build a promise out of dropdowns, so
+        typing "Hello?" became a binding offer worth 75% belief, which is
+        nonsense. Deciding whether an utterance contains an offer is exactly
+        the sort of thing the scoring layer cannot do and a model can — so it
+        is a good place to spend a call, and the only place speech is parsed.
+        """
+        if not self.provider:
+            return None
+        things = ", ".join(f"{t.key} ({t.label})" for t in lab.things.values()
+                           if t.known) or "(you haven't worked out what anything is)"
+        needs = ", ".join(f"{n.key} ({n.label})" for n in lab.subject.needs.values())
+        user = f"""Things in this room you have worked out: {things}
+Your needs: {needs}
+
+Through the glass, they say: {text!r}
+
+What was that?"""
+        try:
+            self.calls += 1
+            out = self.provider.complete(
+                HEARD_BRIEF, user, HEARD_SCHEMA,
+                int(settings.get().get("max_tokens", 700)))
+            self.last_error = None
+        except Exception as exc:
+            self.last_error = f"{type(exc).__name__}: {exc}"
+            return None
+
+        kind = str(out.get("kind", "remark")).strip().lower()
+        do = str(out.get("do", "")).strip().lower()
+        gives = str(out.get("gives", "")).strip().lower()
+        # An offer that names something that isn't there is not an offer.
+        if kind == "offer" and (do not in lab.things or gives not in lab.subject.needs):
+            kind, do, gives = "remark", "", ""
+        return {"kind": kind, "do": do, "gives": gives,
+                "took_it_as": str(out.get("took_it_as", "")).strip()[:120]}
 
     def break_tie(self, lab, options) -> str | None:
         if not self.provider:

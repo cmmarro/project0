@@ -179,6 +179,49 @@ def main():
     check("with the mind off, an offer is just a noise",
           Lab(seed=4).offer("button", "hunger", "Press it and I'll feed you.") is None)
 
+    # Saying anything used to be forced through a pair of dropdowns, so
+    # "Hello?" became a binding promise worth 75% belief. What was said and
+    # whether it was an offer are now the mind's to tell apart.
+    class Reader:
+        online = True
+
+        def __init__(self, script):
+            self.script = list(script)
+
+        def break_tie(self, l, options):
+            return None
+
+        def hear(self, l, text):
+            return self.script.pop(0) if self.script else None
+
+    talk = Lab(seed=4)
+    for t in talk.things.values():
+        t.known = True
+    talk.mind = Reader([
+        {"kind": "remark", "do": "", "gives": "",
+         "took_it_as": "Somebody out there is talking to me."},
+        {"kind": "offer", "do": "button", "gives": "hunger",
+         "took_it_as": "Press it and I eat, they say."},
+        {"kind": "offer", "do": "trapdoor", "gives": "hunger",
+         "took_it_as": "Something about a trapdoor."},
+    ])
+    said = talk.say_to("Hello?")
+    check("a greeting is heard and is not a promise",
+          said["heard"] and not said["offer"] and not talk.subject.deals, str(said))
+    said = talk.say_to("Press that button and I'll feed you.")
+    check("an actual offer becomes one", said["offer"] and len(talk.subject.deals) == 1)
+    said = talk.say_to("Pull the trapdoor and you eat.")
+    check("an offer about something that isn't there is not an offer",
+          not said["offer"] and len(talk.subject.deals) == 1, str(said))
+    check("either way it keeps what it made of what you said",
+          any("talking to me" in m for m in talk.subject.learned),
+          str(talk.subject.learned))
+
+    mute = Lab(seed=4)
+    check("with no mind, speech is a noise behind glass",
+          mute.say_to("Press the button and I'll feed you.")["heard"] is False)
+    check("...and nothing is believed on the strength of it", not mute.subject.deals)
+
     deal = lab.offer("button", "hunger", "Press that button and I'll feed you.")
     check("with the mind on, it lands as something it half believes",
           deal is not None and 0.2 < deal.belief < 0.8, str(deal and deal.belief))

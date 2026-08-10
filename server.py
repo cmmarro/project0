@@ -230,6 +230,17 @@ def lab_supply():
     return jsonify(lab.snapshot())
 
 
+@app.post("/api/lab/say")
+def lab_say():
+    """Say something in your own words. Whether it was an offer is the mind's
+    to work out."""
+    d = request.get_json(silent=True) or {}
+    lab = lab_()
+    with lab.lock:
+        out = lab.say_to(d.get("text", ""))
+    return jsonify({**lab.snapshot(), "heard": out})
+
+
 @app.post("/api/lab/offer")
 def lab_offer():
     d = request.get_json(silent=True) or {}

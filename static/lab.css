@@ -113,3 +113,8 @@ h2 span { text-transform: none; letter-spacing: normal; font-weight: 400; margin
 .line.you .x { color: var(--hot); }
 .line.control .x { color: #c6a3e0; }
 .line.comply .x { color: var(--mind); font-weight: 600; }
+
+.offerhint { font-size: 10.5px; color: #5f7078; line-height: 1.45; }
+.rig { margin-top: 10px; }
+.rig summary { cursor: pointer; font-size: 11px; color: var(--dim); }
+.rig .offer { margin-top: 8px; }

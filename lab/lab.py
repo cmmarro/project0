@@ -96,6 +96,53 @@ class Lab:
 
     # -- talking through the glass --------------------------------------------
 
+    def say_to(self, text: str) -> dict:
+        """Say something through the glass, in your own words.
+
+        Whether that was an offer is the mind's to work out. Most things people
+        say are not offers, and forcing every sentence through a pair of
+        dropdowns turned "Hello?" into a binding promise, which is silly.
+        """
+        text = (text or "").strip()[:200]
+        if not text:
+            return {"heard": False}
+        self.note(f"You: \u201c{text}\u201d", "you")
+        if self.mind is None:
+            self.note("It looks at the glass. Nothing it can do anything with.",
+                      "system")
+            return {"heard": False, "why": "no mind"}
+
+        read = self.mind.hear(self, text)
+        if read is None:
+            self.note("It hears you and makes nothing of it.", "system")
+            return {"heard": False, "why": "the mind had nothing"}
+
+        if read["took_it_as"]:
+            self.note(f"Takes it as: {read['took_it_as']}", "mind")
+            self.subject.remember(read["took_it_as"])
+        if read["kind"] != "offer":
+            return {"heard": True, "offer": False}
+
+        deal = self._make_deal(read["do"], read["gives"], text)
+        if deal is None:
+            return {"heard": True, "offer": False}
+        self.note("It has taken that as an offer, and has not decided yet "
+                  "whether to believe it.", "system")
+        return {"heard": True, "offer": True}
+
+    def _make_deal(self, do: str, gives: str, said: str) -> Deal | None:
+        thing = self.things.get(do)
+        if thing is None or gives not in self.subject.needs:
+            return None
+        # A second offer about the same thing replaces the first rather than
+        # stacking, or you end up with four beliefs about one button.
+        self.subject.deals = [d for d in self.subject.deals if d.do != do]
+        deal = Deal(do, gives, said, self.clock())
+        deal.belief = 0.45      # somebody it has no reason to trust, yet
+        self.subject.deals.append(deal)
+        del self.subject.deals[:-4]
+        return deal
+
     def offer(self, do: str, gives: str, said: str) -> Deal | None:
         """Tell the subject that doing one thing gets it another.
 
@@ -104,22 +151,23 @@ class Lab:
         represent. With the mind off, this is a noise from behind the glass
         and nothing more, which is itself the result.
         """
-        thing = self.things.get(do)
-        if thing is None or gives not in self.subject.needs:
+        """Set a deal directly, without the mind having to parse anything.
+
+        The blunt instrument, for when there's no backend or you want to test
+        the belief machinery without a model in the loop.
+        """
+        if self.things.get(do) is None or gives not in self.subject.needs:
             return None
         self.note(f"You: \u201c{said}\u201d", "you")
         if self.mind is None:
             self.note("It looks at the glass. Nothing about the room has "
                       "changed, so nothing about what it wants has either.", "system")
             return None
-        deal = Deal(do, gives, said, self.clock())
-        # Somebody it has never had reason to trust has made it an offer.
-        deal.belief = 0.45
-        self.subject.deals.append(deal)
-        del self.subject.deals[:-4]
-        self.subject.remember(f"The one behind the glass says: {said}")
-        self.note("It has understood that as an offer, and has not decided "
-                  "yet whether to believe it.", "system")
+        deal = self._make_deal(do, gives, said)
+        if deal is not None:
+            self.subject.remember(f"The one behind the glass says: {said}")
+            self.note("It has understood that as an offer, and has not decided "
+                      "yet whether to believe it.", "system")
         return deal
 
     def on_complied(self, deal: Deal):
