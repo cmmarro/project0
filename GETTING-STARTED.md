@@ -110,6 +110,9 @@ canned lines. Fine for seeing how it moves; not worth playing.
 - **T** gets everyone nearby to **stop and have a proper conversation**. They
   stand still until you break it up, so you can go back and forth instead of
   shouting one line at someone who's already walking away.
+  In a group, **say someone's name** and only they answer — *"Ike, where's the
+  water?"* Clicking their name at the top types it for you. Otherwise whoever
+  you're nearest takes it, and the others chip in if they feel like it.
 - **G** stops you where you stand and shows **what you know** — who you've met,
   what they make of you, what the raft still needs. The survivors have the same
   verb; when they use it they go back through their own memory instead.

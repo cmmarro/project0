@@ -1204,7 +1204,7 @@ class Game:
                           f"D{self.day} {self.clock_str()}")
             convo.round += 1
             convo.running += 1
-            convo.thinking = list(convo.members)
+            convo.thinking = [m.key for m in self.who_answers(convo, text)]
         threading.Thread(target=self._conversation_round, args=(convo, text), daemon=True).start()
         return self.conversation_snapshot()
 
@@ -1223,11 +1223,41 @@ class Game:
                 if convo.running <= 0:
                     convo.thinking = []
 
+    def who_answers(self, convo: Conversation, text: str) -> list[Castaway]:
+        """Who actually speaks up.
+
+        Everybody answering every line was wrong twice over. It's unnatural —
+        real groups have one person answer and the others chime in — and it
+        cost a model call per person per line, which on a local backend is the
+        difference between a conversation and a wait.
+
+        Name somebody and it's them. Otherwise whoever you're closest to takes
+        it, and the others speak up only if they're the sort who would.
+        """
+        members = [self.by_key[k] for k in convo.members if k in self.by_key]
+        if not members:
+            return []
+        low = f" {(text or '').lower()} "
+        named = [m for m in members
+                 if f" {m.short.lower()}" in low or f" {m.name.lower()}" in low]
+        if named:
+            return named
+        members.sort(key=self.player.distance_to)
+        answering = [members[0]]
+        for other in members[1:]:
+            # Boldness is what makes someone answer a question that wasn't
+            # aimed at them.
+            if random.random() < 0.18 + 0.30 * other.trait("boldness"):
+                answering.append(other)
+        return answering
+
     def _one_round(self, convo: Conversation, text: str):
         with self.lock:
-            members = [self.by_key[k] for k in convo.members if k in self.by_key]
-            group = ([self.name_for(members[0], self.player)] + [m.name for m in members]
-                     if members else [])
+            members = self.who_answers(convo, text)
+            convo.thinking = [m.key for m in members]
+            everyone = [self.by_key[k] for k in convo.members if k in self.by_key]
+            group = ([self.name_for(everyone[0], self.player)] + [m.name for m in everyone]
+                     if everyone else [])
             avoid = convo.recent(6)
 
         also_heard: list[str] = []
@@ -1236,10 +1266,14 @@ class Game:
                 return
             with self.lock:
                 speaker_name = self.name_for(npc, self.player)
+                # Everything this person has already said in this conversation,
+                # not just the last six lines. Asked their name twice, eight
+                # lines apart, somebody gave the identical answer twice.
+                mine = [l["text"] for l in convo.lines if l["key"] == npc.key]
             with self.brain_lock:
                 self._throttle()
                 out = self.brain.speak(npc, self, speaker_name, text, also_heard,
-                                       group=group, avoid=avoid)
+                                       group=group, avoid=avoid + mine)
             with self.lock:
                 if convo.closed:
                     return

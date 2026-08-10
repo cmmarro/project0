@@ -366,6 +366,9 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
   border-radius: 999px; display: inline-flex; gap: 6px; align-items: baseline;
 }
 .who-chip em { font-style: normal; font-size: 10px; opacity: .65; }
+button.who-chip { cursor: pointer; background: none; font: inherit; }
+button.who-chip:hover { background: rgba(242, 193, 78, .1); }
+button.who-chip.speaking { border-style: dashed; }
 .convo-who .invite {
   all: unset; cursor: pointer; font-size: 11px; padding: 3px 10px;
   border: 1px dashed var(--line); border-radius: 999px; color: var(--dim);

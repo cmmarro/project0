@@ -264,12 +264,15 @@ def main():
     check("and they are held in place", all(c.held for c in game.castaways))
 
     before = [(c.x, c.y) for c in game.castaways]
-    game.conversation_say("We need to decide who does what.")
+    game.conversation_say(
+        f"{game.castaways[0].short} and {game.castaways[1].short}, "
+        "we need to decide who does what.")
     settle(game, 5)
     lines = game.conversation.lines
     check("your line goes in immediately, without waiting for a model",
           lines[0]["key"] == "player", str(lines[:1]))
-    check("everybody in the room answers", len([l for l in lines if l["key"] != "player"]) == 2,
+    check("naming both of them means both of them answer",
+          len([l for l in lines if l["key"] != "player"]) == 2,
           str([l["who"] for l in lines]))
     check("nobody wandered off mid-conversation",
           before == [(c.x, c.y) for c in game.castaways])
@@ -324,8 +327,9 @@ def main():
         {"say": line, "emotion": "calm", "memory": "", "trust_speaker": 0,
          "action": "keep_doing", "target": ""} for line in ORDERED
     ])
-    game.conversation_say("First question.")
-    game.conversation_say("Second question, before you answered.")
+    both = f"{game.castaways[0].short} and {game.castaways[1].short}"
+    game.conversation_say(f"{both}, first question.")
+    game.conversation_say(f"{both}, second question, before you answered.")
     settle(game, 18)
     said = [l["text"] for l in game.conversation.lines
             if l["key"] != "player" and l.get("kind") != "silence"]
@@ -743,6 +747,51 @@ def main():
               next((p for p in STAGE if p in guide.lower()), ""))
     check("the raft arithmetic is still there, as arithmetic",
           "SEATS 2" in world_guide() and "four rope" in world_guide())
+
+    # --- 19. who actually answers -------------------------------------------
+    print("\n19. Addressing one person")
+    from island.state import Conversation
+    g3 = Game(seed=3, cast_size=3)
+    g3.brain.provider = object()
+    stub(g3)
+    for c in g3.castaways:
+        c.met.add("player")
+        g3.player_met.add(c.key)
+        c.x, c.y = g3.player.x + 1.0, g3.player.y
+    conv = Conversation([c.key for c in g3.castaways])
+    g3.conversation = conv
+    one, two, three = g3.castaways
+
+    check("naming somebody means only they answer",
+          [m.short for m in g3.who_answers(conv, f"{two.short}, what's your name?")]
+          == [two.short], str([m.short for m in g3.who_answers(conv, f"{two.short}, hello")]))
+    check("a full name works too",
+          [m.short for m in g3.who_answers(conv, f"So {three.name}, where were you?")]
+          == [three.short])
+    check("two names means two answers",
+          len(g3.who_answers(conv, f"{one.short} and {three.short}, listen.")) == 2)
+
+    counts = [len(g3.who_answers(conv, "We need timber before dark.")) for _ in range(300)]
+    check("somebody always answers", min(counts) >= 1)
+    check("but not everybody, every time", max(counts) <= 3 and sum(counts) / 300 < 2.6,
+          f"average {sum(counts) / 300:.2f} of 3 — was 3.00")
+
+    # Asked their name twice, eight lines apart, one castaway gave the identical
+    # answer both times: the avoid window was only the last six lines.
+    for i in range(9):
+        conv.add(one.key if i % 2 else "player", one.name, one.colour,
+                 f"line number {i} about the timber", "D1 09:00")
+    conv.add(one.key, one.name, one.colour, "My name's Ike Fry.", "D1 09:10")
+    for i in range(8):
+        conv.add("player", "You", "#f2c14e", f"and another thing, number {i}", "D1 09:20")
+    mine = [l["text"] for l in conv.lines if l["key"] == one.key]
+    check("everything a person said is remembered, not just the recent window",
+          "My name's Ike Fry." in mine, str(len(mine)))
+    from island.brain import is_stale
+    check("so saying it again is caught",
+          is_stale("My names Ike Fry.", conv.recent(6) + mine))
+    check("and it wouldn't have been by the recent window alone",
+          not is_stale("My names Ike Fry.", conv.recent(6)))
 
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]

@@ -600,8 +600,10 @@ function paintConvo() {
     : 'Talking to nobody';
   el('convo-who').innerHTML =
     convo.members.map(m =>
-      `<span class="who-chip" style="border-color:${m.colour};color:${m.colour}">${escapeHtml(m.short)}
-        <em>${escapeHtml(m.emotion || '')}</em></span>`).join('') +
+      `<button class="who-chip ${thinking.includes(m.short) ? 'speaking' : ''}"
+         data-address="${escapeHtml(m.short)}" title="say this to ${escapeHtml(m.short)}"
+         style="border-color:${m.colour};color:${m.colour}">${escapeHtml(m.short)}
+        <em>${thinking.includes(m.short) ? 'thinking…' : escapeHtml(m.emotion || '')}</em></button>`).join('') +
     (convo.can_invite || []).map(c =>
       `<button class="invite" data-invite="${c.key}">+ ${escapeHtml(c.short)}</button>`).join('');
 
@@ -625,7 +627,9 @@ function paintConvo() {
   el('convo-send').disabled = convoBusy || !!thinking.length;
   input.placeholder = thinking.length
     ? 'They\'re still answering…'
-    : 'Say something — they\'re standing here listening…';
+    : convo.members.length > 1
+      ? 'Say something — name someone to ask them directly…'
+      : 'Say something — they\'re standing here listening…';
 
   el('convo-note').innerHTML = convo.your_name
     ? `They know you as <b>${escapeHtml(convo.your_name)}</b>.`
@@ -633,8 +637,17 @@ function paintConvo() {
 }
 
 el('convo-who').addEventListener('click', e => {
-  const b = e.target.closest('[data-invite]');
-  if (b) talkApi({ do: 'invite', who: b.dataset.invite });
+  const invite = e.target.closest('[data-invite]');
+  if (invite) { talkApi({ do: 'invite', who: invite.dataset.invite }); return; }
+  // Naming somebody is how you address them, so clicking a name just types it.
+  const who = e.target.closest('[data-address]');
+  if (who) {
+    const input = el('convo-input');
+    if (!new RegExp(`^${who.dataset.address}\\b`, 'i').test(input.value.trim())) {
+      input.value = `${who.dataset.address}, ${input.value.replace(/^\w+,\s*/, '')}`;
+    }
+    input.focus();
+  }
 });
 el('convo-close').addEventListener('click', endConvo);
 el('convo-leave').addEventListener('click', endConvo);

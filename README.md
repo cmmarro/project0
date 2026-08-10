@@ -106,9 +106,20 @@ they've walked off to fetch timber.
 
 **Stand and talk** (`T`, or the *Talk to…* buttons). This opens a conversation:
 everyone in it stops where they are and stays there until you break it up, so
-you can actually go back and forth. Everyone in the room answers, in turn, each
-hearing what the last one said — and you can pull anyone else in earshot in with
-a `+ name` chip.
+you can actually go back and forth. Pull anyone else in earshot in with a
+`+ name` chip.
+
+**Say a name and you're talking to that person.** *"Rosalind, what's your name?"*
+gets an answer from Rosalind and nobody else — clicking their chip types the
+name for you. Say nothing in particular and whoever you're closest to takes it,
+with the others chiming in only if they're the sort who would (it falls out of
+their boldness roll).
+
+That last part started as a latency fix and turned out to be the right
+behaviour anyway. Everyone answering every line meant a model call per person
+per line — a minute of waiting on a local backend — and it also meant asking one
+person a question and getting three answers, with the wrong one first. Real
+groups don't work like that.
 
 Holding people still is not free. The clock doesn't pause for a conversation,
 their thirst runs the whole time, and someone desperate enough will walk off
