@@ -118,3 +118,38 @@ h2 span { text-transform: none; letter-spacing: normal; font-weight: 400; margin
 .rig { margin-top: 10px; }
 .rig summary { cursor: pointer; font-size: 11px; color: var(--dim); }
 .rig .offer { margin-top: 8px; }
+
+/* ---- who is driving ---- */
+.who { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line);
+  color: var(--dim); }
+.who.thought { border-color: #3f6f8a; color: #8ab4d8; }
+.who.habit { border-color: #4a3f66; color: #9a86c4; }
+.who.reflex { border-color: #6b3226; color: #e0603f; }
+.who.urge { border-color: #2c5c44; color: var(--good); }
+.who.thinking { border-color: var(--mind); color: var(--mind);
+  animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+
+.feels { font-size: 11.5px; color: #7b8d95; font-style: italic; margin-top: 7px;
+  line-height: 1.45; }
+.tally { margin-bottom: 7px; }
+
+.story .ev, .habits .ev { display: grid;
+  grid-template-columns: auto 1fr auto; gap: 7px; align-items: baseline;
+  font-size: 11.5px; padding: 3px 0; border-bottom: 1px solid #131a1d; }
+.habits .ev { grid-template-columns: 1fr auto; }
+.story .ev .t { color: #4d585e; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+.story .ev .x, .habits .ev .x { color: #93a7ae; line-height: 1.4; }
+.story .ev .tag2, .habits .ev .tag2 { font-size: 9.5px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--dim); }
+.story .ev.thought .tag2 { color: #8ab4d8; }
+.story .ev.habit .tag2 { color: #9a86c4; }
+.story .ev.reflex .tag2 { color: #e0603f; }
+.story .none, .habits .none { font-size: 11px; color: #5f7078; line-height: 1.5;
+  border: none; }
+.opt.took .nm { text-decoration: underline; text-underline-offset: 3px; }
+.line.subject .x { color: #f2c14e; font-weight: 600; }
+.line.reflex .x { color: #e0603f; }
+.line.mind .x { color: var(--mind); font-style: italic; }
+.tag:empty { display: none; }

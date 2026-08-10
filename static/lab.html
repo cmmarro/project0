@@ -14,10 +14,10 @@
     <div id="bar">
       <span id="clock">00:00</span>
       <span id="subj-doing" class="doing">—</span>
+      <span id="by" class="who"></span>
       <span class="grow"></span>
       <span id="crate" class="tag"></span>
-      <span id="counts" class="tag" title="how often the scores came out level"></span>
-      <button id="mind" class="tag">mind: off</button>
+      <button id="mind" class="tag">head: off</button>
       <button id="pause" class="tag">pause</button>
       <button id="reset" class="tag">new subject</button>
     </div>
@@ -25,9 +25,10 @@
     <div id="roomwrap"><canvas id="room"></canvas></div>
 
     <div id="note">
-      Everything here runs without a language model. The <b>mind</b> is only
-      consulted when the top two options score within
-      <b id="thr">0.08</b> of each other — when the rules genuinely have no answer.
+      The <b>body</b> always runs: pathing, reflexes below the collapse line,
+      and anything it has done often enough to stop thinking about. The
+      <b>head</b>, if you switch one on, decides what the day is for — and can
+      be overruled by its own reflexes, and told so afterwards.
     </div>
   </main>
 
@@ -35,10 +36,27 @@
     <section class="block">
       <h2>The subject</h2>
       <div id="needs"></div>
+      <div id="feels" class="feels"></div>
     </section>
 
     <section class="block">
-      <h2>What it's weighing <span id="tablenote"></span></h2>
+      <h2>Who is driving <span id="divnote"></span></h2>
+      <div id="tally" class="tally"></div>
+      <div id="drivenote" class="offerhint"></div>
+    </section>
+
+    <section class="block">
+      <h2>What it has been doing</h2>
+      <div id="story" class="story"></div>
+    </section>
+
+    <section class="block">
+      <h2>Doesn't think about it any more</h2>
+      <div id="habits" class="habits"></div>
+    </section>
+
+    <section class="block">
+      <h2>What the body wants <span id="tablenote"></span></h2>
       <div id="table"></div>
     </section>
 
@@ -51,11 +69,12 @@
                  placeholder="Say something to it…">
           <button type="submit">say it</button>
         </div>
-        <div class="offerhint" id="sayhint">Speak plainly. It works out for
-          itself whether you offered it anything.</div>
+        <div class="offerhint" id="sayhint">Say anything. Nothing here
+          interprets it — the words go in exactly as typed, and what it makes
+          of them is its own business.</div>
       </form>
       <details class="rig">
-        <summary>or set a deal directly</summary>
+        <summary>or wire a conditional in directly</summary>
         <form id="offerform" class="offer">
           <div class="offerline">
             <span>if it uses</span>
@@ -68,8 +87,9 @@
             <button type="submit">set it</button>
           </div>
         </form>
-        <div class="offerhint">Skips the interpreting. Useful for testing the
-          belief machinery without a model in the loop.</div>
+        <div class="offerhint">Skips language entirely and sets a conditional
+          the scoring layer can read. For testing the belief machinery with no
+          head attached.</div>
       </details>
       <div id="waiting" class="waiting hidden">
         <span>It has done what you asked.</span>

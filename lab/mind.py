@@ -1,76 +1,86 @@
-"""The one place a language model is allowed into the lab.
+"""The head.
 
-It is handed a tie — two or three options the scoring system rates as equal —
-and asked which one this subject takes. That is all it can do. It cannot invent
-an action, it cannot override a clear decision, and if it fails or says nothing
-the tie breaks on score exactly as it would have.
+It is handed a body's worth of feeling, a room, and the subject's own account
+of its day, and it decides what happens next. That is a much larger licence
+than this file used to have — it used to be shown two tied options and asked to
+pick one, which is a job a coin does for free.
 
-The narrow interface is the experiment. If a mind that only ever breaks ties
-produces something you can *see* from behind the glass, that tells you where
-the latency is worth paying. If it doesn't, that tells you something too.
+What it is *not* given is the scoring table. Hand a model a column of decimals
+and it will do arithmetic and agree with them, and then you have paid several
+seconds for a slower version of the code you already had. It gets the body in
+words instead — parched, tired, bored — because a feeling is something you
+decide about and a number is something you look up.
+
+Two things live here that no scoring layer can hold:
+
+  what was said     the words through the glass arrive verbatim and
+                    uninterpreted. Nothing else in the lab can represent
+                    "they said pressing that gets me fed", because there is no
+                    need it corresponds to and no curve it sits on.
+
+  what it is like   the subject's own log of what it did and why, fed back in.
+                    A stance — deciding you don't trust the voice — persists
+                    across unrelated decisions without anybody having written
+                    a variable called trust.
+
+If the head produces nothing, or produces nonsense, the body carries on
+perfectly well without it. That is the control condition and it is always
+running underneath.
 """
 
 from __future__ import annotations
 
 from island import providers, settings
 
-HEARD_SCHEMA = {
+ACT_SCHEMA = {
     "type": "object",
     "properties": {
-        "kind": {
+        "because": {
             "type": "string",
-            "enum": ["offer", "remark"],
-            "description": "\"offer\" only if they said that doing some particular thing will get you something you need. Anything else — a greeting, a question, a threat, a comment — is a remark.",
+            "description": "Why, in your own voice, first person, under fifteen words. Not a justification for anybody — just the thought.",
         },
         "do": {
             "type": "string",
-            "description": "If it's an offer: the key of the thing you'd have to use. Exactly one of the keys listed. \"\" for a remark.",
+            "description": "Exactly one key from the list of things you can do.",
         },
-        "gives": {
+        "at": {
             "type": "string",
-            "description": "If it's an offer: which of your needs it would serve. Exactly one of the need keys listed. \"\" for a remark.",
+            "description": "The key of the thing you're doing it to, if the action needs one. Otherwise \"\".",
         },
-        "took_it_as": {
+        "say": {
             "type": "string",
-            "description": "What you understood by it, in your own voice, under fifteen words. Not a reply — you have no way to answer. Just what you made of it.",
+            "description": "Something to say out loud through the glass, or \"\" to say nothing. Most of the time, nothing. Speak when you actually have something to say to whoever is out there.",
+        },
+        "then": {
+            "type": "string",
+            "description": "What you intend to do straight after this one, if you have thought that far. A key from the same list, or \"\".",
         },
     },
-    "required": ["kind", "do", "gives", "took_it_as"],
+    "required": ["because", "do", "at", "say", "then"],
     "additionalProperties": False,
 }
 
-HEARD_BRIEF = """You are a person who woke on the floor of a bare room with no
-memory of arriving. Somebody is on the other side of the window and has just
-said something to you. You cannot answer — there is no way to.
+BRIEF = """You woke on the floor of a bare room and you do not remember arriving.
+There is a door with no handle on your side, and a window with somebody behind
+it who can see you. You have been here a while now.
 
-Work out what they meant. Most of what anyone says is not an offer: it is a
-greeting, a question, a threat, an idle remark. Only call it an offer if they
-have actually said that doing some specific thing will get you something you
-need. If they have, name the thing and the need from the lists given, using the
-exact keys. If they haven't, it is a remark and you leave both blank."""
+You are not narrating and you are not explaining yourself to anyone. You are a
+person deciding what to do next, and you will be told what happened afterwards.
 
-CHOICE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "pick": {"type": "string", "description": "The key of the option you take."},
-        "because": {
-            "type": "string",
-            "description": "One short line, in the subject's own voice, for why that one. Under twelve words.",
-        },
-    },
-    "required": ["pick", "because"],
-    "additionalProperties": False,
-}
+Some things about how this works:
 
-BRIEF = """You are a person who has woken on the floor of a bare room with no
-memory of arriving. There is a door that does not open and a window with someone
-behind it. You are not narrating and you are not explaining yourself to anybody
-— you are just deciding what to do next.
+- Your body looks after itself at the extremes. If you get close to collapse it
+  will go and drink or eat without consulting you, and you will find out
+  afterwards. Between here and there, what you do about being thirsty is up to
+  you, and it is allowed to be nothing.
+- What you have done already is listed. You do not have to keep doing it.
+- The person behind the glass says things. They are written down exactly as
+  said. Nobody has interpreted them for you and nobody is going to. Believe
+  them, test them, ignore them, or answer them — that is yours to decide.
+- You can speak. There is glass between you and it is not clear they will
+  answer. Say something when you have something to say.
 
-You are given two or three things you might do, which you want about equally.
-Pick one. There is no right answer; that is the point of asking you. Pick the
-one that a specific, tired, curious person would pick, and say why in a few
-words."""
+Pick one action from the list and give the key exactly as written."""
 
 
 class Mind:
@@ -84,83 +94,84 @@ class Mind:
     def online(self) -> bool:
         return self.provider is not None
 
-    def hear(self, lab, text: str) -> dict | None:
-        """Work out what was just said through the glass.
-
-        The interface used to make you build a promise out of dropdowns, so
-        typing "Hello?" became a binding offer worth 75% belief, which is
-        nonsense. Deciding whether an utterance contains an offer is exactly
-        the sort of thing the scoring layer cannot do and a model can — so it
-        is a good place to spend a call, and the only place speech is parsed.
-        """
+    def act(self, p: dict, reason: str) -> dict | None:
+        """One decision. `p` is a plain dict assembled by the lab under its
+        lock, so this runs on a background thread without touching the sim."""
         if not self.provider:
             return None
-        things = ", ".join(f"{t.key} ({t.label})" for t in lab.things.values()
-                           if t.known) or "(you haven't worked out what anything is)"
-        needs = ", ".join(f"{n.key} ({n.label})" for n in lab.subject.needs.values())
-        user = f"""Things in this room you have worked out: {things}
-Your needs: {needs}
 
-Through the glass, they say: {text!r}
+        known = "\n".join(f"  - {line}" for line in p["known"]) \
+            or "  - (you have not worked out what anything in here is)"
+        unknown = (f"\nThere are {p['unknown']} other things in the room you have "
+                   "not looked at properly." if p["unknown"] else "")
+        learned = "\n".join(f"  - {line}" for line in p["learned"]) \
+            or "  - (nothing yet)"
+        story = "\n".join(
+            f"  {r['t']}  {r['label']}"
+            + {"reflex": "  (your body did this, you did not decide it)",
+               "habit": "  (you no longer think about this)",
+               "thought": ""}.get(r["by"], "")
+            for r in p["story"]) or "  (nothing yet)"
+        heard = "\n".join(f"  {h['t']}  “{h['text']}”" for h in p["heard"]) \
+            or "  (they have not said anything)"
+        said = "\n".join(f"  - “{t}”" for t in p["said"]) or "  (nothing)"
+        can = "\n".join(f"  {k}: {v}" for k, v in p["can"].items())
+        things = ", ".join(f"{k} ({v})" for k, v in p["things"].items()) or "none yet"
 
-What was that?"""
-        try:
-            self.calls += 1
-            out = self.provider.complete(
-                HEARD_BRIEF, user, HEARD_SCHEMA,
-                int(settings.get().get("max_tokens", 700)))
-            self.last_error = None
-        except Exception as exc:
-            self.last_error = f"{type(exc).__name__}: {exc}"
-            return None
+        user = f"""It is {p['clock']} and it is {'dark' if p['dark'] else 'light'}.
 
-        kind = str(out.get("kind", "remark")).strip().lower()
-        do = str(out.get("do", "")).strip().lower()
-        gives = str(out.get("gives", "")).strip().lower()
-        # An offer that names something that isn't there is not an offer.
-        if kind == "offer" and (do not in lab.things or gives not in lab.subject.needs):
-            kind, do, gives = "remark", "", ""
-        return {"kind": kind, "do": do, "gives": gives,
-                "took_it_as": str(out.get("took_it_as", "")).strip()[:120]}
+YOUR BODY
+{p['feels']}.
 
-    def break_tie(self, lab, options) -> str | None:
-        if not self.provider:
-            return None
-        s = lab.subject
-        body = ", ".join(f"{n.label} {n.level:.0%}" for n in s.needs.values())
-        known = ", ".join(t.label for t in lab.things.values() if t.known) or "nothing yet"
-        learned = "\n".join(f"  - {line}" for line in s.learned[-6:]) or "  - (nothing yet)"
-        choices = "\n".join(
-            f"  {o['key']}: {o['label']} — {o['why']} (weighs {o['score']:.2f})"
-            for o in options)
-        user = f"""It is {lab.clock()} by the light. You feel: {body}.
-You have worked out what these are: {known}.
+THE ROOM
+{known}{unknown}
 
-WHAT YOU'VE NOTICED
+WHAT YOU HAVE NOTICED
 {learned}
 
-You want these about equally:
-{choices}
+WHAT YOU HAVE BEEN DOING
+{story}
 
-Which do you do?"""
+SAID TO YOU THROUGH THE GLASS
+{heard}
+
+WHAT YOU HAVE SAID BACK
+{said}
+
+The crate lid is {p['crate']}% off.
+
+WHAT YOU CAN DO
+{can}
+
+Names you can use for `at`: {things}
+
+You are {p['doing']}. {reason.capitalize()}. What do you do?"""
+
         try:
             self.calls += 1
             out = self.provider.complete(
-                BRIEF, user, CHOICE_SCHEMA,
+                BRIEF, user, ACT_SCHEMA,
                 int(settings.get().get("max_tokens", 700)))
             self.last_error = None
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
             return None
 
-        pick = str(out.get("pick", "")).strip().lower()
-        keys = {o["key"] for o in options}
-        if pick not in keys:
-            # A key it invented is no answer at all. Fall back to the score.
+        do = str(out.get("do", "")).strip().lower()
+        if do not in p["can"]:
+            # A verb it invented is no answer at all. The body takes over.
+            self.last = {"do": do, "bad": True}
             return None
-        because = str(out.get("because", "")).strip()
-        self.last = {"pick": pick, "because": because}
-        if because:
-            lab.note(because, "mind")
-            lab.subject.remember(because)
-        return pick
+        at = str(out.get("at", "")).strip().lower()
+        if at not in p["things"]:
+            at = ""
+        then = str(out.get("then", "")).strip().lower()
+        result = {
+            "do": do,
+            "at": at,
+            "because": str(out.get("because", "")).strip()[:140],
+            "say": str(out.get("say", "")).strip()[:180],
+            "then": {"do": then} if then in p["can"] and then != do else None,
+        }
+        self.last = result
+        return result

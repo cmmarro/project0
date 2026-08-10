@@ -117,11 +117,21 @@ class UseThing(Job):
         return want if s.job is self else discount(want, s, t)
 
     def target(self, s, lab):
-        return self._thing(lab)
+        # Deliberately not `_thing`: a head that decides to go and drink from a
+        # tap that is dry should get to walk over and *find out*. Scoring says
+        # no; intent says go and look. Those are different questions, and the
+        # difference is where the subject's memory of failure comes from.
+        return lab.things.get(self.thing_key)
 
     def run(self, s, lab):
         t = self._thing(lab)
         if t is None:
+            dead = lab.things.get(self.thing_key)
+            if dead is not None:
+                dead.known = True
+                lab.note(f"The {dead.label} gives nothing.", "world")
+                s.remember(f"{lab.clock()} — the {dead.label} gave nothing.")
+                lab.disappointed(self.key)
             return True
         s.needs[self.need].fill(self.rate * lab.step_minutes)
         if t.uses is not None:
@@ -187,6 +197,13 @@ class Examine(Job):
     def __init__(self, thing_key: str = ""):
         self.thing_key = thing_key
 
+    def _named(self, s, lab):
+        """A thing the head asked for by name, which beats whatever the
+        novelty search would have picked."""
+        if s.intent is not None and s.intent.job is self and s.intent.at:
+            return lab.things.get(s.intent.at)
+        return None
+
     def _pick(self, lab):
         best, best_n = None, -1.0
         for t in lab.things.values():
@@ -205,10 +222,10 @@ class Examine(Job):
         return raw if not t.known else discount(raw, s, t)
 
     def target(self, s, lab):
-        return lab.things.get(self.thing_key)
+        return self._named(s, lab) or lab.things.get(self.thing_key)
 
     def run(self, s, lab):
-        t = lab.things.get(self.thing_key)
+        t = self._named(s, lab) or lab.things.get(self.thing_key)
         if t is None:
             return True
         s.busy += lab.step_minutes
@@ -445,10 +462,7 @@ class Comply(Job):
         s.busy += lab.step_minutes
         if s.busy < 2:
             return False
-        t = lab.things.get(d.do)
-        d.pending = True
-        lab.note(f"Presses the {t.label if t else d.do}, and waits.", "comply")
-        lab.on_complied(d)
+        press(s, lab, d.do)
         return True
 
     def why(self, s, lab):
@@ -460,6 +474,119 @@ class Comply(Job):
                 + (f", {n.label} {n.level:.0%}" if n else ""))
 
 
+def press(s, lab, key: str):
+    """Push something. Shared, because a deliberate press and a press that
+    fell out of a deal should be the same event from your side of the glass."""
+    t = lab.things.get(key)
+    lab.note(f"Presses the {t.label if t else key}.", "comply")
+    s.remember(f"{lab.clock()} — pressed the {t.label if t else key}.")
+    d = next((d for d in s.deals if d.do == key and not d.pending), None)
+    if d is not None:
+        d.pending = True
+        lab.on_complied(d)
+    else:
+        lab.on_pressed(key)
+
+
+class Press(Job):
+    """Push a thing, on purpose.
+
+    Scores None, always: no arrangement of needs gives a reason to press a
+    button, which is exactly why it is here. If this ever happens it happened
+    because something in the subject's head decided it was worth trying, and
+    that is the single cleanest read on whether the head is doing anything.
+    """
+
+    key, label, verb = "press", "pressing something", "press"
+
+    def _thing(self, s, lab):
+        at = s.intent.at if s.intent is not None and s.intent.job is self else ""
+        return lab.things.get(at or "button")
+
+    def score(self, s, lab):
+        return None
+
+    def target(self, s, lab):
+        return self._thing(s, lab)
+
+    def run(self, s, lab):
+        t = self._thing(s, lab)
+        if t is None:
+            return True
+        s.busy += lab.step_minutes
+        if s.busy < 2:
+            return False
+        press(s, lab, t.key)
+        return True
+
+    def why(self, s, lab):
+        return "wants to see what it does"
+
+
+class Wait(Job):
+    """Deliberately doing nothing.
+
+    Also scores None. A needs system has no concept of choosing to stop, so if
+    the subject ever waits, somebody decided to.
+    """
+
+    key, label, verb = "wait", "waiting", "wait"
+
+    def score(self, s, lab):
+        return None
+
+    def run(self, s, lab):
+        s.busy += lab.step_minutes
+        return s.busy > 20
+
+    def why(self, s, lab):
+        return "waiting on something"
+
+
+class Mull(Job):
+    """Stands still while the head is busy.
+
+    Not a decision and never chosen — it is what the body does during the
+    seconds a thought takes, so there is no frame in which the subject is
+    doing nothing at all. It ends the instant the thought lands.
+    """
+
+    key, label, verb = "mull", "thinking", "mull"
+
+    def score(self, s, lab):
+        return None
+
+    def run(self, s, lab):
+        s.busy += lab.step_minutes
+        return s.busy > 240      # a runaway backstop, not a duration
+
+
+VERBS = {}
+
+
 def all_jobs() -> list[Job]:
+    """The scoring table: everything the body will pick for itself."""
     return [Drink(), Eat(), Sleep(), Comply(), Examine(), Work(), Watch(),
             Pace(), Rest()]
+
+
+def extra_jobs() -> list[Job]:
+    """Only ever reachable by deciding to. These are the verbs that prove
+    something is steering, because nothing else in the lab will pick them."""
+    return [Press(), Wait(), Mull()]
+
+
+# What the head is allowed to do, in its own words. The keys have to match the
+# job keys; the text is what a person would call it.
+OFFERED = {
+    "drink": "go to the tap and drink",
+    "eat": "go to the hatch and eat",
+    "sleep": "lie on the cot and sleep",
+    "rest": "sit down where you are and rest",
+    "examine": "go and look properly at one particular thing (name it)",
+    "work": "keep working at the crate lid",
+    "watch": "stand at the glass and watch whoever is behind it",
+    "press": "press something (name it)",
+    "pace": "walk up and down",
+    "wait": "stay where you are and wait",
+}

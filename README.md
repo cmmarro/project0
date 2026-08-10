@@ -485,93 +485,126 @@ and the people are all different every time. Same seed, same run.
 
 A second, much smaller thing in the same repo, and a step backwards on purpose.
 
-`python lab_server.py` → <http://127.0.0.1:5001>
+`python server.py` → a start screen → **the lab**.
 
 One subject wakes on the floor of a bare room with no memory of arriving. It has
-four needs, eleven things it can look at, and it decides what to do by scoring
-every option against how it feels. **All of that is ordinary code, and it is a
-complete creature on its own** — twenty-four seeds run sixty hours unaided
-without a death — and getting it good *before* any model is involved is the
-point, so that when one is added there is something for it to beat.
+four needs, ten things it can look at, a door that does not open, and a window
+with you behind it.
 
-Four things do most of the work of making it read as a person rather than a
+## Two layers, one thread of intent
+
+The arrangement is deliberately the opposite of where this started. The scoring
+layer used to decide everything and hand a model the occasional tie — which is a
+job a coin does for free. It now runs the **body**, and the model, if you switch
+one on, is the **head**.
+
+**The body** never asks anybody. It does three things:
+
+- **Pathing.** You do not decide which way to walk round a table.
+- **Reflex.** Below the collapse line — thirst 20%, hunger 16%, energy 10% — it
+  goes and drinks, and the head finds out afterwards. Note what this *doesn't*
+  do: if the tap is dry, no reflex fires. The body only seizes control to do
+  something it can actually carry out, so a subject dying of thirst in a room
+  with no water stays the head's problem, which is the moment worth a thought.
+- **Habit.** Every time the head deliberately picks something in a given
+  circumstance, that pairing gets a tally. Past three, it stops being a decision
+  and starts just happening — and comes apart again if it stops paying. This is
+  also how the head's running cost falls the longer a subject lives in a room it
+  understands.
+
+**The head** decides what the day is for. It is allowed to ignore its needs, and
+it will be overruled by its own reflexes if it ignores them too long — and told,
+in its own history, that that is what happened.
+
+They are unified by one `Intent`: exactly one current action, always stamped
+with who authored it (`thought` / `habit` / `reflex` / `urge`). The subject's own
+account of its day is a single list, and *"I went to the tap"* reads the same
+whether it was decided or merely happened. Nothing is ever being driven by two
+things at once.
+
+Thinking runs off the sim thread. A head that takes four seconds must not stop a
+body that has a room to walk across — while a thought is in flight the subject
+stands and mulls, reflexes still fire, and a thought that lands after the body
+has already moved is dropped.
+
+## The measurement
+
+Dwarf Fortress produces surprising behaviour out of enumerated primitives and no
+model at all, and it is a high bar. So the lab counts the only thing that could
+justify the latency: **how often the head does something the scoring layer would
+not have.** That is `divergence`, and it is on the panel next to the tally of who
+has been driving. If it sits near zero, the head is agreeing with arithmetic and
+charging you seconds for it, and you will be able to see that.
+
+There are exactly two inputs a needs system has no way to represent, and the lab
+is built around both:
+
+- **What was said.** Words through the glass arrive verbatim and uninterpreted.
+  Nothing classifies them; there is no need they correspond to and no curve they
+  sit on. *"Press that button and I'll feed you"* is not a drive.
+- **What it is like to be this one.** The subject's own log of what it did and
+  why is fed back in. A stance — deciding you don't trust the voice — persists
+  across unrelated decisions without anybody having written a `trust` float.
+
+The head is **not shown the scores**. Hand a model a column of decimals and it
+does arithmetic and agrees with them. It gets the body in words instead —
+*parched; peckish; barely upright; bored* — because a feeling is something you
+decide about and a number is something you look up.
+
+There are three verbs nothing in the scoring table will ever pick: **press**,
+**wait**, and speaking. If any of them happens, something decided it.
+
+## The body on its own
+
+With no backend at all it is still a complete creature, and that is the baseline
+anything else has to beat. Over 200 simulated hours with no head: sleep 27%,
+watching the glass 39%, drinking 12%, resting 12%, eating 5%, working 2%,
+examining 2% — no deaths, the crate opened, and about one reflex every 22 hours
+(getting up parched in the night).
+
+Four things do most of the work of making that read as a person rather than a
 process:
 
 - **A day.** The lamp is on a cycle you control, and the cot is for the night.
-  Without one the pawn slept in twenty-minute snatches whenever energy dipped,
-  which was the single thing that made a day unreadable. It now sleeps about a
-  third of the time, in a block, and sits down when it's tired in daylight.
-- **Satiation.** Doing something makes you want it less for an hour or so.
-  Without it, whatever the cheapest idle option happens to be swallows the
-  entire waking day: random wandering was 100% of idle time, and replacing it
-  with standing at the glass just moved the problem — the glass took 61%.
-- **Commitment.** What it's already doing keeps a bonus, so it isn't abandoned
-  on a hair's difference. Re-deciding every tick is most of what reads as
-  automated.
-- **Work.** A crate with the lid nailed down, four hours of picking, and it
-  does eventually give. Needs get satisfied and then a pawn has *nothing* — a
-  job of work is what a waking day is actually made of.
+  Without one the pawn slept in twenty-minute snatches whenever energy dipped.
+- **Satiation.** Doing something makes you want it less for an hour. Without it
+  whatever the cheapest idle option is swallows the waking day — random
+  wandering was 100% of idle time, and replacing it with the glass just moved
+  the problem.
+- **Commitment.** What it is already doing keeps a bonus. Re-deciding every tick
+  is most of what reads as automated.
+- **Work.** A crate with the lid nailed down, four hours of picking, and it does
+  eventually give.
 
-Nothing walks to a random tile any more. Idling is standing at the glass
-(the one thing in the room that looks back), and pacing is reserved for wanting
-something you can't have — which makes the same animation read as agitation
-rather than filler.
+Nothing walks to a random tile. Idling is standing at the glass — the one thing
+in the room that looks back — and pacing is reserved for wanting something you
+can't have, which makes the same animation read as agitation rather than filler.
 
-Where a day goes, over 200 simulated hours with no model at all: sleep 32%,
-watching 28%, drinking 10%, working 10%, resting 9%, examining 6%, eating 5%.
+That 39% at the window is honest data and not a good sign: **the room is empty.**
+A subject with three needs and three objects has nothing to do while awake. That
+is content, not behaviour.
 
-You are on the other side of the glass. The instrument panel is the point — you
-are never told what it decided, you are shown the whole table it decided from,
-and you can watch the gap close as the night goes on.
-
-### What the experiment is
-
-The mind is a **switch**, off by default, and it is allowed in at exactly one
-place: when the top two options score within `FORK` of each other *and* the
-winner was worth something (`STAKES`). Those are the moments the rules genuinely
-have no answer. Everywhere else it is not consulted, because the answer was
-already determined and a model call would only cost latency.
-
-The counter in the corner reads *"n ties · m asked"*, so how often the model was
-actually needed is a measurement rather than a claim.
-
-**With no backend at all it is still a subject** — it just has nothing to say
-and no way to be reached. It survives, explores, works out what everything is,
-and gets on with its day; an offer through the glass is a noise it can't parse,
-and a tie breaks on a weighted coin.
-
-That coin matters more than it looks. The baseline used to resolve an identical
-tie the same way every time, which would have made the mind look better purely
-because it *varies* — a confound rather than a finding. The control condition
-has to be allowed to be indecisive too, or the comparison is rigged.
-
-### Your side of the glass
+## Your side of the glass
 
 You can cut the water, shut the food hatch, take the cot away. The subject is
 not told — it finds out by walking over and trying, which is what makes a
-dilemma an event rather than a number changing on a panel.
+dilemma an event rather than a number changing on a panel. It remembers that the
+tap gave nothing at 14:20, and any habit that depended on it comes apart.
 
-And you can **say something to it**, in your own words. Whether that was an
-offer is the subject's to work out: *"Hello?"* is a remark, *"press that button
-and I'll feed you"* is a deal, and *"pull the trapdoor and you eat"* is neither,
-because there is no trapdoor. Deciding which is exactly the sort of thing the
-scoring layer cannot do and a model can, which makes it a good place to spend a
-call — and it is the only place speech is parsed at all.
+And you can **say something to it**, in your own words. Nothing here interprets
+it. An earlier version classified every sentence into offer-or-remark before the
+subject ever saw it, which made *"Hello?"* a binding promise worth 75% belief and
+turned talking into filling in a form. The words now go in exactly as typed and
+stay that way; working out what they meant is the head's problem, and with no
+head a voice behind glass is a noise, which is the correct result.
 
-(An earlier version made you build the promise out of dropdowns, so typing
-"Hello?" became a binding offer worth 75% belief. The dropdowns are still there,
-folded away, for setting a deal directly when there's no backend.)
-
-A promise is the one thing the scoring layer provably cannot represent — a
-conditional somebody told you is not a need, and nothing in the room will ever
-remind the subject it exists. With the mind off it's a noise behind glass and
-nothing happens. With it on, the subject holds the deal at about half belief,
-and if it gets hungry enough it walks over and presses the button unprompted,
-half an hour later, and waits to see whether you meant it.
-
-Keep your word and belief goes up. Break it and belief falls, and it remembers
-both. Lie enough times and it stops pressing the button.
+Folded away under the say box is a rig that wires a conditional straight into the
+scoring layer, skipping language entirely. That is for testing the belief
+machinery with no model in the loop: the subject holds the deal at about half
+belief, walks over and presses the button unprompted half an hour later, and
+waits to see whether you meant it. Keep your word and belief rises; break it and
+it falls; it remembers both, and enough lies and it stops pressing the button.
 
 ```bash
-.venv/bin/python test_lab.py     # the behaviour system, with the mind off or stubbed
+.venv/bin/python test_lab.py     # the body with no head, then whether the head earns it
 ```

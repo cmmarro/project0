@@ -67,16 +67,23 @@ function draw() {
 
 function tone(v) { return v > 0.6 ? '#6bbf8a' : v > 0.3 ? '#d8a44e' : '#e0603f'; }
 
+const WHO = {
+  thought: ['decided', 'The head chose this.'],
+  habit: ['habit', 'It has done this often enough to stop deciding it.'],
+  reflex: ['reflex', 'The body did this. Nothing was decided.'],
+  urge: ['body', 'The scoring layer, running with no head attached.'],
+};
+
 function paint() {
   const s = S.subject;
   el('clock').textContent = S.clock + (S.dark ? ' · dark' : '');
   el('subj-doing').textContent = s.alive ? s.doing : 'not moving';
-  el('thr').textContent = S.fork_threshold.toFixed(2);
-  el('counts').textContent = `${S.forks} ties · ${S.consulted} asked`;
-  el('counts').title = `The scores came out level ${S.forks} times. `
-    + (S.mind_on ? `The mind was asked ${S.consulted} of those.`
-                 : 'The mind is off, so all of them broke on score.');
-  el('mind').textContent = 'mind: ' + (S.mind_on ? 'on' : 'off');
+  const who = WHO[s.by];
+  const byEl = el('by');
+  byEl.textContent = S.thinking ? 'thinking…' : who ? who[0] : '';
+  byEl.title = S.thinking ? `Because: ${S.thinking}` : who ? who[1] : '';
+  byEl.className = 'who ' + (S.thinking ? 'thinking' : s.by || '');
+  el('mind').textContent = 'head: ' + (S.mind_on ? 'on' : 'off');
   el('mind').classList.toggle('on', S.mind_on);
   el('pause').textContent = S.running ? 'pause' : 'resume';
 
@@ -87,25 +94,60 @@ function paint() {
       <span class="num">${Math.round(n.level * 100)}</span>
     </div>`).join('');
 
+  // Who has actually been driving. The point of the whole rearrangement is
+  // that this is a number and not a claim.
+  const t = S.tally || {};
+  const total = Object.values(t).reduce((a, b) => a + b, 0) || 1;
+  el('tally').innerHTML = ['thought', 'habit', 'reflex', 'urge'].map(k => `
+    <div class="need" title="${esc(WHO[k][1])}">
+      <span>${WHO[k][0]}</span>
+      <div class="track"><div class="fill" style="width:${(t[k] || 0) / total * 100}%;background:${
+        k === 'thought' ? '#8ab4d8' : k === 'habit' ? '#9a86c4' : k === 'reflex' ? '#e0603f' : '#6bbf8a'
+      }"></div></div>
+      <span class="num">${t[k] || 0}</span>
+    </div>`).join('');
+  const thoughts = t.thought || 0;
+  el('divnote').textContent = thoughts ? `${S.divergence}/${thoughts} differed` : '';
+  el('drivenote').textContent = !S.mind_on
+    ? 'No head. The body is doing all of this by itself — which is the '
+      + 'baseline anything else has to beat.'
+    : !thoughts ? 'The head has not decided anything yet.'
+    : `The head decided ${thoughts} times and picked something the scoring `
+      + `layer would not have on ${S.divergence} of them`
+      + (S.overruled ? `. A reflex overruled it ${S.overruled} times.` : '.')
+      + (S.divergence === 0 ? ' At zero, it is agreeing with arithmetic and '
+         + 'costing you seconds to do it.' : '');
+
+  el('feels').textContent = S.thinking ? '' : (s.why || '');
+
+  el('story').innerHTML = (s.story || []).slice().reverse().map(r => `
+    <div class="ev ${esc(r.by)}"><span class="t">${r.t}</span>
+      <span class="x">${esc(r.label)}${r.why ? ` — ${esc(r.why)}` : ''}</span>
+      <span class="tag2">${WHO[r.by] ? WHO[r.by][0] : r.by}</span></div>`).join('')
+    || '<div class="none">Nothing yet.</div>';
+
+  el('habits').innerHTML = (S.habits || []).length
+    ? S.habits.map(h => `<div class="ev"><span class="x">when ${esc(h.when)} → ${
+        esc(h.do)}</span><span class="tag2">${h.n}×</span></div>`).join('')
+    : '<div class="none">Nothing has become automatic yet. It forms these by '
+      + 'deciding the same thing in the same circumstance a few times.</div>';
+
   const live = S.table.filter(r => r.score !== null);
-  const gap = live.length > 1 ? live[0].score - live[1].score : 1;
-  const tied = live.length > 1 && gap < S.fork_threshold && live[0].score >= S.stakes;
   el('tablenote').textContent = !live.length ? ''
-    : tied ? `level — within ${gap.toFixed(3)}`
-    : live[0].score < S.stakes ? 'nothing much at stake'
-    : `clear by ${gap.toFixed(2)}`;
+    : S.mind_on ? 'the head is not shown any of this' : 'and this is deciding';
   el('table').innerHTML = S.table.map((r, i) => {
     const dead = r.score === null;
-    return `<div class="opt ${i === 0 && !dead ? 'top' : ''} ${dead ? 'dead' : ''}">
+    const took = s.verb === r.key;
+    return `<div class="opt ${i === 0 && !dead ? 'top' : ''} ${dead ? 'dead' : ''} ${
+        took ? 'took' : ''}">
         <span class="nm">${esc(r.label)}</span>
         <div class="track"><div class="bar" style="width:${dead ? 0 : r.score * 100}%"></div></div>
         <span class="val">${dead ? '—' : r.score.toFixed(2)}</span>
         <span class="why">${esc(r.why)}</span>
       </div>`;
-  }).join('') + (tied
-    ? `<div class="tie">These are level. ${S.mind_on
-        ? 'The mind decides this one.'
-        : 'With no mind, it comes down to a weighted coin.'}</div>` : '');
+  }).join('') + (S.mind_on && live.length && s.by === 'thought' && s.verb !== live[0].key
+    ? `<div class="tie">It is ${esc(s.doing)} instead. The body wanted ${
+        esc(live[0].label)}.</div>` : '');
 
   // your side of the glass
   const ctrl = S.things.filter(t => t.controllable);
@@ -172,16 +214,11 @@ el('sayform').addEventListener('submit', async e => {
   const text = box.value.trim();
   if (!text) return;
   box.value = '';
-  el('sayhint').textContent = 'Listening…';
   const data = await post('/api/lab/say', { text });
   const h = data && data.heard;
-  el('sayhint').textContent = !h ? 'Speak plainly. It works out for itself '
-      + 'whether you offered it anything.'
-    : !h.heard ? (h.why === 'no mind'
-        ? 'With no mind, that was a noise behind glass.'
-        : 'It heard you and made nothing of it.')
-    : h.offer ? 'It took that as an offer.'
-    : 'It took that as a remark, not an offer.';
+  el('sayhint').textContent = h && h.heard
+    ? 'It heard that. What it does about it is up to it.'
+    : 'With no head, that was a noise behind glass.';
   box.focus();
 });
 el('offerform').addEventListener('submit', e => {

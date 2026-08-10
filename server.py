@@ -209,15 +209,18 @@ def lab_mind():
     with lab.lock:
         if not want:
             lab.mind = None
-            lab.note("The mind is switched off. Ties break on a weighted coin.", "system")
+            lab.plan = None
+            lab.note("The head is switched off. Reflex, habit and the scoring "
+                     "layer run the body on their own.", "system")
             return jsonify(lab.snapshot())
         mind = Mind()
         if not mind.online:
             return jsonify({"error": "No backend configured. Pick one on the start "
-                                     "screen, then switch the mind on."})
+                                     "screen, then switch the head on."})
         lab.mind = mind
-        lab.note("The mind is switched on. It is asked only when two options "
-                 "weigh the same.", "system")
+        lab.prod("you have come to, properly, for the first time")
+        lab.note("The head is switched on. It decides what the day is for; the "
+                 "body still keeps itself alive underneath.", "system")
     return jsonify(lab.snapshot())
 
 
