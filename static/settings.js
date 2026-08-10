@@ -54,7 +54,7 @@ function syncProvider() {
   });
   cfgEl('cfg-key').placeholder = p === 'anthropic'
     ? 'sk-ant-…  (or leave blank to use ANTHROPIC_API_KEY)'
-    : 'usually not needed for a local server';
+    : 'leave blank unless your server has auth switched on';
 }
 
 function status(msg, kind = '') {

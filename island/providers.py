@@ -199,11 +199,22 @@ class OpenAICompatProvider(BaseProvider):
                  temperature: float = 0.8, timeout: int = 120):
         self.base = self.normalise(base_url)
         self.model = model
-        self.api_key = api_key or "not-needed"
+        # No placeholder token. LM Studio validates the format of whatever you
+        # send and 401s on a made-up one, so when there's no key we send no
+        # Authorization header at all.
+        self.api_key = (api_key or "").strip()
         self.temperature = temperature
         self.timeout = timeout
-        self.strict_ok = True          # flipped off if the backend rejects json_schema
+        # Which response_format modes this backend will accept. Each gets struck
+        # off the first time it's rejected, so we stop asking. LM Studio takes
+        # json_schema or text and has no json_object; other servers differ again.
+        self.modes = ["json_schema", "json_object", "text"]
+        self.mode_used: str | None = None
         self.label = f"{self.base} · {model or '(no model set)'}"
+
+    @property
+    def strict_ok(self) -> bool:
+        return "json_schema" in self.modes
 
     @staticmethod
     def normalise(base_url: str) -> str:
@@ -223,14 +234,10 @@ class OpenAICompatProvider(BaseProvider):
     def _request(self, path: str, payload: dict | None = None, timeout: int | None = None):
         url = f"{self.base}{path}"
         data = json.dumps(payload).encode() if payload is not None else None
-        req = urllib.request.Request(
-            url, data=data, method="POST" if data else "GET",
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                "User-Agent": USER_AGENT,
-            },
-        )
+        headers = {"Content-Type": "application/json", "User-Agent": USER_AGENT}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        req = urllib.request.Request(url, data=data, method="POST" if data else "GET", headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout or self.timeout) as r:
                 return json.loads(r.read().decode())
@@ -240,62 +247,84 @@ class OpenAICompatProvider(BaseProvider):
                 body = exc.read().decode()[:400]
             except Exception:
                 pass
-            raise ProviderError(f"HTTP {exc.code} from {url}: {body or exc.reason}") from exc
+            raise ProviderError(f"HTTP {exc.code} from {url}: {self._explain(exc.code, body) or body or exc.reason}") from exc
         except urllib.error.URLError as exc:
             raise ProviderError(f"couldn't reach {url}: {exc.reason}") from exc
         except TimeoutError as exc:
             raise ProviderError(f"{url} timed out after {timeout or self.timeout}s") from exc
 
+    def _explain(self, code: int, body: str) -> str:
+        """Turn a backend's error into something you can act on."""
+        if code == 401:
+            if self.api_key:
+                return ("that API key was rejected. If this is LM Studio with authentication "
+                        "switched on, use the token it shows you (it starts with 'lms-'). "
+                        "If authentication is off, clear the API key field entirely.")
+            return ("the server wants an API key. In LM Studio that's Developer → Settings → "
+                    "authentication; copy the token it shows and paste it into the API key field.")
+        if code == 404 and "/models" not in body:
+            return (f"nothing is serving the OpenAI API at {self.base}. Check the port — "
+                    "LM Studio usually uses 1234, Ollama 11434.")
+        return ""
+
     def list_models(self) -> list[str]:
         data = self._request("/models", timeout=15)
         return [m.get("id", "") for m in data.get("data", []) if m.get("id")]
 
-    def _payload(self, system: str, user: str, schema: dict, max_tokens: int, strict: bool) -> dict:
+    def _payload(self, system: str, user: str, schema: dict, max_tokens: int, mode: str) -> dict:
+        # Only json_schema enforces the shape server-side. The other two modes
+        # have to ask for it in words, so the schema goes into the system prompt.
+        sys_text = system if mode == "json_schema" else f"{system}\n\n{schema_hint(schema)}"
         body = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": system if strict else f"{system}\n\n{schema_hint(schema)}"},
+                {"role": "system", "content": sys_text},
                 {"role": "user", "content": user},
             ],
             "max_tokens": max_tokens,
             "temperature": self.temperature,
             "stream": False,
         }
-        if strict:
+        if mode == "json_schema":
             body["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": "reply", "strict": True, "schema": schema},
             }
-        else:
+        elif mode == "json_object":
             body["response_format"] = {"type": "json_object"}
+        # text mode sends no response_format at all — every backend accepts that.
         return body
 
     def complete(self, system: str, user: str, schema: dict, max_tokens: int) -> dict:
-        attempts = [True, False] if self.strict_ok else [False]
-        last: Exception | None = None
-        for strict in attempts:
+        """Try each response mode the backend hasn't already refused."""
+        failures: list[str] = []
+        for mode in list(self.modes):
             try:
-                data = self._request("/chat/completions", self._payload(system, user, schema, max_tokens, strict))
+                data = self._request("/chat/completions",
+                                     self._payload(system, user, schema, max_tokens, mode))
             except ProviderError as exc:
-                last = exc
-                if strict and "HTTP 4" in str(exc):
-                    # Backend doesn't do json_schema. Stop asking it to.
-                    self.strict_ok = False
+                failures.append(f"{mode}: {exc}")
+                if "HTTP 4" in str(exc) and mode != "text":
+                    # This backend doesn't offer that mode. Stop asking for it.
+                    self.modes.remove(mode)
                     continue
-                raise
+                raise ProviderError(" | ".join(failures)) from exc
+
             choices = data.get("choices") or []
             if not choices:
-                last = ProviderError(f"no choices in response: {str(data)[:200]}")
+                failures.append(f"{mode}: no choices in the response")
                 continue
             content = (choices[0].get("message") or {}).get("content") or ""
             parsed = extract_json(content)
             if parsed is None:
-                last = ProviderError(f"no JSON object in the reply: {content[:200]!r}")
-                if strict:
-                    self.strict_ok = False
+                failures.append(f"{mode}: no JSON in the reply — {content[:120]!r}")
                 continue
+            self.mode_used = mode
             return coerce(schema, parsed)
-        raise last or ProviderError("no usable response")
+
+        raise ProviderError(
+            "couldn't get JSON out of this backend. Tried " + ", ".join(failures)
+            if failures else "no usable response")
 
     def ping(self) -> str:
         models = self.list_models()
@@ -316,11 +345,15 @@ class OpenAICompatProvider(BaseProvider):
             "Set ok to true and note to the single word 'ready'.",
             probe, 200,
         )
-        mode = ("structured output (json_schema)" if self.strict_ok
-                else "JSON-object mode — this backend refused json_schema, so replies get repaired")
+        described = {
+            "json_schema": "structured output (json_schema) — the strongest mode",
+            "json_object": "JSON-object mode; this backend has no json_schema, so replies get repaired",
+            "text": "plain text with the schema asked for in the prompt — the loosest mode, "
+                    "expect the occasional rough turn",
+        }.get(self.mode_used or "", self.mode_used or "?")
         note = str(out.get("note") or "").strip()
         detail = f", said {note!r}" if note else ""
-        return f"Connected to {self.model} using {mode}{detail}."
+        return f"Connected to {self.model} using {described}{detail}."
 
 
 def build(settings: dict) -> BaseProvider | None:

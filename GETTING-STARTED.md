@@ -108,6 +108,16 @@ To stop the game, close the black window (or press **Ctrl+C** in it).
 running. In LM Studio, go to the Developer/Local Server tab and press Start. Check
 the port matches — LM Studio usually uses `1234`.
 
+**"Malformed LM Studio API token provided".** LM Studio has authentication
+switched on. Either turn it off (LM Studio → Developer → Settings), or copy the
+token it shows you — it starts with `lms-` — and paste that into the game's
+**API key** box. Don't invent a value: leave the box completely empty if auth is
+off, because LM Studio checks the shape of whatever you send.
+
+**"'response_format.type' must be 'json_schema' or 'text'".** You're on an older
+build of this game — `git pull` (or re-download the ZIP) and try again. LM Studio
+has no JSON-object mode, which the game used to try as a fallback.
+
 **"Test connection" says no model is loaded.** Load a model in LM Studio first,
 then press **refresh** in the game's settings.
 

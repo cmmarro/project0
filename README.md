@@ -41,12 +41,18 @@ Load a model in LM Studio, start its server, hit **refresh** to pull the model
 list, then **Test connection** — that runs a real structured call and tells you
 which mode it negotiated, so "connected" means connected.
 
-Local models vary in how well they follow a schema, so the provider degrades in
-stages rather than failing: strict `json_schema` first, then `json_object` with
-the schema described in the prompt, then it fishes the JSON out of whatever prose
-came back, then it repairs the result against the schema — a missing key or an
-invented action gets patched instead of losing the turn. A 7B instruct model is
-enough to play; it will just be blunter than Claude.
+Backends disagree about how to ask for JSON, and local models disagree about how
+well they produce it, so the provider negotiates rather than assuming. It tries
+`json_schema`, then `json_object`, then plain text with the schema described in
+the prompt, striking off each mode the server rejects so it stops asking. (LM
+Studio, for instance, supports `json_schema` and `text` but has no `json_object`
+at all.) Whatever comes back then gets JSON extracted from any surrounding prose
+and repaired against the schema, so a missing key or an invented action is
+patched instead of losing the turn. A 7B instruct model is enough to play; it
+will just be blunter than Claude.
+
+If every mode fails, the error names what each one complained about — the first
+failure is usually the informative one.
 
 Settings persist to `settings.json` (gitignored, chmod 600). `ANTHROPIC_API_KEY`
 and `ISLAND_BASE_URL` still work as environment defaults.

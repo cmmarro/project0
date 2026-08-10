@@ -30,6 +30,12 @@ LINES = [
 
 SLOPPY = False
 MODEL_ID = "qwen2.5-7b-instruct"
+REQUIRE_TOKEN = False        # imitate LM Studio with authentication switched on
+# Modes this fake backend refuses. LM Studio takes json_schema or text and has
+# no json_object at all, which is exactly the shape of a real bug this caught.
+REJECT: set[str] = set()
+VALID_TOKEN = "lms-test-token"
+LAST_AUTH: str | None = None  # what the last request sent, for tests
 
 
 def invent(schema: dict) -> dict:
@@ -57,6 +63,26 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def _auth_failure(self):
+        """LM Studio validates the token's shape and 401s on anything else."""
+        global LAST_AUTH
+        header = self.headers.get("Authorization")
+        LAST_AUTH = header
+        if not REQUIRE_TOKEN:
+            return None
+        token = (header or "").removeprefix("Bearer ").strip()
+        if not token:
+            return {"error": {"message": "No API token provided.",
+                              "type": "invalid_request_error", "code": "invalid_api_key"}}
+        if not token.startswith("lms-"):
+            return {"error": {"message": f"Malformed LM Studio API token provided: {token}. "
+                                         "Ensure you are using a valid token.",
+                              "type": "invalid_request_error", "code": "invalid_api_key"}}
+        if token != VALID_TOKEN:
+            return {"error": {"message": "Invalid API token.",
+                              "type": "invalid_request_error", "code": "invalid_api_key"}}
+        return None
+
     def _send(self, code: int, payload: dict):
         body = json.dumps(payload).encode()
         self.send_response(code)
@@ -66,6 +92,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        bad = self._auth_failure()
+        if bad:
+            return self._send(401, bad)
         if self.path.rstrip("/").endswith("/models"):
             return self._send(200, {"object": "list", "data": [
                 {"id": MODEL_ID, "object": "model"},
@@ -74,19 +103,27 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
     def do_POST(self):
+        bad = self._auth_failure()
+        if bad:
+            return self._send(401, bad)
         length = int(self.headers.get("Content-Length") or 0)
         req = json.loads(self.rfile.read(length) or b"{}")
         fmt = req.get("response_format") or {}
+        mode = fmt.get("type") or "text"
 
-        if fmt.get("type") == "json_schema":
-            if SLOPPY:
-                return self._send(400, {"error": {
-                    "message": "'response_format.json_schema' is not supported by this model",
-                }})
+        if mode in REJECT or (mode == "json_schema" and SLOPPY):
+            if mode == "json_object":
+                # LM Studio's actual wording.
+                return self._send(400, {"error": "'response_format.type' must be 'json_schema' or 'text'"})
+            return self._send(400, {"error": {
+                "message": f"'response_format.{mode}' is not supported by this model",
+            }})
+
+        if mode == "json_schema":
             schema = fmt["json_schema"]["schema"]
             content = json.dumps(invent(schema))
         else:
-            # json_object mode: recover the shape from the prompt's schema hint.
+            # No server-side enforcement: recover the shape from the prompt hint.
             schema = self._schema_from_hint(req)
             content = json.dumps(invent(schema))
             if SLOPPY:
@@ -130,11 +167,19 @@ def main():
     ap.add_argument("--port", type=int, default=1234)
     ap.add_argument("--sloppy", action="store_true",
                     help="imitate a small model: no json_schema, prose around the JSON, missing keys")
+    ap.add_argument("--require-token", action="store_true",
+                    help=f"imitate LM Studio with auth on; expects {VALID_TOKEN!r}")
+    ap.add_argument("--reject", default="",
+                    help="comma-separated response_format modes to 400 on, e.g. json_object")
     args = ap.parse_args()
 
-    global SLOPPY
+    global SLOPPY, REQUIRE_TOKEN, REJECT
     SLOPPY = args.sloppy
-    mode = "sloppy" if SLOPPY else "well-behaved"
+    REQUIRE_TOKEN = args.require_token
+    REJECT = {m.strip() for m in args.reject.split(",") if m.strip()}
+    mode = ("sloppy" if SLOPPY else "well-behaved") + (", auth required" if REQUIRE_TOKEN else "")
+    if REJECT:
+        mode += ", rejects " + "/".join(sorted(REJECT))
     print(f"mock OpenAI-compatible server ({mode}) on http://127.0.0.1:{args.port}/v1")
     HTTPServer(("127.0.0.1", args.port), Handler).serve_forever()
 

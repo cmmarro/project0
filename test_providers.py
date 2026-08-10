@@ -112,6 +112,99 @@ def main():
     finally:
         httpd.shutdown()
 
+    print("\nBackends that only support some response modes")
+    # LM Studio: json_schema or text, no json_object. This is a real failure
+    # that got reported from an actual install.
+    mock.REJECT = {"json_object"}
+    httpd, port = serve(sloppy=False)
+    try:
+        p = providers.OpenAICompatProvider(f"http://127.0.0.1:{port}/v1",
+                                           "qwen2.5-7b-instruct", timeout=20)
+        out = p.complete("You are a person.", "Speak.", SPEAK_SCHEMA, 400)
+        check("LM Studio-shaped backend still works", p.mode_used == "json_schema", str(p.mode_used))
+        check("and returns a complete answer",
+              all(k in out for k in SPEAK_SCHEMA["required"]))
+    finally:
+        httpd.shutdown()
+
+    # Worst case: no structured support at all, so it has to fall to plain text.
+    mock.REJECT = {"json_schema", "json_object"}
+    httpd, port = serve(sloppy=False)
+    try:
+        p = providers.OpenAICompatProvider(f"http://127.0.0.1:{port}/v1",
+                                           "qwen2.5-7b-instruct", timeout=20)
+        out = p.complete("You are a person.", "Speak.", SPEAK_SCHEMA, 400)
+        check("a backend with no structured output falls through to text",
+              p.mode_used == "text", str(p.mode_used))
+        check("text mode still yields a schema-shaped answer",
+              all(k in out for k in SPEAK_SCHEMA["required"]))
+        check("refused modes are struck off and not retried",
+              p.modes == ["text"], str(p.modes))
+        check("the connection test names the loose mode", "loosest mode" in p.ping(), p.ping())
+    finally:
+        mock.REJECT = set()
+        httpd.shutdown()
+
+    # And when nothing works, say what each mode actually complained about.
+    mock.REJECT = {"json_schema", "json_object", "text"}
+    httpd, port = serve(sloppy=False)
+    try:
+        p = providers.OpenAICompatProvider(f"http://127.0.0.1:{port}/v1", "x", timeout=20)
+        try:
+            p.complete("s", "u", SPEAK_SCHEMA, 100)
+            check("total failure raises", False, "no error")
+        except providers.ProviderError as exc:
+            msg = str(exc)
+            check("the error names every mode tried, not just the last",
+                  all(m in msg for m in ("json_schema", "json_object", "text")), msg[:100])
+    finally:
+        mock.REJECT = set()
+        httpd.shutdown()
+
+    print("\nAuthentication")
+    mock.REQUIRE_TOKEN = False
+    httpd, port = serve(sloppy=False)
+    base = f"http://127.0.0.1:{port}/v1"
+    try:
+        mock.LAST_AUTH = None
+        providers.OpenAICompatProvider(base, "qwen2.5-7b-instruct", timeout=20).list_models()
+        check("no key configured means no Authorization header at all",
+              mock.LAST_AUTH is None, f"sent {mock.LAST_AUTH!r}")
+
+        mock.LAST_AUTH = None
+        providers.OpenAICompatProvider(base, "qwen2.5-7b-instruct",
+                                       api_key="  ", timeout=20).list_models()
+        check("a whitespace-only key is treated as no key", mock.LAST_AUTH is None,
+              f"sent {mock.LAST_AUTH!r}")
+
+        mock.REQUIRE_TOKEN = True
+        p = providers.OpenAICompatProvider(base, "qwen2.5-7b-instruct", timeout=20)
+        try:
+            p.list_models()
+            check("a server that wants a token still rejects us", False, "no error raised")
+        except providers.ProviderError as exc:
+            check("401 explains where to find the token in LM Studio",
+                  "Developer" in str(exc) and "401" in str(exc), str(exc)[-110:])
+
+        p = providers.OpenAICompatProvider(base, "qwen2.5-7b-instruct",
+                                           api_key="not-needed", timeout=20)
+        try:
+            p.list_models()
+            check("a bogus token is rejected", False, "no error raised")
+        except providers.ProviderError as exc:
+            check("401 on a bad key says to clear the field or use the lms- token",
+                  "clear the API key field" in str(exc), str(exc)[-110:])
+
+        p = providers.OpenAICompatProvider(base, "qwen2.5-7b-instruct",
+                                           api_key=mock.VALID_TOKEN, timeout=20)
+        check("a real token gets through", "qwen2.5-7b-instruct" in p.list_models())
+        check("and it was actually sent", mock.LAST_AUTH == f"Bearer {mock.VALID_TOKEN}",
+              str(mock.LAST_AUTH))
+        check("a full call works with auth on", "Connected to" in p.ping())
+    finally:
+        mock.REQUIRE_TOKEN = False
+        httpd.shutdown()
+
     print("\nUnreachable backend")
     dead = providers.OpenAICompatProvider("http://127.0.0.1:9/v1", "nope", timeout=3)
     try:
