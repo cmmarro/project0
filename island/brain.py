@@ -13,15 +13,11 @@ Without an API key, deterministic fallbacks keep the game playable.
 
 from __future__ import annotations
 
-import json
-import os
 import random
 import threading
 
-from . import world
+from . import providers, settings, world
 from .verbs import ACTION_NAMES, RAFT_CAPACITY, RECIPES
-
-MODEL = os.environ.get("ISLAND_MODEL", "claude-opus-5")
 
 EMOTIONS = [
     "calm", "wary", "hopeful", "frustrated", "exhausted",
@@ -185,51 +181,47 @@ def _bar(label: str, value: float) -> str:
 
 
 class Brain:
+    """Owns the prompts. Which model answers them is the provider's business."""
+
     def __init__(self) -> None:
-        self.model = MODEL
-        self.client = None
         self.last_error: str | None = None
         self.calls = 0
         self._lock = threading.Lock()
-        key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-        try:
-            import anthropic  # noqa: PLC0415
+        self.provider = None
+        self.reconfigure()
 
-            if key:
-                self.client = anthropic.Anthropic()
-            else:
-                self.last_error = "no ANTHROPIC_API_KEY — running in offline mode"
-        except Exception as exc:  # pragma: no cover
-            self.last_error = f"anthropic sdk unavailable: {exc}"
+    def reconfigure(self) -> str | None:
+        """Rebuild the backend from current settings. Returns an error, or None."""
+        cfg = settings.get()
+        try:
+            self.provider = providers.build(cfg)
+            self.last_error = None if self.provider else "offline — no model configured"
+        except providers.ProviderError as exc:
+            self.provider = None
+            self.last_error = str(exc)
+        except Exception as exc:
+            self.provider = None
+            self.last_error = f"{type(exc).__name__}: {exc}"
+        return self.last_error if self.provider is None else None
 
     @property
     def online(self) -> bool:
-        return self.client is not None
+        return self.provider is not None
+
+    @property
+    def model(self) -> str:
+        return getattr(self.provider, "label", "offline")
 
     def _call(self, system: str, user: str, schema: dict) -> dict | None:
-        if not self.client:
+        if not self.provider:
             return None
+        with self._lock:
+            self.calls += 1
         try:
-            with self._lock:
-                self.calls += 1
-            resp = self.client.messages.create(
-                model=self.model,
-                max_tokens=2000,
-                system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-                messages=[{"role": "user", "content": user}],
-                output_config={
-                    "effort": "low",
-                    "format": {"type": "json_schema", "schema": schema},
-                },
-            )
-            if resp.stop_reason == "refusal":
-                self.last_error = "model declined to answer"
-                return None
-            text = next((b.text for b in resp.content if b.type == "text"), None)
-            if not text:
-                return None
+            out = self.provider.complete(system, user, schema,
+                                         int(settings.get().get("max_tokens", 1200)))
             self.last_error = None
-            return json.loads(text)
+            return out
         except Exception as exc:
             self.last_error = f"{type(exc).__name__}: {exc}"
             return None

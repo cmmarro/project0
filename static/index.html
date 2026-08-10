@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Castaway</title>
 <link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='26'%3E%F0%9F%8F%9D%3C/text%3E%3C/svg%3E">
 </head>
 <body>
 <div id="app">
@@ -16,9 +17,76 @@
       <span id="weather">Clear and bright</span>
       <span id="here"></span>
       <span id="seed" class="tag"></span>
-      <span id="llm" class="tag"></span>
+      <span id="llm" class="tag" title="click to change backend"></span>
     </div>
     <div id="toast"></div>
+
+    <div id="settings" class="hidden">
+      <div class="sheet">
+        <div class="sheet-head">
+          <h3>Who plays the survivors</h3>
+          <button id="cfg-close" title="close">×</button>
+        </div>
+
+        <label>Backend
+          <select id="cfg-provider">
+            <option value="offline">Offline — canned lines, no model</option>
+            <option value="openai">Local / OpenAI-compatible — LM Studio, Ollama, llama.cpp…</option>
+            <option value="anthropic">Anthropic API — Claude</option>
+          </select>
+        </label>
+
+        <div data-only="openai">
+          <div class="presets">
+            <span>quick set:</span>
+            <button data-preset="LM Studio">LM Studio</button>
+            <button data-preset="Ollama">Ollama</button>
+            <button data-preset="llama.cpp">llama.cpp</button>
+            <button data-preset="vLLM">vLLM</button>
+          </div>
+          <label>Server URL
+            <input id="cfg-base" type="text" spellcheck="false" placeholder="http://localhost:1234/v1">
+          </label>
+        </div>
+
+        <label>Model
+          <span class="withbtn">
+            <input id="cfg-model" list="cfg-models" type="text" spellcheck="false"
+                   placeholder="load a model in LM Studio, then hit refresh">
+            <button id="cfg-refresh">refresh</button>
+          </span>
+        </label>
+        <datalist id="cfg-models"></datalist>
+
+        <label>API key <span class="dim">(stored in settings.json, never sent to the browser)</span>
+          <input id="cfg-key" type="password" spellcheck="false" autocomplete="off">
+        </label>
+
+        <div class="cfg-grid">
+          <label data-only="openai">Temperature<input id="cfg-temp" type="number" step="0.1" min="0" max="2"></label>
+          <label data-only="anthropic">Effort
+            <select id="cfg-effort">
+              <option>low</option><option>medium</option><option>high</option>
+            </select>
+          </label>
+          <label>Max tokens<input id="cfg-maxtok" type="number" step="100" min="200"></label>
+          <label data-only="openai">Timeout (s)<input id="cfg-timeout" type="number" step="10" min="10"></label>
+        </div>
+
+        <div class="cfg-status" id="cfg-status"></div>
+
+        <p class="dim small">
+          Local models need to return JSON matching a schema. LM Studio does this natively;
+          if a backend refuses, the game retries in JSON-object mode and repairs the result,
+          so a smaller model still plays — just more roughly.
+        </p>
+
+        <div class="sheet-foot">
+          <button id="cfg-test">Test connection</button>
+          <button id="cfg-save" class="primary">Save &amp; play</button>
+        </div>
+      </div>
+    </div>
     <div id="ending" class="hidden"><div id="ending-text"></div></div>
   </main>
 
@@ -63,5 +131,6 @@
   </aside>
 </div>
 <script src="/static/game.js"></script>
+<script src="/static/settings.js"></script>
 </body>
 </html>

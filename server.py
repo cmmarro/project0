@@ -12,7 +12,7 @@ import pathlib
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from island import world
+from island import providers, settings, world
 from island.state import Game, start
 
 # Load a .env if there is one, so the key doesn't have to be exported by hand.
@@ -61,6 +61,58 @@ def act():
     data = request.get_json(silent=True) or {}
     msg = game.player_act(data.get("action", ""), data.get("target", ""))
     return jsonify({"message": msg, "state": game.snapshot()})
+
+
+@app.get("/api/config")
+def get_config():
+    return jsonify({
+        "settings": settings.public(),
+        "online": game.brain.online,
+        "backend": game.brain.model,
+        "error": game.brain.last_error,
+    })
+
+
+@app.post("/api/config")
+def set_config():
+    settings.update(request.get_json(silent=True) or {})
+    error = game.brain.reconfigure()
+    return jsonify({
+        "settings": settings.public(),
+        "online": game.brain.online,
+        "backend": game.brain.model,
+        "error": error or game.brain.last_error,
+    })
+
+
+@app.post("/api/config/models")
+def list_models():
+    """Ask a backend what it has loaded, without committing to it."""
+    probe = dict(settings.get())
+    probe.update({k: v for k, v in (request.get_json(silent=True) or {}).items()
+                  if k in settings.DEFAULTS and not (k == "api_key" and v in ("", settings.MASK))})
+    try:
+        provider = providers.build(probe)
+        if provider is None:
+            return jsonify({"models": [], "error": "offline"})
+        return jsonify({"models": provider.list_models(), "error": None})
+    except Exception as exc:
+        return jsonify({"models": [], "error": f"{type(exc).__name__}: {exc}"})
+
+
+@app.post("/api/config/test")
+def test_config():
+    """Actually call the model, so 'connected' means connected."""
+    probe = dict(settings.get())
+    probe.update({k: v for k, v in (request.get_json(silent=True) or {}).items()
+                  if k in settings.DEFAULTS and not (k == "api_key" and v in ("", settings.MASK))})
+    try:
+        provider = providers.build(probe)
+        if provider is None:
+            return jsonify({"ok": False, "message": "Provider is set to offline."})
+        return jsonify({"ok": True, "message": provider.ping()})
+    except Exception as exc:
+        return jsonify({"ok": False, "message": str(exc)})
 
 
 @app.post("/api/say")

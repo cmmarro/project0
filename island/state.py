@@ -686,6 +686,7 @@ class Game:
                 "log": self.log[-70:],
                 "over": self.over, "ending": self.ending,
                 "online": self.brain.online, "model": self.brain.model,
+                "provider": getattr(self.brain.provider, "kind", "offline"),
                 "llm_error": self.brain.last_error, "llm_calls": self.brain.calls,
                 "here": world.landmark_at(self.player.x, self.player.y, radius=2.8),
                 "seed": self.seed,

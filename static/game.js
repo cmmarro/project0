@@ -256,9 +256,11 @@ function paintPanel() {
   el('here').textContent = S.here ? `at ${S.here}` : '';
   el('seed').textContent = `island ${S.seed}`;
   const tag = el('llm');
-  tag.textContent = S.online ? 'claude live' : 'offline';
+  const kinds = { anthropic: 'claude', openai: 'local model', offline: 'offline' };
+  tag.textContent = kinds[S.provider] || (S.online ? 'live' : 'offline');
   tag.className = 'tag ' + (S.online ? 'live' : 'off');
-  tag.title = S.llm_error || `${S.model} · ${S.llm_calls} calls`;
+  tag.title = (S.llm_error ? S.llm_error + ' — ' : '') +
+    `${S.model} · ${S.llm_calls} calls · click to change`;
 
   const p = S.player;
   el('you-bars').innerHTML =

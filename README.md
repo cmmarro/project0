@@ -1,6 +1,7 @@
 # Castaway
 
-A desert island survival sandbox where the other survivors are played by Claude.
+A desert island survival sandbox where the other survivors are played by a language
+model — Claude, or anything you're running locally.
 
 You wash up alone beside a split supply crate. Somewhere else on the island are
 some number of other people who also think they're alone — you don't know how
@@ -14,16 +15,51 @@ than any one person can manage alone.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...     # or put it in a .env file
 .venv/bin/python server.py              # http://127.0.0.1:5000
 ```
 
-Without a key it still runs — the survivors fall back to canned lines and a crude
-keyword reader, which is enough to see the machinery work but not enough to be
-interesting. The badge in the top-left tells you which mode you're in.
+Then pick a backend in the browser — the settings sheet opens by itself the
+first time, and the badge in the top-left reopens it later.
+
+### Running the survivors on a local model
+
+The **Local / OpenAI-compatible** option talks to anything serving
+`/v1/chat/completions`. Quick-set buttons fill in the usual ports:
+
+| | URL |
+|---|---|
+| LM Studio | `http://localhost:1234/v1` |
+| Ollama | `http://localhost:11434/v1` |
+| llama.cpp | `http://localhost:8080/v1` |
+| vLLM | `http://localhost:8000/v1` |
+
+Load a model in LM Studio, start its server, hit **refresh** to pull the model
+list, then **Test connection** — that runs a real structured call and tells you
+which mode it negotiated, so "connected" means connected.
+
+Local models vary in how well they follow a schema, so the provider degrades in
+stages rather than failing: strict `json_schema` first, then `json_object` with
+the schema described in the prompt, then it fishes the JSON out of whatever prose
+came back, then it repairs the result against the schema — a missing key or an
+invented action gets patched instead of losing the turn. A 7B instruct model is
+enough to play; it will just be blunter than Claude.
+
+Settings persist to `settings.json` (gitignored, chmod 600). `ANTHROPIC_API_KEY`
+and `ISLAND_BASE_URL` still work as environment defaults.
+
+### Testing without a GPU
 
 ```bash
-.venv/bin/python test_coordination.py   # proves the core loop, no API key needed
+python tools/mock_openai_server.py --sloppy   # pretends to be a bad local model
+```
+
+Point the game at `http://localhost:1234/v1` and it plays. `--sloppy` refuses
+`json_schema`, wraps its JSON in chat, and drops a required key, which is what
+the fallback chain exists for.
+
+```bash
+.venv/bin/python test_coordination.py   # the core loop, model stubbed
+.venv/bin/python test_providers.py      # the backend layer, against the mock
 ```
 
 ## Playing
@@ -125,10 +161,14 @@ island/world.py         procedural island — coastline, resource sites, pathfin
 island/people.py        procedural cast — archetypes, trait axes, persona text
 island/actors.py        Actor / Player / Castaway — one body model for everyone
 island/verbs.py         the shared verb table
-island/brain.py         prompts, schemas, Anthropic calls, offline fallbacks
+island/brain.py         prompts, schemas, offline fallbacks
+island/providers.py     model backends — Anthropic SDK, OpenAI-compatible HTTP
+island/settings.py      runtime backend config, persisted to settings.json
 island/state.py         the simulation, discovery, conversation orchestration
-static/                 canvas renderer and UI
+static/                 canvas renderer, game UI, settings sheet
+tools/                  mock OpenAI-compatible server for testing
 test_coordination.py    end-to-end proof with the model stubbed
+test_providers.py       backend proof against the mock, clean and degraded
 ```
 
 Each run generates a new island *and* a new cast from one seed
