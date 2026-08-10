@@ -3,17 +3,24 @@
 A room you can build in, and light. Nothing lives in it yet — that is the next
 stage, and this one is deliberately finished before it starts.
 
-```bash
-python3 -m http.server 8000     # any static server will do
-```
+**Windows:** double-click `run.bat`.
+**Mac or Linux:** `./run.sh` — or `python3 serve.py`.
 
-Then open <http://localhost:8000>. No build step, no dependencies, no backend.
-It is plain ES modules and a canvas.
+It opens your browser for you. Leave the window it starts in open; closing it
+stops the server.
 
-<http://localhost:8000/check.html> runs the rules about what can go where
-against the real `World` and prints pass/fail. Same deal — no dependencies, no
-runner. Every check in there is a rule that was worth stating because getting
-it wrong was visible on screen.
+No build step, no dependencies, no backend — plain ES modules and a canvas. The
+only reason there is a server at all is that browsers refuse to load modules
+over `file://`. `serve.py` is a static file server with three manners the stock
+one lacks: it finds a free port instead of failing on a busy one, it opens the
+browser, and it tells the browser never to cache — without that last one you
+edit a file, refresh, and spend ten minutes debugging the version you already
+fixed.
+
+**`check.html`** (linked from the terminal on startup) runs the rules about what
+can go where against the real `World` and prints pass/fail. Same deal — no
+dependencies, no runner. Every check in there is a rule that was worth stating
+because getting it wrong was visible on screen.
 
 ---
 
@@ -50,6 +57,9 @@ it wrong was visible on screen.
 ## How it fits together
 
 ```
+run.bat         double-click, Windows
+run.sh          the same, Mac and Linux
+serve.py        the static server both of them call
 check.html      the placement rules, checked in the browser
 src/defs.js     what exists — every object and floor, in one table
 src/anim.js     the only things that move: fan spin-up and spin-down
