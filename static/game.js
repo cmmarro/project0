@@ -687,6 +687,19 @@ async function showRecap() {
       Work done: <b>${r.raft.work}/${r.raft.needed}</b>.
       It seats <b>${r.raft.seats}</b>. There are <b>${r.raft.people}</b> of you.</p>
     ${r.built.length ? `<p class="small dim">Built so far: ${r.built.join(', ')}.</p>` : ''}
+    ${(r.ledger || []).length ? `<h2>Who did the work</h2>${r.ledger.map(b => `
+      <div class="build"><span class="nm">${b.name}${b.done ? ' ✓' : ''}</span>
+        <span class="cost">${b.by.length
+          ? b.by.map(x => `<b style="color:${x.colour}">${escapeHtml(x.who)}</b> ${x.sessions}`).join(' · ')
+          : 'nobody yet'}</span></div>`).join('')}` : ''}
+    <h2>What's left in the ground</h2>
+    ${Object.entries(r.ground || {}).map(([site, items]) => {
+      const has = Object.entries(items).filter(([, v]) => v >= 1);
+      return `<div class="build"><span class="nm">${escapeHtml(site)}</span>
+        <span class="cost">${has.length
+          ? has.map(([i, v]) => `${i} ×${v}`).join(', ')
+          : '<b>picked clean</b>'}</span></div>`;
+    }).join('')}
     <h2>${r.night ? 'What today was' : 'What has actually happened'}</h2>
     ${r.notable.length
       ? r.notable.slice().reverse().map(e =>

@@ -59,6 +59,32 @@ SITE_TEMPLATES = {
     "the drift": (["cloth", "wood"], "a tangle of drift and wreckage piled by a storm", "shore"),
 }
 
+# How much of a thing a site holds, and how fast it comes back once taken.
+# This is where the game's conflict actually lives, and it should live here
+# rather than in a prompt telling anyone to argue.
+#
+# A spring refills faster than anyone can drink it. Timber comes back over days,
+# so the early raft-or-signal question is a real either/or rather than a queue.
+# Rope and canvas come off the wreck, and there is no more wreck — the raft
+# needs 4 rope and the island holds about 5. Whoever is sitting on the rope is
+# holding the only way off this island, whether or not they meant to be.
+RENEWAL = {
+    "water":   (20, 0.080),
+    "frond":   (12, 0.030),
+    "coconut": (10, 0.022),
+    "fish":    (10, 0.025),
+    "wood":    (12, 0.003),
+    "flint":   (3,  0.0004),
+    "rope":    (5,  0.0),
+    "cloth":   (5,  0.0),
+}
+DEFAULT_RENEWAL = (10, 0.02)
+
+
+def renewal(item: str) -> tuple[float, float]:
+    return RENEWAL.get(item, DEFAULT_RENEWAL)
+
+
 # Always present. The rest are rolled per run.
 CORE_SITES = ["spring", "palm grove", "woods", "tidepools", "the wreck"]
 OPTIONAL_SITES = ["the shelf", "the scree", "the drift"]

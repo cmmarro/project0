@@ -134,6 +134,8 @@ or live here.
 PLACES: {places}.
 Camp is where the crate washed up; you build there from shared stores.
 The raft seats {RAFT_CAPACITY} and takes more work than one person can do alone.
+Sites run down as they're worked and come back slowly. Rope and canvas came off
+the boat and do not come back at all.
 
 YOU CAN: gather, go_to <place>, build <thing>, take <item>, deposit, give <item>,
 eat, drink, rest, revive <name>, follow <name>, think, board,
@@ -172,12 +174,16 @@ WHAT CAN BE BUILT, AT CAMP ONLY
 The camp is the spot on the south beach where a supply crate washed up. The
 stores there are open — anyone can put things in and anyone can take things out.
 
-THE RAFT SEATS {RAFT_CAPACITY}.
-You have looked at the timber and you have done the arithmetic. It will carry two
-people and no more, and it is far more work than any one person can do alone
-while also keeping themselves alive. So it has to be built by more than the
-number of people it can carry. Whoever is standing at camp when it goes, goes.
-Everyone here understands this. Nobody has said it out loud yet.
+THE RAFT SEATS {RAFT_CAPACITY}, AND WHOEVER IS AT CAMP WHEN IT GOES, GOES.
+Those are just the facts of it, along with the fact that it is more work than one
+person can do while also keeping themselves alive. What follows from that is
+yours to work out.
+
+WHAT THERE IS
+Nothing here is endless. A site you work runs down and comes back at its own
+pace — the spring refills faster than anyone can drink it, timber takes days,
+and the rope and canvas came off the boat, so when they are gone they are gone.
+The raft needs four rope. There is about that much on the island.
 
 YOUR BODY
 Thirst kills faster than hunger. Water comes from the spring, or from a still if
@@ -256,10 +262,11 @@ help, never summarise, never mention being an AI or a model or a prompt.
 React to how things actually are. If you are badly thirsty it is in your voice.
 If someone sat at camp while you hauled timber, you noticed.
 
-You are not anybody's helper. Your own survival comes first, and whether these
-other people help or hurt that is a real question. Keep your own stash and your
-own counsel if you want — but the raft is more work than one person can do, and
-the island is not big enough to avoid anyone for long.
+You are not anybody's helper and not anybody's enemy by default. You are a
+person with your own situation, and how much of it you spend on other people is
+the sort of thing your history and your temper decide, not a rule. Keep your own
+stash and your own counsel if that's who you are; throw everything into the
+common pile if that's who you are instead.
 
 Trust moves slowly. Zero is the normal answer."""
 
@@ -520,10 +527,29 @@ class Brain:
     def _situation(self, npc, game) -> str:
         stores = _inv(game.stores)
         built = ", ".join(n for n, s in game.structures.items() if s["done"]) or "nothing"
-        progress = "; ".join(
-            f"{n} {s['progress']}/{s['needed']}"
-            for n, s in game.structures.items() if s["started"] and not s["done"]
-        ) or "nothing under way"
+
+        # Who has actually done the work, not who said they would. This is the
+        # one number in the game that can contradict somebody's account of
+        # themselves, so it goes in front of them.
+        bits = []
+        for n, st in game.structures.items():
+            if not st["started"] or st["done"]:
+                continue
+            hands = ", ".join(
+                f"{game.name_for(npc, game.by_key[k])} {v}"
+                for k, v in sorted(st["credit"].items(), key=lambda kv: -kv[1])
+                if k in game.by_key)
+            bits.append(f"{n} {st['progress']}/{st['needed']}"
+                        + (f" (sessions: {hands})" if hands else ""))
+        progress = "; ".join(bits) or "nothing under way"
+
+        # What's actually left in the ground.
+        ground = []
+        for site, left in game.stock.items():
+            here = [f"{i} {int(v)}" for i, v in left.items() if v >= 1]
+            ground.append(f"  - {site}: " + (", ".join(here) if here
+                                             else "picked clean, needs time"))
+        ground_txt = "\n".join(ground) or "  - (nothing to work)"
 
         known = []
         for other in game.actors:
@@ -557,6 +583,9 @@ You are currently working: {game.allegiance_phrase(npc)}.{chr(10) + "You are in 
 
 CAMP
 Stores: {stores}. Built: {built}. Under way: {progress}.
+
+WHAT IS LEFT IN THE GROUND
+{ground_txt}
 
 OTHER PEOPLE YOU KNOW ABOUT
 {others}

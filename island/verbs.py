@@ -45,7 +45,9 @@ def gather(game, actor: Actor, target: str | None = None) -> tuple[bool, str]:
         return False, "Too spent to work."
     if actor.carried() >= 10:
         return False, "Hands are full."
-    item = random.choice(items)
+    item = game.take_from_ground(place, items)
+    if item is None:
+        return False, f"{place.capitalize()} has been picked clean. It'll come back, slowly."
     actor.give_item(item)
     actor.energy = clamp(actor.energy - 2.5)
     game.event(f"{actor.short} gathers {world.ITEM_LABEL[item]} at {place}.", "world", actor)

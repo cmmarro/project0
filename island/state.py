@@ -147,6 +147,13 @@ class Game:
         self.by_key = {a.key: a for a in self.actors}
         self.player_met: set[str] = set()
 
+        # What is actually left in the ground. Sites run down as they're worked
+        # and come back at their own rate, so "who took the timber" is a
+        # question with a real answer rather than an inconvenience.
+        self.stock: dict[str, dict[str, float]] = {
+            site: {item: float(world.renewal(item)[0]) for item in items}
+            for site, items in world.HARVEST.items()
+        }
         self.stores: dict[str, int] = {"water": 1, "coconut": 2, "cloth": 1}
         self.structures = {
             n: {"done": False, "started": False, "progress": 0, "needed": r["work"], "credit": {}}
@@ -386,6 +393,7 @@ class Game:
             gm = dt * GAME_MINUTES_PER_SECOND * self.tempo()
             self.minutes += gm
             self._weather(gm)
+            self._regrow(gm)
             self._bodies(gm)
             for npc in self.castaways:
                 self._advance(npc, dt, gm)
@@ -398,6 +406,30 @@ class Game:
             if self.player.down and not self.over:
                 self.finish("You go down on the sand and don't get back up. "
                             "Whatever the others make of the island, they'll make it without you.")
+
+    def take_from_ground(self, site: str, items: list[str]) -> str | None:
+        """Pull one unit out of a site, if there's any left. None if picked clean."""
+        left = self.stock.get(site)
+        if left is None:
+            return random.choice(items)          # a site with no stock model
+        have = [i for i in items if left.get(i, 0) >= 1]
+        if not have:
+            return None
+        item = random.choice(have)
+        left[item] -= 1
+        return item
+
+    def depleted(self) -> list[str]:
+        """Sites with nothing left in them right now."""
+        return [site for site, left in self.stock.items()
+                if not any(v >= 1 for v in left.values())]
+
+    def _regrow(self, gm: float):
+        for site, left in self.stock.items():
+            for item, amount in left.items():
+                cap, rate = world.renewal(item)
+                if rate and amount < cap:
+                    left[item] = min(cap, amount + rate * gm)
 
     def _weather(self, gm: float):
         now = time.time()
@@ -589,6 +621,11 @@ class Game:
         said = spec["does"].format(a=actor.short)
         if kind == "beckon" and place:
             said = f"{actor.short} beckons — come to {place}."
+        # "you screams" — the third-person phrasing doesn't fit the one actor
+        # whose short name is "you".
+        if actor.is_human:
+            said = spec["self"] if kind != "beckon" or not place \
+                else f"You beckon them to {place}."
         self.event(said, "alert" if heard else "emote", actor)
 
         for other in self.actors:
@@ -665,6 +702,18 @@ class Game:
                 "work": raft["progress"], "needed": raft["needed"],
                 "seats": verbs.RAFT_CAPACITY, "people": len(self.castaways) + 1,
             },
+            # Who put the hours in, on everything. The ledger is the only thing
+            # that can catch somebody out in what they said they'd do.
+            "ledger": [
+                {"name": n, "done": st["done"],
+                 "by": [{"who": self.by_key[k].short if k != "player" else "you",
+                         "colour": self.by_key[k].colour, "sessions": v}
+                        for k, v in sorted(st["credit"].items(), key=lambda kv: -kv[1])
+                        if k in self.by_key]}
+                for n, st in self.structures.items() if st["started"]
+            ],
+            "ground": {site: {i: int(v) for i, v in left.items()}
+                       for site, left in self.stock.items()},
             "built": [n for n, st in self.structures.items() if st["done"]],
             "stores": dict(self.stores),
             "notable": [e for e in self.log if e["kind"] in keep][-14:],
@@ -971,24 +1020,42 @@ class Game:
             npc.remember(f"I met {other.name} on day {self.day}. Up to then I thought I was alone here.", self.day)
 
     def _pick_topic(self, a: Castaway, b: Castaway) -> str:
+        """Something true about right now that a person might raise.
+
+        These used to be dramatic prompts — "the fact that the raft seats two
+        and there are three of you, which neither of you has said out loud
+        yet". That was the author leaning on the scale: manufacturing the
+        scene rather than the situation. Every option here is now a fact about
+        the world state, and it's their business what to make of it.
+        """
         options = []
+        gone = self.depleted()
+        if gone:
+            options.append(f"{' and '.join(gone)} being picked clean")
+        short = [k for k, v in verbs.RECIPES["raft"]["cost"].items()
+                 if self.stores.get(k, 0) < v]
+        if short:
+            options.append(f"the raft still wanting {', '.join(short)}")
         if min(a.thirst, b.thirst) < 45 or self.stores.get("water", 0) == 0:
-            options.append("water, and the fact that nobody has actually solved it")
-        if self.structures["raft"]["started"] and not self.structures["raft"]["done"]:
-            options.append("how far along the raft is, and whether it will really float")
-            options.append(f"the fact that the raft seats {verbs.RAFT_CAPACITY} and there are three of you, "
-                           "which neither of you has said out loud yet")
-        else:
-            options.append("whether the timber goes into a raft or into a signal fire")
+            options.append("water, and how little of it either of you is carrying")
+        for name, st in self.structures.items():
+            if st["started"] and not st["done"]:
+                who = sorted(st["credit"].items(), key=lambda kv: -kv[1])
+                if who:
+                    top = self.by_key.get(who[0][0])
+                    if top is not None:
+                        options.append(
+                            f"the {name}, and the fact that {self.name_for(a, top)} has "
+                            f"put {who[0][1]} sessions into it")
         if not self.structures["fire"]["done"]:
             options.append("there being no fire yet, with the dark coming again")
         if "player" in a.met and a.trust_of("player") != 0:
-            options.append("what you make of the stranger, and whether they're pulling their weight")
-        if not a.allies or not b.allies:
-            options.append("whether you're actually doing this together or just standing near each other")
+            options.append("what you make of the stranger")
+        if a.mind.standing:
+            options.append(f"something you've decided: {a.mind.standing[0]}")
         if a.memories:
             options.append(f"something sitting with you: {a.memories[-1]}")
-        return random.choice(options)
+        return random.choice(options) if options else "how the day went"
 
     def _job_convo(self, a: Castaway, b: Castaway):
         with self.lock:
@@ -1350,6 +1417,8 @@ class Game:
                 "player": self.player.snapshot(),
                 "castaways": cast,
                 "stores": dict(self.stores),
+                "stock": {site: {i: round(v, 1) for i, v in left.items()}
+                          for site, left in self.stock.items()},
                 "structures": {k: {kk: vv for kk, vv in v.items() if kk != "credit"}
                                for k, v in self.structures.items()},
                 "recipes": {k: v["cost"] for k, v in verbs.RECIPES.items()},

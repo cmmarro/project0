@@ -9,6 +9,7 @@ tidepools with a fish", without needing an API key.
 
 from __future__ import annotations
 
+import io
 import json
 import time
 
@@ -667,6 +668,81 @@ def main():
     check("the clock really is driven by it", slow < fast * 0.6,
           f"{slow:.2f} game-min/s slow vs {fast:.2f} fast")
     game.brain.latency = 0.0
+
+    # --- 17. scarcity, so conflict has something to be about ----------------
+    print("\n17. Nothing here is endless")
+    site = next(n for n, i in world.HARVEST.items() if "wood" in i)
+    g2 = Game(seed=42, cast_size=2)
+    g2.brain.provider = object()
+    stub(g2)
+    hand = g2.castaways[0]
+    with g2.lock:
+        hand.x, hand.y = (float(world.LANDMARKS[site]["pos"][0]),
+                          float(world.LANDMARKS[site]["pos"][1]))
+        got, failed = 0, None
+        for _ in range(40):
+            hand.inventory.clear()
+            hand.energy = 100
+            ok, msg = verbs.gather(g2, hand, site)
+            if not ok:
+                failed = msg
+                break
+            got += 1
+    check("a site runs out if you work it", failed is not None, f"{got} taken")
+    check("and says so plainly", "picked clean" in (failed or ""), str(failed))
+    check("it reads as depleted", site in g2.depleted(), str(g2.depleted()))
+
+    raft_cost = verbs.RECIPES["raft"]["cost"]
+    check("one wood site does not hold a whole raft plus a signal fire",
+          got < raft_cost["wood"] + verbs.RECIPES["signal"]["cost"]["wood"],
+          f"site held {got}, raft+signal want "
+          f"{raft_cost['wood'] + verbs.RECIPES['signal']['cost']['wood']}")
+
+    with g2.lock:
+        g2._regrow(600)          # ten game-hours
+    check("timber comes back, slowly", 0 < g2.stock[site]["wood"] < got,
+          f"{g2.stock[site]['wood']:.1f} back after ten hours")
+
+    rope_sites = [n for n, i in world.HARVEST.items() if "rope" in i]
+    if rope_sites:
+        with g2.lock:
+            before_rope = sum(g2.stock[n].get("rope", 0) for n in rope_sites)
+            g2._regrow(60 * 24 * 5)      # five days
+            after_rope = sum(g2.stock[n].get("rope", 0) for n in rope_sites)
+        check("but rope came off the boat and never comes back",
+              after_rope == before_rope, f"{before_rope} -> {after_rope}")
+        check("and there's about one raft's worth on the island",
+              before_rope < raft_cost["rope"] * 2,
+              f"{before_rope} rope, raft wants {raft_cost['rope']}")
+
+    print("\n18. Nobody is told to argue")
+    from island.brain import compact_guide, world_guide
+    STAGE = ("said out loud", "neither of you", "nobody has said", "has said it")
+
+    topics = set()
+    with g2.lock:
+        for _ in range(60):
+            topics.add(g2._pick_topic(g2.castaways[0], g2.castaways[1]))
+        g2.structures["raft"]["started"] = True
+        g2.structures["raft"]["credit"] = {g2.castaways[0].key: 4}
+        g2.stock[site] = {"wood": 0.0}
+        for _ in range(60):
+            topics.add(g2._pick_topic(g2.castaways[0], g2.castaways[1]))
+    check("no topic is a scene to play",
+          not any(p in t.lower() for t in topics for p in STAGE),
+          str([t for t in topics if any(p in t.lower() for p in STAGE)])[:120])
+    check("they're facts about the world instead",
+          any("picked clean" in t for t in topics)
+          and any("sessions into it" in t for t in topics),
+          str(sorted(topics))[:200])
+    check("and there are plenty of them", len(topics) >= 4, f"{len(topics)} distinct")
+
+    for name, guide in (("full brief", world_guide()), ("short brief", compact_guide())):
+        check(f"the {name} states the facts without telling them how to feel",
+              not any(p in guide.lower() for p in STAGE),
+              next((p for p in STAGE if p in guide.lower()), ""))
+    check("the raft arithmetic is still there, as arithmetic",
+          "SEATS 2" in world_guide() and "four rope" in world_guide())
 
     print("\n11. The log never goes silent")
     ns = [e["n"] for e in game.log]

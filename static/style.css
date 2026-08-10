@@ -461,6 +461,8 @@ h2 .filters button.on { border-color: var(--gold); color: var(--gold); }
 #recap-body .note { margin: 3px 0; }
 #recap-body .note .when { flex: 0 0 66px; }
 #recap-body p { margin: 6px 0; }
+#recap-body .build .nm { width: 96px; }
+#recap-body .build .cost { font-size: 11.5px; }
 
 .helpgrid { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: baseline; margin-bottom: 14px; }
 kbd {

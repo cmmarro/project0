@@ -150,16 +150,43 @@ only asymmetry is input: you walk with the keyboard, they walk by pathfinding.
 
 ### What drives the conflict
 
-- **The raft is a public good with private costs.** 16 gathered items and 12
-  sessions of work, which is more than one person can produce while also keeping
-  themselves watered — but it seats two, so building it and boarding it are
-  different questions.
+The rule here is that conflict should be an **output of the resource graph, not
+an input to the prompt**. For a while it wasn't: the topic picker handed
+castaways lines like *"the fact that the raft seats two and there are three of
+you, which neither of you has said out loud yet"*, and the brief told them their
+own survival came first regardless of what their traits said. That's the author
+manufacturing a scene rather than a situation — and it was there to paper over a
+missing mechanic, because nothing on the island was actually scarce. Sites never
+ran out. Nobody could be denied anything, only delayed.
+
+Now nothing is endless. Each site holds a stock that runs down as it's worked
+and comes back at its own rate (`world.RENEWAL`):
+
+- **The spring refills faster than anyone can drink it.** Water is a *time*
+  pressure, not a resource one, and making it scarce would just be cruel.
+- **Timber takes days to come back**, and one wood site holds twelve. The raft
+  wants ten and the signal fire wants six, so early on that is a genuine
+  either/or rather than a queue. Somebody has to lose an argument.
+- **Rope and canvas came off the boat, and there is no more boat.** They never
+  regrow. The raft needs four rope and the island holds about five — so whoever
+  is sitting on the rope is holding the only way off this island, whether or not
+  they meant to be. Nobody has to be told to find that interesting.
+
+Around that:
+
 - **The stores are an open commons.** Anything deposited can be taken by anyone,
   and both acts are witnessed and remembered. Cooperation is only stable because
   the game is iterated and reputation carries.
-- **Rival plans compete for one bottleneck.** Timber feeds both the raft and the
-  signal fire, and which one a survivor argues for falls out of their boldness
-  roll. Six timber in one is six not in the other.
+- **The work is on the record.** Every build session is credited to whoever put
+  it in, and that ledger goes into the prompt and into your recap. It's the one
+  number that can contradict somebody's account of themselves — *"I'm building
+  the raft with Della"* against nine sessions to two.
+- **The raft is a public good with private costs**, seats two, and whoever is at
+  camp when it goes, goes. Stated as arithmetic, with nothing said about how
+  anyone should feel about it.
+
+The test for whether any of this is real: delete the topic list and see whether
+conflict still happens. It should, because it comes out of the numbers.
 - **Thirst is a fast clock.** It drains about twice as fast as hunger and the
   spring is usually across the island, so every hour spent on the shared project
   is an hour not spent on yourself.
