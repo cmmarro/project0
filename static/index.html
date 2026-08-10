@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Castaway</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+
+  <main id="stage">
+    <canvas id="island" width="884" height="572"></canvas>
+    <div id="hud">
+      <span id="clock">Day 1 · 07:00</span>
+      <span id="weather">Clear and bright</span>
+      <span id="here"></span>
+      <span id="llm" class="tag"></span>
+    </div>
+    <div id="toast"></div>
+    <div id="ending" class="hidden"><div id="ending-text"></div></div>
+  </main>
+
+  <aside id="panel">
+
+    <section class="block">
+      <h2>You</h2>
+      <div id="you-bars" class="bars"></div>
+      <div class="row" id="you-inv"></div>
+    </section>
+
+    <section class="block">
+      <h2>Them</h2>
+      <div id="others"></div>
+    </section>
+
+    <section class="block">
+      <h2>Camp</h2>
+      <div class="row" id="stores"></div>
+      <div id="builds"></div>
+    </section>
+
+    <section class="block grow">
+      <h2>Island log</h2>
+      <div id="log"></div>
+    </section>
+
+    <section class="block">
+      <form id="talkform" autocomplete="off">
+        <input id="talk" type="text" maxlength="300" placeholder="Say something out loud…">
+        <button type="submit" id="talkbtn">Say</button>
+      </form>
+      <div id="earshot" class="hint">Whoever is within earshot will hear you.</div>
+    </section>
+
+    <section class="block">
+      <div id="actions" class="actions"></div>
+      <div class="hint">WASD / arrows to move · E gather · Q drink · F eat · R rest</div>
+    </section>
+
+  </aside>
+</div>
+<script src="/static/game.js"></script>
+</body>
+</html>
