@@ -22,6 +22,7 @@
 import { TILE, TERRAIN, THINGS } from './defs.js';
 import { ART } from './art.js';
 import { SUB } from './light.js';
+import { AO_SUB } from './occlusion.js';
 
 export class Camera {
   constructor(world) {
@@ -50,11 +51,12 @@ export function footprint(key, rot = 0) {
 }
 
 export class Renderer {
-  constructor(canvas, world, lights, camera) {
+  constructor(canvas, world, lights, camera, occlusion) {
     this.canvas = canvas;
     this.c = canvas.getContext('2d');
     this.world = world;
     this.lights = lights;
+    this.occlusion = occlusion;
     this.camera = camera;
     this.terrainCache = document.createElement('canvas');
     this.terrainVersion = -1;
@@ -157,6 +159,20 @@ export class Renderer {
     c.imageSmoothingEnabled = false;
     c.drawImage(this.terrainCache, 0, 0);
 
+    // Ambient occlusion, straight onto the floor and under everything else.
+    // Walls that do not darken the floor at their feet read as printed on it,
+    // and the taller the wall the worse that looks.
+    if (this.occlusion) {
+      this.occlusion.update();
+      const ao = TILE / AO_SUB;
+      c.imageSmoothingEnabled = true;
+      c.globalCompositeOperation = 'multiply';
+      c.drawImage(this.occlusion.canvas, -ao / 2, -ao / 2,
+        world.w * TILE + ao, world.h * TILE + ao);
+      c.globalCompositeOperation = 'source-over';
+      c.imageSmoothingEnabled = false;
+    }
+
     // Anything an overhead thing casts on the floor goes down before the
     // furniture, so a chair under a fan is lit by the room and shadowed by the
     // blades rather than having a shadow painted over the top of it.
@@ -194,13 +210,16 @@ export class Renderer {
   contactShadow(t, a, fw, fd, h, ghost) {
     if (ghost || a.shadow === false || h <= 0) return;
     const c = this.c;
-    const sx = t.x * TILE + fw / 2, sy = t.y * TILE + fd - 2.5;
-    const rx = fw * 0.46 + 2, ry = Math.min(fd * 0.34, 4 + h * 0.16);
+    const sx = t.x * TILE + fw / 2, sy = t.y * TILE + fd - 1.5;
+    const rx = fw * 0.5, ry = Math.min(fd * 0.3, 3.5 + h * 0.12);
     const r = Math.max(rx, ry);
     const g = c.createRadialGradient(sx, sy, 0, sx, sy, r);
-    const dark = 0.2 + Math.min(0.14, h / 260);
+    // Dark and tight at the foot, gone by the rim. A broad even ellipse reads
+    // as a puddle under the furniture; occlusion is a contact effect.
+    const dark = 0.3 + Math.min(0.16, h / 220);
     g.addColorStop(0, `rgba(0,0,0,${dark})`);
-    g.addColorStop(0.5, `rgba(0,0,0,${dark * 0.45})`);
+    g.addColorStop(0.35, `rgba(0,0,0,${dark * 0.5})`);
+    g.addColorStop(0.7, `rgba(0,0,0,${dark * 0.14})`);
     g.addColorStop(1, 'rgba(0,0,0,0)');
     c.save();
     c.translate(sx, sy);
@@ -247,8 +266,10 @@ export class Renderer {
 
     // A wall with another wall in front of it shows no face — the neighbour's
     // body covers it. This one line is most of what makes a run of wall read
-    // as a single structure rather than a row of separate blocks.
-    const buried = def.joins && this.world.structureAt(t.x, t.y + 1);
+    // as a single structure rather than a row of separate blocks. A doorway
+    // does not count: it is a hole, so the wall behind it is visible through
+    // it and needs its face.
+    const buried = def.joins && this.world.blocked(t.x, t.y + 1);
 
     if (h > 0 && !buried) {
       // The south face hangs between the bottom of the top face and the bottom
@@ -310,7 +331,10 @@ export class Renderer {
       if (!this.world.structureAt(t.x, t.y - 1)) { c.moveTo(L, T + 0.5); c.lineTo(R, T + 0.5); }
       if (!this.world.structureAt(t.x - 1, t.y)) { c.moveTo(L + 0.5, T); c.lineTo(L + 0.5, B); }
       if (!this.world.structureAt(t.x + 1, t.y)) { c.moveTo(R - 0.5, T); c.lineTo(R - 0.5, B); }
-      if (buried) { c.moveTo(L, B - 0.5); c.lineTo(R, B - 0.5); }
+      // Deliberately no line along the buried edge. It used to be drawn so a
+      // covered wall still showed where its top stopped, but on a north-south
+      // run that line lands on every tile boundary and the whole wall reads as
+      // a ladder.
       c.stroke();
     }
     c.restore();

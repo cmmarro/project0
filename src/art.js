@@ -44,6 +44,30 @@ import { blur } from './anim.js';
 
 const LINE = 'rgba(26,22,18,.85)';
 
+/* A stable number per tile, so a wall's grain does not crawl between frames. */
+function grain(x, y) {
+  let n = ((x | 0) * 374761393 + (y | 0) * 668265263) | 0;
+  n = (n ^ (n >> 13)) * 1274126177;
+  return Math.abs(n ^ (n >> 16));
+}
+
+function tint(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const f = v => Math.max(0, Math.min(255, Math.round(v * k)));
+  return `rgb(${f((n >> 16) & 255)},${f((n >> 8) & 255)},${f(n & 255)})`;
+}
+
+/* A little dirt. Deterministic from the seed, so it is part of the object
+ * rather than noise that shimmers. */
+function speckle(c, x, y, w, h, seed, fill) {
+  c.fillStyle = fill;
+  for (let i = 0; i < 7; i++) {
+    const g = grain(seed + i * 31, i * 17);
+    c.fillRect(x + (g % Math.max(1, w - 2)), y + ((g >> 6) % Math.max(1, h - 2)),
+      1 + (g % 2), 1);
+  }
+}
+
 export function box(c, x, y, w, h, fill, r = 2) {
   c.beginPath();
   c.roundRect(x, y, w, h, r);
@@ -90,130 +114,197 @@ function edge(c, x, w, t, fill, hi = 'rgba(255,255,255,.18)') {
 
 export const ART = {
   wall: {
-    h: 22,
+    // Taller than it was. The cost of height in this projection is that a wall
+    // covers what is behind it, so the room's south wall eats into the row
+    // above — which is why the floor occlusion below it matters so much. Past
+    // about a tile it starts hiding furniture rather than framing it.
+    h: 30,
     taper: 0,                       // structure doesn't taper; furniture does
-    shadow: false,                  // its own face darkens where it meets the floor
+    shadow: false,                  // the occlusion map does its footing
     side: '#7d7668',
-    top(c, w, d) {
+    top(c, w, d, t) {
+      // Flat, and nothing that lines up with the tile. A run of wall is one
+      // continuous surface, so anything drawn *per tile* — a highlight along
+      // its top, a shade of its own, an outline at its bottom edge — repeats
+      // and reads as banding down the length of the run. Only the speckle
+      // survives, because it is noise and noise does not tile.
       c.fillStyle = '#a9a192';
       c.fillRect(0, 0, w, d);
-      c.fillStyle = 'rgba(255,255,255,.07)';
-      c.fillRect(0, 0, w, d * 0.3);
+      speckle(c, 0, 0, w, d, grain(t.x || 0, t.y || 0), 'rgba(0,0,0,.045)');
     },
-    face(c, w, h) {
+    face(c, w, h, t) {
+      const n = grain(t.x || 0, t.y || 0);
       const g = c.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, '#8b8375');
-      g.addColorStop(1, '#5f5a4f');
+      g.addColorStop(0, '#928a7b');
+      g.addColorStop(0.62, '#7a7466');
+      g.addColorStop(1, '#585448');
       c.fillStyle = g;
       c.fillRect(0, 0, w, h);
-      c.fillStyle = 'rgba(255,255,255,.16)';     // the lip where top meets face
+
+      // Courses, offset every other row so a run reads as laid rather than
+      // extruded. Two lines, and it is most of the difference between a wall
+      // and a grey rectangle.
+      c.strokeStyle = 'rgba(0,0,0,.13)';
+      c.lineWidth = 1;
+      const rows = 3, rh = (h - 5) / rows;
+      for (let i = 1; i <= rows; i++) {
+        const y = Math.round(i * rh) + 0.5;
+        c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke();
+        // Staggered by tile as well as by course, so a long run reads as
+        // brickwork rather than as the same tile printed twenty times.
+        const off = ((i + (t.x || 0)) % 2) * (w / 2);
+        c.beginPath(); c.moveTo(off + 0.5, y - rh); c.lineTo(off + 0.5, y); c.stroke();
+      }
+      speckle(c, 0, 0, w, h, n, 'rgba(0,0,0,.06)');
+
+      c.fillStyle = 'rgba(255,255,255,.18)';     // the lip where top meets face
       c.fillRect(0, 0, w, 1.5);
-      c.fillStyle = 'rgba(0,0,0,.22)';           // where it meets the floor
-      c.fillRect(0, h - 2, w, 2);
+      c.fillStyle = 'rgba(30,26,20,.34)';        // skirting, where it meets the floor
+      c.fillRect(0, h - 4, w, 4);
+      c.fillStyle = 'rgba(255,255,255,.06)';
+      c.fillRect(0, h - 4.5, w, 1);
     },
   },
 
   door: {
-    h: 22,
+    h: 30,
     taper: 0,
     shadow: false,
     side: '#6d4c28',
+    // A doorway is first of all a *hole*: if the wall were not there you would
+    // be looking at floor, so that is what is underneath. Nothing here paints
+    // over the tile. The door is a leaf standing on that floor, and the walls
+    // either side supply their own cut ends.
     top(c, w, d) {
-      // The top of a doorway is the top of the wall it interrupts, with the
-      // frame's reveal cut through it. Drawing the door itself up here as well
-      // as on the face gave you two doors, one lying flat on the wall.
-      c.fillStyle = '#a9a192';
-      c.fillRect(0, 0, w, d);
-      c.fillStyle = 'rgba(255,255,255,.07)';
-      c.fillRect(0, 0, w, d * 0.3);
-      c.fillStyle = '#6b6459';                       // the opening, seen down into
-      c.fillRect(2.5, d * 0.3, w - 5, d * 0.42);
-      c.strokeStyle = 'rgba(26,22,18,.5)';
+      const y = d * 0.42, th = d * 0.16;
+      c.fillStyle = 'rgba(0,0,0,.28)';             // what the leaf casts
+      c.fillRect(0, y + th, w, 4);
+      c.fillStyle = '#8a5f33';                     // the leaf, edge-on
+      c.fillRect(0, y, w, th);
+      c.fillStyle = 'rgba(255,255,255,.16)';
+      c.fillRect(0, y, w, 2);
+      c.fillStyle = 'rgba(0,0,0,.3)';
+      c.fillRect(0, y + th - 1.5, w, 1.5);
+      c.strokeStyle = 'rgba(26,22,18,.6)';
       c.lineWidth = 1;
-      c.strokeRect(2.5, d * 0.3, w - 5, d * 0.42);
+      c.strokeRect(0.5, y + 0.5, w - 1, th - 1);
+      c.fillStyle = '#d8c08c';                     // handle
+      c.fillRect(w - 11, y + th, 4, 2.5);
     },
-    face(c, w, h, t) {
-      // Seen along the run, you are looking at the two leaves. Seen end-on —
-      // a door in a north-south wall — you are looking at the wall's own face
-      // with the door's edge in it, so it should read as wall.
-      if ((t.rot || 0) % 2 === 1) {
-        ART.wall.face(c, w, h);
-        c.fillStyle = '#8a5f33';
-        c.fillRect(w * 0.28, 1, w * 0.44, h - 2);
-        c.strokeStyle = 'rgba(26,22,18,.55)';
-        c.lineWidth = 1;
-        c.strokeRect(w * 0.28, 1.5, w * 0.44, h - 3);
-        return;
-      }
-      // The jamb either side, then the leaves centred in the opening between
-      // them — one door, sitting in the gap, rather than a slab across it.
-      ART.wall.face(c, w, h);
-      const jamb = 2.5, ow = w - jamb * 2;
-      c.fillStyle = '#33302b';
-      c.fillRect(jamb, 1, ow, h - 1);
-      const lw = ow / 2;
-      for (const x of [jamb, jamb + lw]) {
-        box(c, x + 0.5, 2, lw - 1, h - 3, '#a5763f', 1.5);
-        c.fillStyle = 'rgba(255,255,255,.14)';
-        c.fillRect(x + 1.5, 3, lw - 3, 1.5);
-        c.fillStyle = 'rgba(0,0,0,.10)';             // a panel line each
-        c.fillRect(x + 2.5, h * 0.45, lw - 5, 1);
-      }
-      c.fillStyle = '#d8c08c';                       // handles, meeting stiles
-      c.fillRect(jamb + lw - 3.5, h * 0.42, 2.5, 5);
-      c.fillRect(jamb + lw + 1, h * 0.42, 2.5, 5);
+    face(c, w, h) {
+      // Just the leaf, standing in the gap. Whatever is behind it — floor, and
+      // the cut ends of the walls on either side — is already on the canvas.
+      const inset = 1.5;
+      const x0 = inset, lw = w - inset * 2, y0 = 0, lh = h - 2;
+      c.fillStyle = '#8a6233';
+      c.fillRect(x0, y0, lw, lh);
+      const shade = c.createLinearGradient(0, 0, 0, lh);
+      shade.addColorStop(0, 'rgba(255,255,255,.10)');
+      shade.addColorStop(0.3, 'rgba(0,0,0,.04)');
+      shade.addColorStop(1, 'rgba(0,0,0,.2)');
+      c.fillStyle = shade;
+      c.fillRect(x0, y0, lw, lh);
+
+      c.fillStyle = 'rgba(0,0,0,.2)';              // a middle rail
+      c.fillRect(x0 + 2, lh * 0.46, lw - 4, 1.5);
+      c.strokeStyle = 'rgba(0,0,0,.15)';           // and two panels
+      c.lineWidth = 1;
+      c.strokeRect(x0 + 2.5, 2.5, lw - 5, lh * 0.42 - 4);
+      c.strokeRect(x0 + 2.5, lh * 0.52, lw - 5, lh * 0.42 - 3);
+      c.strokeStyle = LINE;
+      c.lineWidth = 1.25;
+      c.strokeRect(x0 + 0.5, 0.5, lw - 1, lh - 1);
+
+      c.fillStyle = '#d8c08c';                     // handle
+      c.fillRect(x0 + lw - 5, lh * 0.44, 2.5, 5);
+      c.fillStyle = 'rgba(0,0,0,.34)';             // where it meets the floor
+      c.fillRect(x0, lh - 1.5, lw, 3);
     },
   },
 
   bed: {
-    h: 10,
+    h: 12,
     taper: 0,                       // it has legs; the taper would cut the air
     side: '#6d4c28',
     top(c, w, d) {
       box(c, 0.5, 0.5, w - 1, d - 1, '#8a5f33', 3);                  // frame
-      box(c, 3.5, d * 0.26, w - 7, d - 4 - d * 0.26, '#4a7fa6', 2);  // blanket
-      box(c, 3.5, 3, w - 7, d * 0.24, '#eceadf', 2);                 // pillow
-      c.strokeStyle = 'rgba(255,255,255,.24)';                        // turn-down
-      c.lineWidth = 2;
-      c.beginPath();
-      c.moveTo(4.5, d * 0.36);
-      c.lineTo(w - 4.5, d * 0.36);
-      c.stroke();
-      c.strokeStyle = 'rgba(0,0,0,.13)';                              // folds
+      c.fillStyle = 'rgba(0,0,0,.12)';                                // inner rebate
+      c.fillRect(3, 2.5, w - 6, d - 5);
+
+      const headD = d * 0.13;
+      box(c, 1.5, 1.5, w - 3, headD, '#9c6d3d', 2.5);                // headboard
+      c.fillStyle = 'rgba(255,255,255,.16)';
+      c.fillRect(3, 2.5, w - 6, 2);
+
+      const y0 = 1.5 + headD + 1;
+      box(c, 3, y0, w - 6, d - y0 - 2.5, '#e6e2d5', 2);              // mattress
+      const sheetY = y0 + d * 0.2;
+      box(c, 3.5, sheetY, w - 7, d - sheetY - 3, '#4a7fa6', 2);      // blanket
+      c.fillStyle = '#f2efe4';                                        // turn-down
+      c.fillRect(4.5, sheetY - 3.5, w - 9, 5);
+      c.strokeStyle = 'rgba(0,0,0,.14)';
       c.lineWidth = 1;
-      for (const f of [0.58, 0.78]) {
-        c.beginPath(); c.moveTo(5, d * f); c.lineTo(w - 5, d * f); c.stroke();
+      c.strokeRect(4.5, sheetY - 3.5, w - 9, 5);
+
+      c.fillStyle = 'rgba(255,255,255,.14)';                          // pillow
+      box(c, 5, y0 + 2, w - 10, d * 0.13, '#fbf8ee', 3);
+
+      c.strokeStyle = 'rgba(0,0,0,.10)';                              // quilting
+      c.lineWidth = 1;
+      for (let i = 1; i < 3; i++) {
+        const x = 3.5 + ((w - 7) / 3) * i;
+        c.beginPath(); c.moveTo(x, sheetY + 3); c.lineTo(x, d - 4); c.stroke();
+      }
+      for (const f of [0.62, 0.82]) {
+        c.beginPath(); c.moveTo(4.5, d * f); c.lineTo(w - 4.5, d * f); c.stroke();
       }
     },
     face(c, w, h) {
       leg(c, 2.5, h);                               // legs first, rail over them
       leg(c, w - 7.5, h);
-      edge(c, 0.5, w - 1, h * 0.55, '#7a5330');     // the frame rail
+      edge(c, 0.5, w - 1, h * 0.52, '#7a5330');     // the footboard rail
+      c.fillStyle = 'rgba(0,0,0,.16)';
+      c.fillRect(1.5, h * 0.52 - 2, w - 3, 2);
     },
   },
 
   table: {
-    h: 15,
+    h: 17,
     taper: 0,
     side: '#8a5f33',
     top(c, w, d) {
       box(c, 0.5, 0.5, w - 1, d - 1, '#a5763f', 3);
-      c.strokeStyle = 'rgba(0,0,0,.18)';           // boards
+      // Boards running the long way, with the end grain showing at the edges.
+      const boards = Math.max(3, Math.round(w / 16));
+      c.strokeStyle = 'rgba(0,0,0,.19)';
       c.lineWidth = 1;
-      for (let i = 1; i < 4; i++) {
-        const x = 2 + ((w - 4) / 4) * i;
-        c.beginPath(); c.moveTo(x, 3); c.lineTo(x, d - 3); c.stroke();
+      for (let i = 1; i < boards; i++) {
+        const x = Math.round(2 + ((w - 4) / boards) * i) + 0.5;
+        c.beginPath(); c.moveTo(x, 2.5); c.lineTo(x, d - 2.5); c.stroke();
       }
-      c.fillStyle = 'rgba(255,255,255,.12)';
-      c.fillRect(2, 2, w - 4, d * 0.16);
+      c.strokeStyle = 'rgba(255,255,255,.09)';
+      for (let i = 1; i < boards; i++) {
+        const x = Math.round(2 + ((w - 4) / boards) * i) + 1.5;
+        c.beginPath(); c.moveTo(x, 2.5); c.lineTo(x, d - 2.5); c.stroke();
+      }
+      c.fillStyle = 'rgba(255,255,255,.13)';         // the light from the north
+      c.fillRect(2, 2, w - 4, d * 0.14);
+      c.fillStyle = 'rgba(0,0,0,.10)';
+      c.fillRect(2, d - 4, w - 4, 2.5);
+      speckle(c, 4, 4, w - 8, d - 8, 7, 'rgba(60,40,20,.14)');
     },
     face(c, w, h) {
-      // A tabletop is a thin slab on legs, and drawing it as a solid block is
-      // the single thing that most makes furniture look like painted floor.
-      // The legs are drawn first so the slab's outline closes over them.
+      // A tabletop is a thin slab on legs over an apron, and drawing it as a
+      // solid block is the single thing that most makes furniture look like
+      // painted floor. Legs first so the slab's outline closes over them.
       leg(c, 3.5, h, 5);
       leg(c, w - 8.5, h, 5);
-      edge(c, 0.5, w - 1, 5.5, '#96692f');
+      c.fillStyle = '#7a5330';                       // the apron between them
+      c.fillRect(6, 4, w - 12, h * 0.34);
+      c.strokeStyle = LINE;
+      c.lineWidth = 1;
+      c.strokeRect(6.5, 4.5, w - 13, h * 0.34 - 1);
+      edge(c, 0.5, w - 1, 6, '#9d6f34');
     },
   },
 
@@ -281,37 +372,61 @@ export const ART = {
   },
 
   dispenser: {
-    h: 24,
+    h: 26,
     taper: 1,
     side: '#7c868e',
     top(c, w, d) {
       box(c, 0.5, 0.5, w - 1, d - 1, '#9aa4ac', 2.5);
-      box(c, 3, 2.5, w - 6, d * 0.42, '#78838c', 2);   // hopper along the back
-      c.fillStyle = 'rgba(255,255,255,.14)';
-      c.fillRect(3, 2.5, w - 6, 2);
-      c.fillStyle = '#7fe0aa';                          // status light
+      box(c, 3, 2.5, w - 6, d * 0.4, '#78838c', 2);   // hopper along the back
+      c.fillStyle = 'rgba(255,255,255,.16)';          // its lid, catching light
+      c.fillRect(4, 3.5, w - 8, 2.5);
+      c.strokeStyle = 'rgba(0,0,0,.22)';              // the lid's seam
+      c.lineWidth = 1;
       c.beginPath();
-      c.arc(w - 7, 6.5, 2.2, 0, 7);
-      c.fill();
+      c.moveTo(w / 2, 3); c.lineTo(w / 2, 2.5 + d * 0.4);
+      c.stroke();
+      c.fillStyle = '#5d666d';                        // a panel, off to one side
+      c.fillRect(w - 20, d * 0.62, 15, d * 0.24);
+      c.fillStyle = '#7fe0aa';
+      c.beginPath(); c.arc(w - 16, d * 0.74, 1.8, 0, 7); c.fill();
+      c.fillStyle = '#e0b46a';
+      c.beginPath(); c.arc(w - 11, d * 0.74, 1.8, 0, 7); c.fill();
+      speckle(c, 3, 3, w - 6, d - 6, 11, 'rgba(20,30,36,.16)');
     },
     face(c, w, h) {
       const g = c.createLinearGradient(0, 0, 0, h);
-      g.addColorStop(0, '#98a2aa');
-      g.addColorStop(1, '#6b757d');
+      g.addColorStop(0, '#9ba5ad');
+      g.addColorStop(0.55, '#828d95');
+      g.addColorStop(1, '#616b73');
       c.fillStyle = g;
       c.fillRect(0, 0, w, h);
-      c.fillStyle = 'rgba(255,255,255,.18)';
+      c.fillStyle = 'rgba(255,255,255,.2)';
       c.fillRect(0, 0, w, 1.5);
-      const n = Math.max(2, Math.round(w / 24));        // nozzles and trays
+
+      c.strokeStyle = 'rgba(0,0,0,.16)';              // panel seams
+      c.lineWidth = 1;
+      c.beginPath(); c.moveTo(0, h * 0.24 + 0.5); c.lineTo(w, h * 0.24 + 0.5);
+      c.stroke();
+
+      const n = Math.max(2, Math.round(w / 24));      // nozzles, and a tray each
       for (let i = 0; i < n; i++) {
         const x = ((i + 0.5) * (w - 10)) / n + 5;
-        c.fillStyle = '#394046';
+        c.fillStyle = '#2f363c';
         c.beginPath();
-        c.roundRect(x - 4, h * 0.3, 8, h * 0.42, 1.5);
+        c.roundRect(x - 4.5, h * 0.3, 9, h * 0.4, 1.5);
         c.fill();
-        c.fillStyle = '#525c64';
-        c.fillRect(x - 6, h - 5, 12, 3);
+        c.fillStyle = 'rgba(255,255,255,.10)';
+        c.fillRect(x - 3.5, h * 0.32, 7, 1.5);
+        c.fillStyle = '#4d565d';
+        c.beginPath();
+        c.roundRect(x - 7, h - 7, 14, 4, 1.5);
+        c.fill();
+        c.strokeStyle = 'rgba(0,0,0,.4)';
+        c.stroke();
       }
+      c.fillStyle = 'rgba(255,255,255,.13)';          // a maker's plate
+      c.fillRect(3, h - 6, 9, 3);
+      speckle(c, 2, 3, w - 4, h - 8, 19, 'rgba(20,30,36,.2)');
       c.strokeStyle = LINE;
       c.lineWidth = 1;
       c.strokeRect(0.5, 0.5, w - 1, h - 1);
@@ -459,28 +574,38 @@ export const ART = {
     taper: 0,
     shadow: false,
     side: '#8d97a3',
+    // A bracket on the wall, not a cone hanging in the air. Mounted against
+    // the north edge of its tile and throwing south; rotation carries it round
+    // to whichever wall it was actually placed on.
     top(c, w, d) {
-      // Mounted against the north edge of its tile, throwing south. Rotation
-      // carries it round to whichever wall it was placed on.
-      c.fillStyle = '#6f7981';
-      c.fillRect(w * 0.34, 1, w * 0.32, 4);
-      c.beginPath();                          // the shade, a half-cone
-      c.moveTo(w * 0.24, 3);
-      c.lineTo(w * 0.76, 3);
-      c.lineTo(w * 0.64, d * 0.42);
-      c.lineTo(w * 0.36, d * 0.42);
+      c.fillStyle = '#5f686f';                    // the backplate, flat to the wall
+      c.fillRect(w * 0.3, 0, w * 0.4, 3.5);
+      c.fillStyle = '#6f7981';                    // a short arm out from it
+      c.fillRect(w * 0.45, 2.5, w * 0.1, d * 0.16);
+      c.beginPath();                              // the shade, a half cone
+      c.moveTo(w * 0.26, d * 0.1);
+      c.lineTo(w * 0.74, d * 0.1);
+      c.lineTo(w * 0.66, d * 0.44);
+      c.lineTo(w * 0.34, d * 0.44);
       c.closePath();
-      c.fillStyle = '#e7d3a2';
+      c.fillStyle = '#dfc894';
       c.fill();
       c.lineWidth = 1.25;
       c.strokeStyle = LINE;
       c.stroke();
-      c.fillStyle = 'rgba(255,247,220,.8)';
-      c.fillRect(w * 0.36, d * 0.36, w * 0.28, 3);
+      c.fillStyle = 'rgba(255,248,222,.9)';       // the bulb, just showing
+      c.fillRect(w * 0.36, d * 0.38, w * 0.28, 3);
     },
-    face(c, w) {
-      c.fillStyle = 'rgba(255,243,205,.45)';  // spill from under the shade
-      c.fillRect(w * 0.3, 0, w * 0.4, 3);
+    face(c, w, h) {
+      c.fillStyle = '#5f686f';                    // backplate against the wall
+      c.fillRect(w * 0.34, 0, w * 0.32, 5);
+      c.fillStyle = 'rgba(255,255,255,.14)';
+      c.fillRect(w * 0.34, 0, w * 0.32, 1.5);
+      c.fillStyle = 'rgba(255,243,205,.5)';       // spill from under the shade
+      c.fillRect(w * 0.28, 3.5, w * 0.44, 3);
+      c.strokeStyle = LINE;
+      c.lineWidth = 1;
+      c.strokeRect(w * 0.34 + 0.5, 0.5, w * 0.32 - 1, 4);
     },
   },
 };

@@ -9,14 +9,16 @@ import { cycle, step } from './anim.js';
 import { Build, buildMenu } from './build.js';
 import { THINGS } from './defs.js';
 import { LightMap } from './light.js';
+import { Occlusion } from './occlusion.js';
 import { Camera, Renderer } from './render.js';
 import { World } from './world.js';
 
 const canvas = document.getElementById('view');
 const world = World.starter(48, 36);
 const lights = new LightMap(world);
+const occlusion = new Occlusion(world);
 const camera = new Camera(world);
-const renderer = new Renderer(canvas, world, lights, camera);
+const renderer = new Renderer(canvas, world, lights, camera, occlusion);
 
 const sunEl = document.getElementById('sun');
 const sunLabel = document.getElementById('sunlabel');
@@ -26,6 +28,7 @@ const countEl = document.getElementById('count');
 // browser-driven checks. Read-only by convention; nothing in here uses it.
 window.__world = world;
 window.__lights = lights;
+window.__ao = occlusion;
 
 const build = new Build(world, camera, canvas, () => {
   syncMenu();

@@ -84,6 +84,15 @@ export class World {
       for (const [tx, ty] of this.footprint(key, x, y, rot)) {
         const other = this.thingAt(tx, ty);
         if (other && THINGS[other.key].joins) this.remove(tx, ty);
+        // A doorway is a hole in a wall, and you can see the floor through it.
+        // Walls are usually built on bare ground, so without this the opening
+        // shows dirt between two floored rooms.
+        if (this.terrainAt(tx, ty) === 'void') {
+          for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
+            const near = this.terrainAt(tx + dx, ty + dy);
+            if (near !== 'void') { this.paint(near, tx, ty); break; }
+          }
+        }
       }
     }
     const tiles = this.footprint(key, x, y, rot);
@@ -171,10 +180,21 @@ export class World {
    * Rotation moves the mounting clockwise from the north edge, so a wall to
    * the north gives rot 0 and the fitting throws its light southwards. */
   orientToOpen(x, y, asked = 0) {
-    const around = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    const around = [[0, -1], [1, 0], [0, 1], [-1, 0]];   // index is the rotation
+    const open = r => {
+      const [dx, dy] = around[r];
+      return this.inside(x + dx, y + dy) && !this.structureAt(x + dx, y + dy);
+    };
+    // Set into the wall itself: throw the light at whichever side is open, so
+    // mount it on the opposite edge. South first, because that is the side you
+    // can actually see.
+    if (this.structureAt(x, y)) {
+      for (const r of [2, 1, 3, 0]) if (open(r)) return (r + 2) % 4;
+      return asked;
+    }
+    // Standing on the floor beside a wall: mount on the wall's side.
     for (let r = 0; r < 4; r++) {
       const [dx, dy] = around[r];
-      // A wall on that side, and open floor opposite it.
       if (this.structureAt(x + dx, y + dy) && !this.structureAt(x - dx, y - dy)) {
         return r;
       }

@@ -63,6 +63,7 @@ serve.py        the static server both of them call
 check.html      the placement rules, checked in the browser
 src/defs.js     what exists — every object and floor, in one table
 src/anim.js     the only things that move: fan spin-up and spin-down
+src/occlusion.js floor shading around anything solid
 src/world.js    the map, and the rules about what can go where
 src/light.js    the light map
 src/art.js      how each thing is drawn
@@ -135,6 +136,22 @@ Two consequences that are easy to miss:
   structure. Its counterpart is the exposed top edges: without them a
   north–south run has no outline at all and reads as a strip of pale floor.
 
+## Ambient occlusion
+
+The cheapest thing you can do to stop a room looking like furniture lying on
+wallpaper, and it does two jobs from one baked map:
+
+- **contact** — floor next to anything solid is darker, because less of the sky
+  reaches it. Undirected, and it is what makes a wall look like it *meets* the
+  floor rather than being printed on it.
+- **cast** — a wall throws a shadow south, because everything in this art is lit
+  from the north, the same convention as the highlight along every object's top
+  lip.
+
+It has its own version counter, separate from the terrain bake, for the same
+reason those two are separate: terrain changes when you paint a floor,
+occlusion changes when you build a wall.
+
 ## Notes on the rendering, from getting it wrong
 
 - **Art is drawn at full brightness and lit *down*.** The first pass used a
@@ -162,6 +179,17 @@ Two consequences that are easy to miss:
 - **Only a default face gets the tapered outline.** Anything drawing its own
   face has legs, and two diagonals ruled through the air beside them look worse
   than no taper at all.
+- **Nothing on a wall's top may line up with the tile.** A run of wall is one
+  continuous surface, so a per-tile highlight, a per-tile shade or an outline
+  along the buried edge all repeat and read as banding down its length. Only
+  noise survives, because noise doesn't tile.
+- **A doorway is a hole, not a door on a wall.** If the wall were not there you
+  would see floor, so that is what is underneath — nothing in the door's art
+  paints over the tile, and the leaf simply stands on it. Drawing the wall's
+  face across the tile and cutting a recess in its top is exactly how you get a
+  door painted on a thick wall with a window above it.
+- **A wall behind a doorway still needs its face**, because you can see through
+  the opening. Only something that actually blocks buries the wall behind it.
 
 ## Next
 
