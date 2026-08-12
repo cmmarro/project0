@@ -28,6 +28,7 @@ const countEl = document.getElementById('count');
 // browser-driven checks. Read-only by convention; nothing in here uses it.
 window.__world = world;
 window.__lights = lights;
+window.__renderer = renderer;
 window.__ao = occlusion;
 
 const build = new Build(world, camera, canvas, () => {

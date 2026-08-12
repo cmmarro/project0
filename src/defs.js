@@ -159,7 +159,8 @@ export const THINGS = {
     occupies: false,                 // sits on the wall, not on the floor
     rotates: true,
     autoOrient: 'open',              // mounts on the wall, throws into the room
-    light: { radius: 5.5, colour: [255, 222, 168], strength: 0.75 },
+    light: { radius: 5.5, colour: [255, 222, 168], strength: 0.85,
+             directional: true },
     hint: 'Put it on a wall. It finds which side the room is on.',
   },
 };

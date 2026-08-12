@@ -11,6 +11,13 @@
  * reading as a room. Two samples costs four times the arithmetic on a grid
  * small enough that nobody notices.
  *
+ * The bitmap covers the map rectangle *exactly*: sample i spans world pixels
+ * [i·TILE/SUB, (i+1)·TILE/SUB), so it is drawn at (0, 0, w·TILE, h·TILE) with
+ * no offset and no padding. Getting that wrong by half a sample — which is
+ * what an earlier version did — shifts every light in the world up and to the
+ * left by a quarter of a tile, and the symptom is a wall lamp that lights the
+ * top of the wall instead of the floor in front of it.
+ *
  * Walls stop light. A lamp behind a wall lights the wall and nothing past it,
  * which is the single detail that makes a built room feel enclosed rather than
  * decorated.
@@ -84,6 +91,12 @@ export class LightMap {
   cast(thing, light, scale = 1) {
     const { w, h, rgb } = this;
     const { radius, colour, strength } = light;
+    // Something bolted to a wall throws its light into the room, not through
+    // the masonry behind it. `rot` is the edge it is mounted on, so it faces
+    // the opposite way.
+    const facing = light.directional
+      ? [[0, 1], [-1, 0], [0, -1], [1, 0]][(thing.rot || 0) % 4]
+      : null;
     // Source in sub-tile space, at the centre of the thing's footprint.
     const sx = thing.cx * SUB - 0.5, sy = thing.cy * SUB - 0.5;
     const r = radius * SUB;
@@ -95,6 +108,7 @@ export class LightMap {
       for (let x = x0; x <= x1; x++) {
         const dist = Math.hypot(x - sx, y - sy);
         if (dist > r) continue;
+        if (facing && (x - sx) * facing[0] + (y - sy) * facing[1] < -0.6) continue;
         if (!this.reaches(sx, sy, x, y)) continue;
         // Squared-ish falloff so the pool has a bright middle and a soft rim
         // rather than being a flat disc with an edge.
@@ -114,11 +128,24 @@ export class LightMap {
     const dx = tx - sx, dy = ty - sy;
     const steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)));
     if (steps <= 1) return true;
-    const goalX = Math.floor(tx / SUB), goalY = Math.floor(ty / SUB);
+    // Sample i is centred on tile-space (i+0.5)/SUB, so tile T spans index
+    // coordinates [T·SUB − 0.5, (T+1)·SUB − 0.5) — which is why the +0.5 is
+    // there. Without it a source sitting at the centre of its tile reads as
+    // being in the tile to its west the moment a ray steps left, and a wall
+    // lamp lights one side of itself and not the other.
+    const tile = v => Math.floor((v + 0.5) / SUB);
+    const goalX = tile(tx), goalY = tile(ty);
+    // A fitting mounted in a wall — a sconce, the dispenser's panel — sits in
+    // a tile that blocks. Without exempting its own tile the ray is stopped
+    // before it has gone anywhere and the lamp lights nothing, or worse, lights
+    // things two tiles off more brightly than things one tile off, because the
+    // far ray happens to step past the source tile and the near one does not.
+    const homeX = tile(sx), homeY = tile(sy);
     for (let s = 1; s < steps; s++) {
-      const px = Math.floor((sx + (dx * s) / steps) / SUB);
-      const py = Math.floor((sy + (dy * s) / steps) / SUB);
+      const px = tile(sx + (dx * s) / steps);
+      const py = tile(sy + (dy * s) / steps);
       if (px === goalX && py === goalY) return true;
+      if (px === homeX && py === homeY) continue;
       if (this.world.blocked(px, py)) return false;
     }
     return true;

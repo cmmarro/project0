@@ -177,9 +177,16 @@ export class Renderer {
    * for whatever is turning in it. */
   sceneKey() {
     const { camera, canvas, world, lights, occlusion } = this;
+    // Whether each thing is moving is part of the key, because a thing that
+    // starts turning has to come *out* of the baked scene — otherwise a fan
+    // that was still when the scene was composed stays baked into it and is
+    // drawn live on top as well, which shows up as a rectangle of doubled
+    // pixels around it.
+    let moving = 0;
+    for (const t of world.things.values()) if (t.rate) moving++;
     return [camera.x, camera.y, camera.zoom, canvas.width, canvas.height,
       world.version, world.paintVersion, lights.stale, lights.sunAt,
-      occlusion ? occlusion.stale : 0].join(',');
+      occlusion ? occlusion.stale : 0, moving].join(',');
   }
 
   draw(overlay) {
@@ -207,7 +214,7 @@ export class Renderer {
       a.floor(c, fw, fd, thing);
       c.restore();
     }
-    if (moving.length) this.drawThings(v, moving, c);
+    if (moving.length) this.drawThings(v, moving, c, 'moving');
 
     if (overlay) overlay(c);
   }
@@ -236,11 +243,10 @@ export class Renderer {
     // and the taller the wall the worse that looks.
     if (this.occlusion) {
       this.occlusion.update();
-      const ao = TILE / AO_SUB;
       c.imageSmoothingEnabled = true;
       c.globalCompositeOperation = 'multiply';
-      this.blitVisible(c, this.occlusion.canvas, -ao / 2, -ao / 2,
-        world.w * TILE + ao, world.h * TILE + ao, v);
+      this.blitVisible(c, this.occlusion.canvas, 0, 0,
+        world.w * TILE, world.h * TILE, v);
       c.globalCompositeOperation = 'source-over';
       c.imageSmoothingEnabled = false;
     }
@@ -263,17 +269,20 @@ export class Renderer {
     // samples it against whatever is a row north — for the north wall of a
     // room that is the dark outside, while its face gets the lit interior, and
     // the wall comes out in patches straddling the boundary.
-    const px = TILE / SUB, lw = world.w * TILE + px, lh = world.h * TILE + px;
+    // Exactly over the map rectangle. These bitmaps cover the map one sample
+    // per TILE/SUB, so any offset or padding here shifts every light in the
+    // world by a fraction of a tile.
+    const lw = world.w * TILE, lh = world.h * TILE;
     c.imageSmoothingEnabled = true;
     c.globalCompositeOperation = 'multiply';
-    this.blitVisible(c, this.lights.canvas, -px / 2, -px / 2, lw, lh, v);
+    this.blitVisible(c, this.lights.canvas, 0, 0, lw, lh, v);
     c.globalCompositeOperation = 'lighter';
-    this.blitVisible(c, this.lights.glow, -px / 2, -px / 2, lw, lh, v);
+    this.blitVisible(c, this.lights.glow, 0, 0, lw, lh, v);
     c.globalCompositeOperation = 'source-over';
     c.imageSmoothingEnabled = false;
 
     const still = this.sorted().filter(t => !t.rate && this.onScreen(t, v));
-    if (still.length) this.drawThings(v, still, c);
+    if (still.length) this.drawThings(v, still, c, 'still');
   }
 
   /* Everything with height, lit by the tile it stands on rather than by the
@@ -291,19 +300,29 @@ export class Renderer {
    * Masking the tint to the layer first is what lets the multiply happen
    * without the rectangles painting over the floor between things.
    */
-  drawThings(v, shown, out) {
+  drawThings(v, shown, out, pass) {
     const { camera, world } = this;
-    const [layer, lc] = this.surface('layer');
-    const [tint, tc] = this.surface('tint');
+    // Each pass owns its layers. Sharing them let the static pass's furniture
+    // sit in the buffer while the fan pass masked and blitted a small box out
+    // of it, which painted a rectangle of stale, re-tinted furniture around
+    // every fan.
+    const [layer, lc] = this.surface(`layer:${pass}`);
+    const [tint, tc] = this.surface(`tint:${pass}`);
 
     // Only the box those things actually cover gets cleared and blitted. On a
     // screen mostly full of floor that is a fraction of the pixels, and pixels
-    // are the whole cost here.
+    // are the whole cost here. The previous box is cleared too, or a shrinking
+    // one leaves its edges behind.
     const b = this.boundsOf(shown);
-    lc.setTransform(1, 0, 0, 1, 0, 0);
-    lc.clearRect(b.x, b.y, b.w, b.h);
-    tc.setTransform(1, 0, 0, 1, 0, 0);
-    tc.clearRect(b.x, b.y, b.w, b.h);
+    const prev = this[`prev:${pass}`] || b;
+    this[`prev:${pass}`] = b;
+    const wipe = c2 => {
+      c2.setTransform(1, 0, 0, 1, 0, 0);
+      c2.clearRect(prev.x, prev.y, prev.w, prev.h);
+      c2.clearRect(b.x, b.y, b.w, b.h);
+    };
+    wipe(lc);
+    wipe(tc);
     camera.apply(lc, layer);
     camera.apply(tc, tint);
 
@@ -316,18 +335,16 @@ export class Renderer {
       const h = a.h || 0;
       const [fw, fd] = footprint(thing.key, thing.rot);
       const X = thing.x * TILE, Y = thing.y * TILE;
+      const pad = a.spread || 8;
       // The light over this thing's *footprint*, stretched up over its whole
       // silhouette. A single flat colour per thing works but quantises: under a
       // wall light the tiles either side differ enough to read as blocks. Taking
       // the patch straight off the light map keeps the gradient, and neighbours
       // stay continuous because they sample adjoining patches of the same map.
-      const px = TILE / SUB;
       const map = this.lights.canvas;
-      const mw = world.w * TILE + px, mh = world.h * TILE + px;
-      const sx = ((X + px / 2) / mw) * map.width;
-      const sy = ((Y + px / 2) / mh) * map.height;
-      const sw = (fw / mw) * map.width, sh = (fd / mh) * map.height;
-      tc.drawImage(map, sx, sy, sw, sh, X - 8, Y - h - 8, fw + 16, fd + h + 16);
+      const k = map.width / (world.w * TILE);          // samples per world pixel
+      tc.drawImage(map, X * k, Y * k, fw * k, fd * k,
+        X - pad, Y - h - pad, fw + pad * 2, fd + h + pad * 2);
     }
 
     tc.setTransform(1, 0, 0, 1, 0, 0);
@@ -353,11 +370,16 @@ export class Renderer {
     for (const t of things) {
       const a = ART[t.key];
       const h = (a && a.h) || 0;
+      // Some art reaches past its own footprint — a fan's blades overhang the
+      // tile, as real ones do. Clip the bounds to the footprint and the blur
+      // disc comes back as a rounded rectangle, because that is a circle cut
+      // by a box.
+      const pad = (a && a.spread) || 8;
       const [fw, fd] = footprint(t.key, t.rot);
-      x0 = Math.min(x0, t.x * TILE - 8);
-      y0 = Math.min(y0, t.y * TILE - h - 8);
-      x1 = Math.max(x1, t.x * TILE + fw + 8);
-      y1 = Math.max(y1, t.y * TILE + fd + 8);
+      x0 = Math.min(x0, t.x * TILE - pad);
+      y0 = Math.min(y0, t.y * TILE - h - pad);
+      x1 = Math.max(x1, t.x * TILE + fw + pad);
+      y1 = Math.max(y1, t.y * TILE + fd + pad);
     }
     const z = camera.zoom;
     const ox = canvas.width / 2 - camera.x * z, oy = canvas.height / 2 - camera.y * z;
@@ -374,8 +396,10 @@ export class Renderer {
     const a = ART[t.key];
     const [fw, fd] = footprint(t.key, t.rot);
     const h = (a && a.h) || 0;
+    const pad = (a && a.spread) || 8;
     const x = t.x * TILE, y = t.y * TILE;
-    return x + fw > v.x0 && x < v.x1 && y + fd > v.y0 && y - h < v.y1;
+    return x + fw + pad > v.x0 && x - pad < v.x1
+      && y + fd + pad > v.y0 && y - h - pad < v.y1;
   }
 
   surface(name) {

@@ -188,6 +188,28 @@ recording: with *no objects drawn whatsoever* it was still 12 fps, and halving
 the device pixel ratio nearly tripled it. The cost was never the objects or the
 lighting — it was compositing four full-screen layers every frame.
 
+## Half-sample errors, which are the whole genre of bug here
+
+Three separate ones, all with the same shape and all visible on screen:
+
+- **The light map was blitted offset.** It covers the map rectangle *exactly* —
+  sample `i` spans world pixels `[i·TILE/SUB, (i+1)·TILE/SUB)` — so it draws at
+  `(0, 0, w·TILE, h·TILE)` with no offset and no padding. An earlier version
+  padded it by half a sample, which shifted **every light in the world** up and
+  left by a quarter tile. The symptom was a wall lamp lighting the top of the
+  wall instead of the floor in front of it.
+- **Index-to-tile rounded wrong.** Sample `i` is centred on tile-space
+  `(i+0.5)/SUB`, so tile `T` spans index coordinates
+  `[T·SUB − 0.5, (T+1)·SUB − 0.5)` — the conversion needs a `+0.5`. Without it
+  a lamp sitting at the centre of its tile reads as being in the tile to its
+  *west* the moment a ray steps left, so it lit one side of itself and not the
+  other.
+- **A fitting mounted in a wall blocked its own light.** Its tile blocks, so
+  every ray died before leaving it — and, worse, light two tiles away was
+  brighter than light one tile away, because the far ray happened to step past
+  the source tile and the near one didn't. Rays now ignore the tile they start
+  in.
+
 ## Notes on the rendering, from getting it wrong
 
 - **Art is drawn at full brightness and lit *down*.** The first pass used a
@@ -226,6 +248,12 @@ lighting — it was compositing four full-screen layers every frame.
   door painted on a thick wall with a window above it.
 - **A wall behind a doorway still needs its face**, because you can see through
   the opening. Only something that actually blocks buries the wall behind it.
+- **Art that reaches past its own footprint has to say so** (`spread`). A fan's
+  blades overhang their tile; clipping the draw bounds to the footprint turns
+  the blur disc into a rounded rectangle, because that is a circle cut by a box.
+- **Whether a thing is moving is part of the scene's cache key.** A fan that was
+  still when the scene was composed otherwise stays baked into it *and* gets
+  drawn live on top.
 - **A door leaf is a vertical plane with no top at all**, which makes it the
   clearest case in the catalogue for `view` over `top`/`face`. Extruded, it
   draws a full tile-deep slab lying flat *and* a thirty-pixel front, and you

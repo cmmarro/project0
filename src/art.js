@@ -498,6 +498,7 @@ export const ART = {
     h: 46,                          // hangs above everything else in the room
     taper: 0,
     shadow: false,
+    spread: 26,                     // the blades overhang the tile, as they do
     side: '#8d97a3',
     top(c, w, d, t) {
       const cx = w / 2, cy = d / 2;
@@ -586,42 +587,58 @@ export const ART = {
   },
 
   walllight: {
-    h: 30,
-    taper: 0,
+    // A lamp *on* a wall: no body of its own and no height, just a sprite
+    // painted on the wall's vertical face inside that wall's own tile. Giving
+    // it a footprint and an extrusion made it a little cone standing in mid-air
+    // beside the wall, which is what it looked like.
+    h: 0,
     shadow: false,
-    side: '#8d97a3',
-    // A bracket on the wall, not a cone hanging in the air. Mounted against
-    // the north edge of its tile and throwing south; rotation carries it round
-    // to whichever wall it was actually placed on.
-    top(c, w, d) {
-      c.fillStyle = '#5f686f';                    // the backplate, flat to the wall
-      c.fillRect(w * 0.3, 0, w * 0.4, 3.5);
-      c.fillStyle = '#6f7981';                    // a short arm out from it
-      c.fillRect(w * 0.45, 2.5, w * 0.1, d * 0.16);
-      c.beginPath();                              // the shade, a half cone
-      c.moveTo(w * 0.26, d * 0.1);
-      c.lineTo(w * 0.74, d * 0.1);
-      c.lineTo(w * 0.66, d * 0.44);
-      c.lineTo(w * 0.34, d * 0.44);
-      c.closePath();
-      c.fillStyle = '#dfc894';
-      c.fill();
-      c.lineWidth = 1.25;
-      c.strokeStyle = LINE;
-      c.stroke();
-      c.fillStyle = 'rgba(255,248,222,.9)';       // the bulb, just showing
-      c.fillRect(w * 0.36, d * 0.38, w * 0.28, 3);
-    },
-    face(c, w, h) {
-      c.fillStyle = '#5f686f';                    // backplate against the wall
-      c.fillRect(w * 0.34, 0, w * 0.32, 5);
-      c.fillStyle = 'rgba(255,255,255,.14)';
-      c.fillRect(w * 0.34, 0, w * 0.32, 1.5);
-      c.fillStyle = 'rgba(255,243,205,.5)';       // spill from under the shade
-      c.fillRect(w * 0.28, 3.5, w * 0.44, 3);
-      c.strokeStyle = LINE;
-      c.lineWidth = 1;
-      c.strokeRect(w * 0.34 + 0.5, 0.5, w * 0.32 - 1, 4);
+    spread: 14,
+    view(c, w, d, h, rot) {
+      const glow = (x, y, r) => {
+        const g = c.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, 'rgba(255,238,190,.6)');
+        g.addColorStop(0.5, 'rgba(255,238,190,.2)');
+        g.addColorStop(1, 'rgba(255,238,190,0)');
+        c.fillStyle = g;
+        c.beginPath();
+        c.arc(x, y, r, 0, 7);
+        c.fill();
+      };
+      // A narrow rounded bar. Small and plain on purpose: at this size a lamp
+      // is something you recognise by its proportion and its glow, and more
+      // detail than that just reads as noise on the wall.
+      const bar = (x, y, bw, bh) => {
+        c.beginPath();
+        c.roundRect(x - bw / 2, y - bh / 2, bw, bh, bh / 2);
+        c.fillStyle = '#f4e3b4';
+        c.fill();
+        c.lineWidth = 1.25;
+        c.strokeStyle = LINE;
+        c.stroke();
+        c.fillStyle = 'rgba(255,252,238,.9)';
+        c.beginPath();
+        c.roundRect(x - bw / 2 + 1.6, y - bh / 2 + 1.6, bw - 3.2, bh / 2 - 1, bh / 4);
+        c.fill();
+      };
+
+      if (rot === 1 || rot === 3) {
+        // On an east or west wall, seen from the side: the same bar on end.
+        c.save();
+        if (rot === 3) { c.translate(w, 0); c.scale(-1, 1); }
+        glow(w * 0.74, d * 0.5, w * 0.62);
+        bar(w * 0.74, d * 0.5, 7, d * 0.46);
+        c.restore();
+        return;
+      }
+      if (rot === 2) {
+        // On a south wall the fitting faces away from you; all that reaches
+        // here is the spill over the top of it.
+        glow(w / 2, d * 0.12, w * 0.55);
+        return;
+      }
+      glow(w / 2, d * 0.44, w * 0.7);
+      bar(w / 2, d * 0.32, w * 0.52, 8);
     },
   },
 };
