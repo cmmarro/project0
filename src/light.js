@@ -142,12 +142,33 @@ export class LightMap {
     this.glowCtx.putImageData(glowImage, 0, 0);
   }
 
+  /* The light falling on a point, in tiles, bilinearly. This is what anything
+   * standing *up* out of the floor is lit by — its own footprint, rather than
+   * whatever the light map happens to hold at the screen position it is drawn
+   * at. Those are different tiles the moment a thing has any height, and using
+   * the second is what made walls come out in patches. */
+  sample(x, y) {
+    const fx = Math.max(0, Math.min(this.w - 1.001, x * SUB - 0.5));
+    const fy = Math.max(0, Math.min(this.h - 1.001, y * SUB - 0.5));
+    const x0 = Math.floor(fx), y0 = Math.floor(fy);
+    const tx = fx - x0, ty = fy - y0;
+    const out = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      const a = this.rgb[(y0 * this.w + x0) * 3 + k];
+      const b = this.rgb[(y0 * this.w + x0 + 1) * 3 + k];
+      const c = this.rgb[((y0 + 1) * this.w + x0) * 3 + k];
+      const d = this.rgb[((y0 + 1) * this.w + x0 + 1) * 3 + k];
+      out[k] = (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + d * tx) * ty;
+    }
+    return out;
+  }
+
   /* How lit a tile is, 0..1ish, for anything that needs to ask rather than
    * draw. Nothing needs it yet; a pawn deciding whether it can see will. */
   levelAt(x, y) {
     if (!this.world.inside(x, y)) return 0;
-    const i = ((y * SUB) * this.w + x * SUB) * 3;
-    return (this.rgb[i] + this.rgb[i + 1] + this.rgb[i + 2]) / 3;
+    const s = this.sample(x + 0.5, y + 0.5);
+    return (s[0] + s[1] + s[2]) / 3;
   }
 }
 

@@ -152,6 +152,42 @@ It has its own version counter, separate from the terrain bake, for the same
 reason those two are separate: terrain changes when you paint a floor,
 occlusion changes when you build a wall.
 
+## Lighting things that stand up
+
+The light map is a **ground plane**. It is multiplied over terrain and nothing
+else, because anything with height is drawn *above* its own tile — a wall's
+body sits thirty pixels north of where it stands. Light it in screen space and
+its top face samples whatever is a row behind it, which for the north wall of a
+room is the dark outside while its face gets the lit interior. The wall comes
+out in patches straddling that boundary.
+
+So things are lit by their own footprint instead: for each one, the patch of
+light map over the tiles it stands on, stretched up over its whole silhouette.
+Not a flat colour per object — that quantises, and under a wall light the tiles
+either side differ enough to read as blocks. Taking the patch off the map keeps
+the gradient, and neighbours stay continuous because they sample adjoining
+parts of the same map.
+
+Two layers do it for the whole scene rather than per object: everything drawn
+once on transparent, and each thing's light patch over its silhouette. Masking
+the tint to the layer before multiplying is what stops the patches painting
+over the floor between things. The obvious version — a small scratch canvas per
+object — ping-pongs between GPU surfaces once per thing, and a room with a
+hundred and forty chairs ran at eight frames a second.
+
+## The scene is a still image
+
+Nothing moves except what is turning, so the whole composition — terrain,
+occlusion, light, and every object that is holding still — is drawn once into a
+cached surface and blitted. It is rebuilt only when the camera moves or the
+world changes. Fans are drawn on top per frame.
+
+That took the same hundred-and-forty-chair room from 8 fps to 50 in a software
+renderer with no GPU at all. The measurement that pointed at it is worth
+recording: with *no objects drawn whatsoever* it was still 12 fps, and halving
+the device pixel ratio nearly tripled it. The cost was never the objects or the
+lighting — it was compositing four full-screen layers every frame.
+
 ## Notes on the rendering, from getting it wrong
 
 - **Art is drawn at full brightness and lit *down*.** The first pass used a
@@ -190,6 +226,10 @@ occlusion changes when you build a wall.
   door painted on a thick wall with a window above it.
 - **A wall behind a doorway still needs its face**, because you can see through
   the opening. Only something that actually blocks buries the wall behind it.
+- **A door leaf is a vertical plane with no top at all**, which makes it the
+  clearest case in the catalogue for `view` over `top`/`face`. Extruded, it
+  draws a full tile-deep slab lying flat *and* a thirty-pixel front, and you
+  see the door twice — once on the floor and once standing up.
 
 ## Next
 

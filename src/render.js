@@ -131,6 +131,32 @@ export class Renderer {
     this.terrainVersion = world.paintVersion;
   }
 
+  /* The world rectangle currently on screen, in world pixels, with a margin
+   * for things that stand up above their own footprint. Everything that draws
+   * clips to this — the map is far bigger than the view, and blitting all of
+   * it every frame is most of a frame budget spent on pixels nobody sees. */
+  view() {
+    const { camera, canvas } = this;
+    const hw = canvas.width / 2 / camera.zoom, hh = canvas.height / 2 / camera.zoom;
+    const M = TILE * 3;
+    return {
+      x0: camera.x - hw - M, y0: camera.y - hh - M,
+      x1: camera.x + hw + M, y1: camera.y + hh + M,
+    };
+  }
+
+  /* Blit only the part of a full-map bitmap that is actually visible. `dw`/`dh`
+   * are the size the whole bitmap would be drawn at, and `ox`/`oy` its origin
+   * in world pixels — the light maps hang half a sample outside the map. */
+  blitVisible(c, img, ox, oy, dw, dh, v) {
+    const x0 = Math.max(ox, v.x0), y0 = Math.max(oy, v.y0);
+    const x1 = Math.min(ox + dw, v.x1), y1 = Math.min(oy + dh, v.y1);
+    if (x1 <= x0 || y1 <= y0) return;
+    const sx = ((x0 - ox) / dw) * img.width, sy = ((y0 - oy) / dh) * img.height;
+    const sw = ((x1 - x0) / dw) * img.width, sh = ((y1 - y0) / dh) * img.height;
+    c.drawImage(img, sx, sy, sw, sh, x0, y0, x1 - x0, y1 - y0);
+  }
+
   /* Painter's order: south edge first, then west, then height — so a tall
    * thing on the same row draws over a short one behind it. Overhead things go
    * last regardless, because they hang above the whole scene. */
@@ -146,18 +172,64 @@ export class Renderer {
     return this.order;
   }
 
+  /* What the composed scene depends on. Anything not in here can change
+   * without a recompose — which is the point: the room is a still image except
+   * for whatever is turning in it. */
+  sceneKey() {
+    const { camera, canvas, world, lights, occlusion } = this;
+    return [camera.x, camera.y, camera.zoom, canvas.width, canvas.height,
+      world.version, world.paintVersion, lights.stale, lights.sunAt,
+      occlusion ? occlusion.stale : 0].join(',');
+  }
+
   draw(overlay) {
-    const { c, canvas, world, camera } = this;
+    const { c, canvas, camera } = this;
+    const key = this.sceneKey();
+    if (key !== this.composed) {
+      this.compose();
+      this.composed = key;
+    }
+
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(this._scene, 0, 0);
+    camera.apply(c, canvas);
+
+    // Only the things that are actually moving are redrawn per frame. Ground
+    // first, so a fan's blades shadow the floor under it.
+    const v = this.view();
+    const moving = this.sorted().filter(t => t.rate && this.onScreen(t, v));
+    for (const thing of moving) {
+      const a = ART[thing.key];
+      if (!a || !a.floor) continue;
+      const [fw, fd] = footprint(thing.key, thing.rot);
+      c.save();
+      c.translate(thing.x * TILE, thing.y * TILE);
+      a.floor(c, fw, fd, thing);
+      c.restore();
+    }
+    if (moving.length) this.drawThings(v, moving, c);
+
+    if (overlay) overlay(c);
+  }
+
+  /* Everything that is holding still: terrain, occlusion, light, and every
+   * object that is not turning. Redrawn only when the camera moves or the
+   * world changes, which on a still scene is never. */
+  compose() {
+    const { world, camera } = this;
     if (this.terrainVersion !== world.paintVersion) this.bakeTerrain();
     this.lights.update();
 
+    const [scene, c] = this.surface('_scene');
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = '#0b0e11';
-    c.fillRect(0, 0, canvas.width, canvas.height);
-    camera.apply(c, canvas);
+    c.fillRect(0, 0, scene.width, scene.height);
+    camera.apply(c, scene);
 
+    const v = this.view();
     c.imageSmoothingEnabled = false;
-    c.drawImage(this.terrainCache, 0, 0);
+    this.blitVisible(c, this.terrainCache, 0, 0,
+      world.w * TILE, world.h * TILE, v);
 
     // Ambient occlusion, straight onto the floor and under everything else.
     // Walls that do not darken the floor at their feet read as printed on it,
@@ -167,18 +239,15 @@ export class Renderer {
       const ao = TILE / AO_SUB;
       c.imageSmoothingEnabled = true;
       c.globalCompositeOperation = 'multiply';
-      c.drawImage(this.occlusion.canvas, -ao / 2, -ao / 2,
-        world.w * TILE + ao, world.h * TILE + ao);
+      this.blitVisible(c, this.occlusion.canvas, -ao / 2, -ao / 2,
+        world.w * TILE + ao, world.h * TILE + ao, v);
       c.globalCompositeOperation = 'source-over';
       c.imageSmoothingEnabled = false;
     }
 
-    // Anything an overhead thing casts on the floor goes down before the
-    // furniture, so a chair under a fan is lit by the room and shadowed by the
-    // blades rather than having a shadow painted over the top of it.
     for (const thing of this.sorted()) {
       const a = ART[thing.key];
-      if (!a || !a.floor) continue;
+      if (!a || !a.floor || thing.rate || !this.onScreen(thing, v)) continue;
       const [fw, fd] = footprint(thing.key, thing.rot);
       c.save();
       c.translate(thing.x * TILE, thing.y * TILE);
@@ -186,30 +255,146 @@ export class Renderer {
       c.restore();
     }
 
-    for (const thing of this.sorted()) this.drawThing(thing);
-
-    // Light, multiplied over everything built so far. The half-sample offset is
-    // because sample (0,0) is the centre of tile (0,0), not its corner.
+    // Light over the *ground only*, and the half-sample offset is because
+    // sample (0,0) is the centre of tile (0,0), not its corner.
+    //
+    // Anything with height is lit separately, by its own footprint. A wall is
+    // drawn thirty pixels above its own tile, so a screen-space light pass
+    // samples it against whatever is a row north — for the north wall of a
+    // room that is the dark outside, while its face gets the lit interior, and
+    // the wall comes out in patches straddling the boundary.
     const px = TILE / SUB, lw = world.w * TILE + px, lh = world.h * TILE + px;
     c.imageSmoothingEnabled = true;
     c.globalCompositeOperation = 'multiply';
-    c.drawImage(this.lights.canvas, -px / 2, -px / 2, lw, lh);
-    // ...then the excess above full brightness, added back. This is what makes
-    // a lamp read as a light source rather than as a hole in a dark filter.
+    this.blitVisible(c, this.lights.canvas, -px / 2, -px / 2, lw, lh, v);
     c.globalCompositeOperation = 'lighter';
-    c.drawImage(this.lights.glow, -px / 2, -px / 2, lw, lh);
+    this.blitVisible(c, this.lights.glow, -px / 2, -px / 2, lw, lh, v);
     c.globalCompositeOperation = 'source-over';
+    c.imageSmoothingEnabled = false;
 
-    if (overlay) overlay(c);
+    const still = this.sorted().filter(t => !t.rate && this.onScreen(t, v));
+    if (still.length) this.drawThings(v, still, c);
+  }
+
+  /* Everything with height, lit by the tile it stands on rather than by the
+   * screen position it happens to be drawn at.
+   *
+   * Done as two full-screen layers rather than per object. The obvious version
+   * — a little scratch canvas per thing — ping-pongs between GPU surfaces once
+   * per object, and a room with a hundred and forty chairs in it ran at eight
+   * frames a second. This does two cross-canvas draws for the whole scene
+   * regardless of how much is in it.
+   *
+   *   layer   every thing, drawn once, on transparent
+   *   tint    each thing's own light, as a flat rectangle over its silhouette
+   *
+   * Masking the tint to the layer first is what lets the multiply happen
+   * without the rectangles painting over the floor between things.
+   */
+  drawThings(v, shown, out) {
+    const { camera, world } = this;
+    const [layer, lc] = this.surface('layer');
+    const [tint, tc] = this.surface('tint');
+
+    // Only the box those things actually cover gets cleared and blitted. On a
+    // screen mostly full of floor that is a fraction of the pixels, and pixels
+    // are the whole cost here.
+    const b = this.boundsOf(shown);
+    lc.setTransform(1, 0, 0, 1, 0, 0);
+    lc.clearRect(b.x, b.y, b.w, b.h);
+    tc.setTransform(1, 0, 0, 1, 0, 0);
+    tc.clearRect(b.x, b.y, b.w, b.h);
+    camera.apply(lc, layer);
+    camera.apply(tc, tint);
+
+    tc.imageSmoothingEnabled = true;
+    for (const thing of shown) {
+      this.drawThingInto(lc, thing);
+
+      const a = ART[thing.key];
+      if (!a) continue;
+      const h = a.h || 0;
+      const [fw, fd] = footprint(thing.key, thing.rot);
+      const X = thing.x * TILE, Y = thing.y * TILE;
+      // The light over this thing's *footprint*, stretched up over its whole
+      // silhouette. A single flat colour per thing works but quantises: under a
+      // wall light the tiles either side differ enough to read as blocks. Taking
+      // the patch straight off the light map keeps the gradient, and neighbours
+      // stay continuous because they sample adjoining patches of the same map.
+      const px = TILE / SUB;
+      const map = this.lights.canvas;
+      const mw = world.w * TILE + px, mh = world.h * TILE + px;
+      const sx = ((X + px / 2) / mw) * map.width;
+      const sy = ((Y + px / 2) / mh) * map.height;
+      const sw = (fw / mw) * map.width, sh = (fd / mh) * map.height;
+      tc.drawImage(map, sx, sy, sw, sh, X - 8, Y - h - 8, fw + 16, fd + h + 16);
+    }
+
+    tc.setTransform(1, 0, 0, 1, 0, 0);
+    tc.globalCompositeOperation = 'destination-in';
+    tc.drawImage(layer, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);
+    tc.globalCompositeOperation = 'source-over';
+
+    lc.setTransform(1, 0, 0, 1, 0, 0);
+    lc.globalCompositeOperation = 'multiply';
+    lc.drawImage(tint, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);
+    lc.globalCompositeOperation = 'source-over';
+
+    const m = out.getTransform();
+    out.setTransform(1, 0, 0, 1, 0, 0);
+    out.drawImage(layer, b.x, b.y, b.w, b.h, b.x, b.y, b.w, b.h);
+    out.setTransform(m);
+  }
+
+  /* The screen rectangle a set of things covers, clamped to the canvas. */
+  boundsOf(things) {
+    const { camera, canvas } = this;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const t of things) {
+      const a = ART[t.key];
+      const h = (a && a.h) || 0;
+      const [fw, fd] = footprint(t.key, t.rot);
+      x0 = Math.min(x0, t.x * TILE - 8);
+      y0 = Math.min(y0, t.y * TILE - h - 8);
+      x1 = Math.max(x1, t.x * TILE + fw + 8);
+      y1 = Math.max(y1, t.y * TILE + fd + 8);
+    }
+    const z = camera.zoom;
+    const ox = canvas.width / 2 - camera.x * z, oy = canvas.height / 2 - camera.y * z;
+    const sx = Math.max(0, Math.floor(x0 * z + ox));
+    const sy = Math.max(0, Math.floor(y0 * z + oy));
+    return {
+      x: sx, y: sy,
+      w: Math.min(canvas.width, Math.ceil(x1 * z + ox)) - sx,
+      h: Math.min(canvas.height, Math.ceil(y1 * z + oy)) - sy,
+    };
+  }
+
+  onScreen(t, v) {
+    const a = ART[t.key];
+    const [fw, fd] = footprint(t.key, t.rot);
+    const h = (a && a.h) || 0;
+    const x = t.x * TILE, y = t.y * TILE;
+    return x + fw > v.x0 && x < v.x1 && y + fd > v.y0 && y - h < v.y1;
+  }
+
+  surface(name) {
+    const key = name.startsWith('_') ? name : '_' + name;
+    if (!this[key]) this[key] = document.createElement('canvas');
+    const cv = this[key];
+    if (cv.width !== this.canvas.width || cv.height !== this.canvas.height) {
+      cv.width = this.canvas.width;
+      cv.height = this.canvas.height;
+    }
+    return [cv, cv.getContext('2d')];
   }
 
   /* A soft ellipse pooled at the foot of a thing. It was a rounded rectangle
    * at flat alpha, which at any zoom reads as a grey slab lying on the floor
    * rather than as a shadow — the softness is the whole point, and a
    * hard-edged shadow is worse than none. */
-  contactShadow(t, a, fw, fd, h, ghost) {
+  contactShadow(c, t, a, fw, fd, h, ghost) {
     if (ghost || a.shadow === false || h <= 0) return;
-    const c = this.c;
     const sx = t.x * TILE + fw / 2, sy = t.y * TILE + fd - 1.5;
     const rx = fw * 0.5, ry = Math.min(fd * 0.3, 3.5 + h * 0.12);
     const r = Math.max(rx, ry);
@@ -236,7 +421,10 @@ export class Renderer {
    * `t` needs only { key, x, y, rot } — the build ghost passes a bare object
    * rather than a placed thing. */
   drawThing(t, ghost = false) {
-    const c = this.c;
+    this.drawThingInto(this.c, t, ghost);
+  }
+
+  drawThingInto(c, t, ghost = false) {
     const def = THINGS[t.key];
     const a = ART[t.key];
     if (!a) return;
@@ -255,7 +443,7 @@ export class Renderer {
     // their height down to the south edge of their footprint. Everything below
     // is the extruded path, which only makes sense for things that are boxes.
     if (a.view) {
-      this.contactShadow(t, a, fw, fd, h, ghost);
+      this.contactShadow(c, t, a, fw, fd, h, ghost);
       c.save();
       c.translate(X, Y - h);
       a.view(c, fw, fd, h, rot, t);

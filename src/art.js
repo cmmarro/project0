@@ -168,57 +168,73 @@ export const ART = {
 
   door: {
     h: 30,
-    taper: 0,
     shadow: false,
-    side: '#6d4c28',
-    // A doorway is first of all a *hole*: if the wall were not there you would
-    // be looking at floor, so that is what is underneath. Nothing here paints
-    // over the tile. The door is a leaf standing on that floor, and the walls
-    // either side supply their own cut ends.
-    top(c, w, d) {
-      const y = d * 0.42, th = d * 0.16;
-      c.fillStyle = 'rgba(0,0,0,.28)';             // what the leaf casts
-      c.fillRect(0, y + th, w, 4);
-      c.fillStyle = '#8a5f33';                     // the leaf, edge-on
-      c.fillRect(0, y, w, th);
-      c.fillStyle = 'rgba(255,255,255,.16)';
-      c.fillRect(0, y, w, 2);
-      c.fillStyle = 'rgba(0,0,0,.3)';
-      c.fillRect(0, y + th - 1.5, w, 1.5);
-      c.strokeStyle = 'rgba(26,22,18,.6)';
-      c.lineWidth = 1;
-      c.strokeRect(0.5, y + 0.5, w - 1, th - 1);
-      c.fillStyle = '#d8c08c';                     // handle
-      c.fillRect(w - 11, y + th, 4, 2.5);
-    },
-    face(c, w, h) {
-      // Just the leaf, standing in the gap. Whatever is behind it — floor, and
-      // the cut ends of the walls on either side — is already on the canvas.
-      const inset = 1.5;
-      const x0 = inset, lw = w - inset * 2, y0 = 0, lh = h - 2;
-      c.fillStyle = '#8a6233';
-      c.fillRect(x0, y0, lw, lh);
-      const shade = c.createLinearGradient(0, 0, 0, lh);
-      shade.addColorStop(0, 'rgba(255,255,255,.10)');
-      shade.addColorStop(0.3, 'rgba(0,0,0,.04)');
-      shade.addColorStop(1, 'rgba(0,0,0,.2)');
-      c.fillStyle = shade;
-      c.fillRect(x0, y0, lw, lh);
+    // Viewed, not extruded — and this is the clearest case for the distinction
+    // in the whole catalogue. A door leaf is a thin *vertical plane*. It has no
+    // top surface at all, so forcing it through top-plus-face draws a full
+    // tile-deep slab lying flat AND a thirty-pixel front, and you see the door
+    // twice: once on the floor and once standing up.
+    //
+    // Underneath it is floor. A doorway is a hole in a wall; if the wall were
+    // not there you would be looking at the ground, so nothing here paints over
+    // the tile. The walls either side supply their own cut ends.
+    view(c, w, d, h, rot) {
+      const ground = h + d * 0.5;              // where the leaf stands
+      const wood = '#8a6233';
 
-      c.fillStyle = 'rgba(0,0,0,.2)';              // a middle rail
-      c.fillRect(x0 + 2, lh * 0.46, lw - 4, 1.5);
-      c.strokeStyle = 'rgba(0,0,0,.15)';           // and two panels
+      if (rot % 2 === 1) {
+        // In a north-south run you see the leaf edge-on: a narrow slab running
+        // away from you, so its silhouette is the full depth of the tile plus
+        // its height.
+        const th = 6, x = w / 2 - th / 2;
+        c.fillStyle = 'rgba(0,0,0,.3)';
+        c.fillRect(x + th, h * 0.5, 3, d + h * 0.5);
+        c.fillStyle = wood;
+        c.fillRect(x, 0, th, h + d);
+        c.fillStyle = 'rgba(255,255,255,.13)';
+        c.fillRect(x, 0, th, 2);
+        c.fillStyle = 'rgba(0,0,0,.22)';
+        c.fillRect(x + th - 2, 0, 2, h + d);
+        c.strokeStyle = LINE;
+        c.lineWidth = 1;
+        c.strokeRect(x + 0.5, 0.5, th - 1, h + d - 1);
+        return;
+      }
+
+      // Facing you: a panel standing on the floor at the middle of the tile.
+      const inset = 1.5;
+      const x0 = inset, lw = w - inset * 2;
+      const top = ground - h, lh = h;
+
+      c.fillStyle = 'rgba(0,0,0,.34)';         // what it throws on the floor
+      c.fillRect(x0 + 1, ground - 1, lw - 2, 5);
+
+      c.fillStyle = wood;
+      c.fillRect(x0, top, lw, lh);
+      const shade = c.createLinearGradient(0, top, 0, top + lh);
+      shade.addColorStop(0, 'rgba(255,255,255,.12)');
+      shade.addColorStop(0.28, 'rgba(0,0,0,.03)');
+      shade.addColorStop(1, 'rgba(0,0,0,.24)');
+      c.fillStyle = shade;
+      c.fillRect(x0, top, lw, lh);
+
+      c.fillStyle = '#a5763f';                 // the leaf's top edge, seen from above
+      c.fillRect(x0, top, lw, 2.5);
+      c.fillStyle = 'rgba(255,255,255,.2)';
+      c.fillRect(x0, top, lw, 1);
+
+      c.fillStyle = 'rgba(0,0,0,.2)';          // a middle rail, two panels
+      c.fillRect(x0 + 2, top + lh * 0.46, lw - 4, 1.5);
+      c.strokeStyle = 'rgba(0,0,0,.16)';
       c.lineWidth = 1;
-      c.strokeRect(x0 + 2.5, 2.5, lw - 5, lh * 0.42 - 4);
-      c.strokeRect(x0 + 2.5, lh * 0.52, lw - 5, lh * 0.42 - 3);
+      c.strokeRect(x0 + 2.5, top + 3.5, lw - 5, lh * 0.4 - 4);
+      c.strokeRect(x0 + 2.5, top + lh * 0.53, lw - 5, lh * 0.4 - 3);
       c.strokeStyle = LINE;
       c.lineWidth = 1.25;
-      c.strokeRect(x0 + 0.5, 0.5, lw - 1, lh - 1);
+      c.strokeRect(x0 + 0.5, top + 0.5, lw - 1, lh - 1);
 
-      c.fillStyle = '#d8c08c';                     // handle
-      c.fillRect(x0 + lw - 5, lh * 0.44, 2.5, 5);
-      c.fillStyle = 'rgba(0,0,0,.34)';             // where it meets the floor
-      c.fillRect(x0, lh - 1.5, lw, 3);
+      c.fillStyle = '#d8c08c';                 // handle
+      c.fillRect(x0 + lw - 5.5, top + lh * 0.44, 2.5, 5);
     },
   },
 
